@@ -1,6 +1,6 @@
-# Release Process
+# Release
 
-Rootware uses independent package versions.
+Rootware uses independent versioning per package.
 
 Examples:
 
@@ -8,24 +8,25 @@ Examples:
 - `@rootware/env@0.1.0`
 - `@rootware/log@0.2.0`
 
-Do not synchronize versions automatically across all packages.
+Do not synchronize every package version automatically. Only bump and publish a
+package when that package changed.
 
 ## Versioning
 
-- Patch: bug fix with no intended API change.
-- Minor: compatible feature or additive API.
-- Major: breaking change.
+- Patch: bug fixes.
+- Minor: compatible features.
+- Major: breaking changes.
 
-Packages are experimental while in `0.x`. Breaking changes in `0.x` still need
-clear release notes and migration guidance.
+Packages are experimental while they are in `0.x`. Breaking changes in `0.x`
+must still be documented clearly in release notes.
 
 ## Release Checklist
 
-1. Update the target package version.
-2. Update README and docs where needed.
-3. Run `deno task ci`.
-4. Run `deno task publish:dry`.
-5. Confirm the package is linked to the GitHub repo in JSR.
-6. Run the manual publish workflow with `dry_run: true`.
-7. Run the manual publish workflow with `dry_run: false`.
-8. Create GitHub release notes or a tag if the release needs public tracking.
+- Version bumped in the correct package.
+- README updated.
+- JSDoc updated.
+- Tests passing.
+- `deno task ci` passing.
+- `deno task publish:dry` passing.
+- Package linked to `gilvandovieira/rootware` in JSR.
+- Release notes prepared.

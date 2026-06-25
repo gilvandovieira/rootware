@@ -4,9 +4,9 @@ JSR-native backend DX packages for Deno.
 
 Status: experimental / early development.
 
-Rootware is not a framework, not a runtime, and not a build system. It is a
-small set of composable packages that provide backend foundations for Deno
-projects while staying native to JSR and the Web platform.
+Rootware is not a framework, not a runtime, and not a build system. It is a set
+of small composable JSR packages that provide backend foundations for Deno
+projects while staying close to the Web platform.
 
 ## Packages
 
@@ -18,6 +18,27 @@ projects while staying native to JSR and the Web platform.
 | `@rootware/testing` | Test utilities                  | Experimental |
 | `@rootware/http`    | Production-safe fetch wrapper   | Experimental |
 | `@rootware/cache`   | Async-first cache abstraction   | Experimental |
+| `@rootware/storage` | Object storage abstraction      | Experimental |
+| `@rootware/session` | Sessions and actor boundaries   | Experimental |
+| `@rootware/migrate` | Database migration primitives   | Experimental |
+| `@rootware/orm`     | Typed SQL and ORM primitives    | Experimental |
+| `@rootware/jobs`    | Background job queue primitives | Experimental |
+
+## Dependency Order
+
+Packages may depend only on packages earlier in this list:
+
+1. `@rootware/errors`
+2. `@rootware/env`
+3. `@rootware/log`
+4. `@rootware/testing`
+5. `@rootware/http`
+6. `@rootware/cache`
+7. `@rootware/storage`
+8. `@rootware/session`
+9. `@rootware/migrate`
+10. `@rootware/orm`
+11. `@rootware/jobs`
 
 ## Quick Example
 
@@ -51,16 +72,46 @@ deno task fmt:check
 deno task lint
 deno task check
 deno task test
+```
+
+Run the local CI task:
+
+```sh
+deno task ci
+```
+
+Run coverage:
+
+```sh
+deno task test:coverage
+deno task coverage:lcov
+```
+
+Run publication dry-runs:
+
+```sh
 deno task publish:dry
 ```
 
+## Publishing
+
+Real publishing is manual through GitHub Actions. Use the `Publish` workflow,
+choose a package, run with `dry_run: true`, and publish with `dry_run: false`
+only after CI and the dry-run pass.
+
+Before publishing through GitHub Actions, the package must be created or
+prepared on JSR and linked to `gilvandovieira/rootware` in the JSR package
+settings.
+
 ## Philosophy
 
-- Small packages over a large framework.
-- Native Deno and JSR workflows.
-- Explicit sources, adapters, and test doubles.
-- No build step for packages.
-- Avoid unnecessary dependencies and circular package relationships.
+- Not a framework.
+- Not a runtime.
+- Not a build system.
+- Small composable JSR packages.
+- Explicit adapters and test doubles.
+- No unnecessary dependencies.
+- No circular package relationships.
 
 ## License
 

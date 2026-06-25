@@ -1,5 +1,5 @@
 {
-  "name": "@rootware/errors",
+  "name": "@rootware/session",
   "version": "0.1.0",
   "exports": "./mod.ts",
   "license": "MIT",
@@ -7,11 +7,12 @@
     "type": "git",
     "url": "git+https://github.com/gilvandovieira/rootware.git"
   },
-  "description": "Application error primitives for Rootware packages and Deno backends.",
+  "description": "Session and actor boundary primitives for Rootware packages and Deno backends.",
   "keywords": [
-    "errors",
-    "error-handling",
-    "application-errors",
+    "session",
+    "cookies",
+    "auth-boundary",
+    "actor",
     "deno",
     "jsr",
     "backend",

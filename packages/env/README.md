@@ -40,3 +40,10 @@ Secrets are redacted by definition type and by common key names such as
 `SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`, and `DATABASE_URL`.
 
 See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
+## Limitations
+
+This package does not read `.env` files or merge environment-specific files yet.
+Use explicit sources in tests and application bootstrap code.
+
+[Back to Rootware](../../README.md)

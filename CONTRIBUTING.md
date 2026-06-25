@@ -18,18 +18,30 @@ deno task fmt:check
 deno task lint
 deno task check
 deno task test
+```
+
+Run coverage:
+
+```sh
 deno task test:coverage
+deno task coverage:lcov
+```
+
+Run publication dry-runs:
+
+```sh
 deno task publish:dry
 ```
 
-## Adding a Package
+## Adding A Package
 
 1. Create `packages/<name>/mod.ts`.
 2. Add `packages/<name>` to the root `workspace`.
-3. Add `packages/<name>/deno.json` with `name`, `version`, and `exports`.
-4. Add a package README and tests.
-5. Add CI and dry-run tasks if the package should be published.
-6. Preserve the dependency order documented in
+3. Add `packages/<name>/deno.json` with JSR metadata.
+4. Add `packages/<name>/README.md`.
+5. Add `packages/<name>/mod_test.ts`.
+6. Add package dry-run tasks.
+7. Preserve the dependency order documented in
    [docs/packages.md](./docs/packages.md).
 
 Avoid circular dependencies. Lower-level packages must not import higher-level
@@ -51,9 +63,23 @@ Packages use independent versions. Bump only the package being released:
 Experimental `0.x` packages may still contain breaking changes, but they must be
 documented clearly.
 
+## Publishing
+
+Publishing is manual through GitHub Actions:
+
+1. Bump the target package version.
+2. Run `deno task ci`.
+3. Run `deno task publish:dry`.
+4. Ensure the package exists or is prepared on JSR.
+5. Ensure the JSR package is linked to `gilvandovieira/rootware`.
+6. Run the `Publish` workflow with `dry_run: true`.
+7. Run the same workflow with `dry_run: false` only when ready.
+
+Do not add `JSR_TOKEN` when OIDC publishing is available.
+
 ## Pull Requests
 
-Open PRs with focused changes. Before requesting review, run:
+Open focused PRs. Before requesting review, run:
 
 ```sh
 deno task ci

@@ -38,3 +38,10 @@ Request bodies and sensitive headers are not logged. URLs are redacted before
 entering logs and error details.
 
 See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
+## Limitations
+
+This package does not implement interceptors, OAuth, cookie jars, circuit
+breakers, or OpenTelemetry yet.
+
+[Back to Rootware](../../README.md)

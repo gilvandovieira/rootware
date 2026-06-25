@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "exports": "./mod.ts",
   "license": "MIT",
-  "description": "Structured JSON logger for Rootware packages and Deno backends.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gilvandovieira/rootware.git"
   },
+  "description": "Structured JSON logger for Rootware packages and Deno backends.",
   "keywords": [
     "logger",
     "logging",
@@ -18,15 +18,21 @@
     "backend",
     "rootware"
   ],
-  "exclude": [
-    "coverage",
-    ".github",
-    "node_modules",
-    "dist",
-    ".DS_Store",
-    "*.lcov",
-    "*.log",
-    "tmp",
-    "temp"
-  ]
+  "publish": {
+    "include": [
+      "README.md",
+      "mod.ts",
+      "deno.json"
+    ],
+    "exclude": [
+      "**/*_test.ts",
+      "coverage",
+      "*.lcov",
+      "*.log",
+      "tmp",
+      "temp",
+      "dist",
+      "node_modules"
+    ]
+  }
 }

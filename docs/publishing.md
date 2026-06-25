@@ -13,9 +13,10 @@ normal CI runs must only validate and run `deno publish --dry-run`.
 - Update JSDoc for public APIs.
 - Confirm tests pass.
 - Confirm `deno task ci` passes.
-- Confirm `deno publish --dry-run` passes for the package.
-- Confirm the package is linked to the GitHub repository in JSR settings.
-- Prepare a Git tag or release notes if applicable.
+- Confirm `deno task publish:dry` passes.
+- Confirm the package is created or prepared in JSR.
+- Confirm the package is linked to `gilvandovieira/rootware` in JSR settings.
+- Prepare release notes if applicable.
 
 ## Dry Run
 
@@ -28,23 +29,23 @@ deno task publish:dry
 Run one package dry-run:
 
 ```sh
-cd packages/errors
-deno publish --dry-run --allow-dirty
+deno task publish:dry:errors
 ```
 
-The shared `deno task publish:dry` commands use `--allow-dirty` so local
-validation works before committing. The manual publish workflow does not use
-`--allow-dirty` for real publication.
+The shared dry-run tasks use `--allow-dirty` so local validation can run before
+committing. The manual publish workflow does not use `--allow-dirty` for real
+publication.
 
 ## GitHub Actions Publishing
 
-Before using the publish workflow, the package must be linked to this GitHub
-repository in the JSR package settings. The workflow uses GitHub OIDC, not
-`JSR_TOKEN`.
+Use the manual `Publish` workflow. Inputs:
 
-Manual workflow inputs:
-
-- `package`: one of `errors`, `env`, `log`, `testing`, `http`, `cache`
+- `package`: one of `errors`, `env`, `log`, `testing`, `http`, `cache`,
+  `storage`, `session`, `migrate`, `orm`, `jobs`
 - `dry_run`: `true` by default
 
-Do not publish if CI is failing.
+The workflow uses GitHub OIDC with `id-token: write`. Do not configure
+`JSR_TOKEN` when OIDC is available.
+
+Do not publish if CI is failing. Do not publish automatically from pull
+requests.

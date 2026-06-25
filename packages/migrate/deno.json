@@ -1,5 +1,5 @@
 {
-  "name": "@rootware/errors",
+  "name": "@rootware/migrate",
   "version": "0.1.0",
   "exports": "./mod.ts",
   "license": "MIT",
@@ -7,11 +7,12 @@
     "type": "git",
     "url": "git+https://github.com/gilvandovieira/rootware.git"
   },
-  "description": "Application error primitives for Rootware packages and Deno backends.",
+  "description": "Database migration primitives for Rootware packages and Deno backends.",
   "keywords": [
-    "errors",
-    "error-handling",
-    "application-errors",
+    "migrations",
+    "database",
+    "sql",
+    "schema",
     "deno",
     "jsr",
     "backend",

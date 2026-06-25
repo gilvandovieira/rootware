@@ -13,34 +13,24 @@ deno task test:coverage
 deno task coverage:lcov
 ```
 
-## Package Tests
+Run the standard local CI:
 
-Place package tests next to `mod.ts` as `mod_test.ts`.
-
-Use `@std/assert` for direct assertions:
-
-```ts
-import { assertEquals } from "@std/assert";
+```sh
+deno task ci
 ```
 
-Use `@rootware/testing` when a test benefits from Rootware helpers such as fake
-clocks, memory loggers, fixture helpers, or typed test env setup.
+## Writing Tests
 
-## Determinism
+- Put tests next to each package as `packages/<name>/mod_test.ts`.
+- Use `@std/assert` through the root import map.
+- Use `@rootware/testing` when testing application code or higher-level flows.
+- Prefer explicit inputs and test doubles.
+- Avoid real network calls, real databases, real filesystem state, and real
+  environment variables.
+- Prefer memory/noop stores and mock fetch functions.
+- Keep waits short and deterministic.
 
-Prefer:
+## Permissions
 
-- Explicit env sources instead of `Deno.env`.
-- `memorySink()` instead of stdout or stderr.
-- `createMockFetch()` instead of real network requests.
-- `memoryCacheStore()` instead of external cache services.
-- Fake clocks or fixed timestamps when time matters.
-
-Avoid:
-
-- Real network calls.
-- Real filesystem state unless the package is specifically testing filesystem
-  behavior.
-- Process-global mutation.
-- Timezone-dependent assertions.
-- `--allow-all`.
+The default test command is `deno test`. Add permissions only when a test truly
+needs them. Do not use `--allow-all` in package tests or CI.

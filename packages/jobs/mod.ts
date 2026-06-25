@@ -102,10 +102,12 @@ export interface JobRecord<
   readonly idempotencyKey?: string;
 }
 
-export type JobHandler<TPayload = unknown, TOutput = unknown> = (
-  payload: TPayload,
-  ctx: JobContext,
-) => TOutput | Promise<TOutput>;
+export type JobHandler<TPayload = unknown, TOutput = unknown> = {
+  bivarianceHack(
+    payload: TPayload,
+    ctx: JobContext,
+  ): TOutput | Promise<TOutput>;
+}["bivarianceHack"];
 
 export interface JobContext {
   readonly job: JobRecord;

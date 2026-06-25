@@ -35,3 +35,10 @@ throw new RootwareError("Missing configuration", {
 `expose: true` only for errors that are safe to show to users.
 
 See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
+## Limitations
+
+This package only defines error primitives. Package-specific errors live in the
+packages that need them.
+
+[Back to Rootware](../../README.md)

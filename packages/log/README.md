@@ -37,3 +37,10 @@ or secrets. Application code should avoid passing sensitive fields as log
 objects.
 
 See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
+## Limitations
+
+This package does not include pretty printing, file transports, or OpenTelemetry
+integration yet.
+
+[Back to Rootware](../../README.md)

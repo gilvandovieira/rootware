@@ -34,7 +34,7 @@ jobs:
       - name: Validate package input
         run: |
           case "${{ inputs.package }}" in
-            errors|env|log|testing|http|cache)
+            errors|env|log|testing|http|cache|storage|session|migrate|orm|jobs)
               echo "Publishing package: ${{ inputs.package }}"
               ;;
             *)
@@ -49,7 +49,8 @@ jobs:
       - name: Publish package
         run: |
           # Before publishing via GitHub Actions, the JSR package must be
-          # linked to this GitHub repository in the package settings.
+          # created or prepared in JSR and linked to gilvandovieira/rootware
+          # in the package settings. This workflow uses OIDC, not JSR_TOKEN.
           cd "packages/${{ inputs.package }}"
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             deno publish --dry-run

@@ -36,3 +36,10 @@ Helpers avoid mutating globals, `Date`, and `Deno.env`. Prefer explicit sources
 and fakes.
 
 See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
+## Limitations
+
+This package complements `Deno.test`; it is not a test runner and does not
+modify globals.
+
+[Back to Rootware](../../README.md)
