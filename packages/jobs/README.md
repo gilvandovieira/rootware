@@ -2,9 +2,9 @@
 
 Background job queue primitives for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { createJobQueue, defineJob, memoryJobStore } from "jsr:@rootware/jobs";
@@ -30,7 +30,7 @@ await queue.enqueue("sendWelcomeEmail", { userId: "u_123" });
 await queue.processNext();
 ```
 
-## API Summary
+## API
 
 - `defineJob`
 - `defineJobs`
@@ -50,5 +50,13 @@ only for tests and local development.
 
 This package does not implement distributed workers, Redis, Deno KV, SQL queue
 adapters, cron parsing, dashboards, or OpenTelemetry yet.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

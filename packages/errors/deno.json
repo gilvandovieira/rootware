@@ -9,13 +9,13 @@
   },
   "description": "Application error primitives for Rootware packages and Deno backends.",
   "keywords": [
-    "errors",
-    "error-handling",
-    "application-errors",
     "deno",
     "jsr",
+    "rootware",
     "backend",
-    "rootware"
+    "errors",
+    "error-handling",
+    "application-errors"
   ],
   "publish": {
     "include": [

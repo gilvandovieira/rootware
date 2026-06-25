@@ -2,9 +2,9 @@
 
 Application error primitives for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { RootwareError } from "jsr:@rootware/errors";
@@ -21,7 +21,7 @@ throw new RootwareError("Missing configuration", {
 });
 ```
 
-## API Summary
+## API
 
 - `RootwareError`
 - `toRootwareError`
@@ -40,5 +40,13 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 This package only defines error primitives. Package-specific errors live in the
 packages that need them.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

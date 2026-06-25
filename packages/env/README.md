@@ -2,9 +2,9 @@
 
 Typed environment configuration for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { defineEnv, env } from "jsr:@rootware/env";
@@ -25,7 +25,7 @@ const config = defineEnv({
 });
 ```
 
-## API Summary
+## API
 
 - `defineEnv`
 - `validateEnv`
@@ -45,5 +45,13 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 This package does not read `.env` files or merge environment-specific files yet.
 Use explicit sources in tests and application bootstrap code.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

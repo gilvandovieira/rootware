@@ -9,13 +9,13 @@
   },
   "description": "Async-first cache abstraction for Rootware packages and Deno backends.",
   "keywords": [
-    "cache",
-    "ttl",
-    "memory-cache",
-    "backend",
     "deno",
     "jsr",
-    "rootware"
+    "rootware",
+    "backend",
+    "cache",
+    "ttl",
+    "memory-cache"
   ],
   "publish": {
     "include": [

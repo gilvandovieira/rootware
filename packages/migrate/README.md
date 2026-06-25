@@ -2,9 +2,9 @@
 
 Database migration primitives for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import {
@@ -31,7 +31,7 @@ const migrator = createMigrator({
 await migrator.up({ dryRun: true });
 ```
 
-## API Summary
+## API
 
 - `defineSqlMigration`
 - `defineMigration`
@@ -50,5 +50,13 @@ mismatches fail by default unless explicitly allowed.
 
 This package does not include database adapters, filesystem migration discovery,
 CLI commands, schema diffing, or advisory locks yet.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

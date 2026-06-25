@@ -2,9 +2,9 @@
 
 Small typed SQL and ORM primitives for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import {
@@ -34,7 +34,7 @@ await db.select().from(users).where(eq(users.columns.id, "u_123")).execute();
 await db.execute(sql`select * from users where id = ${"u_123"}`);
 ```
 
-## API Summary
+## API
 
 - `defineTable`
 - `columns`
@@ -54,5 +54,13 @@ only with trusted SQL literals.
 
 This package does not implement real database drivers, joins, relations,
 migrations, schema introspection, pooling, or advanced SQL builders yet.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

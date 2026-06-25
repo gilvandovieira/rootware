@@ -9,14 +9,14 @@
   },
   "description": "Typed environment configuration for Rootware packages and Deno backends.",
   "keywords": [
+    "deno",
+    "jsr",
+    "rootware",
+    "backend",
     "env",
     "config",
     "configuration",
-    "secrets",
-    "deno",
-    "jsr",
-    "backend",
-    "rootware"
+    "secrets"
   ],
   "publish": {
     "include": [

@@ -26,14 +26,6 @@ jobs:
       - name: Deno version
         run: deno --version
 
-      - name: Install from lockfile
-        run: |
-          if [ -f deno.lock ]; then
-            deno ci
-          else
-            echo "No deno.lock found; skipping deno ci."
-          fi
-
       - name: Format check
         run: deno task fmt:check
 
@@ -46,11 +38,11 @@ jobs:
       - name: Test
         run: deno task test
 
-      - name: Test coverage
+      - name: Coverage
         run: deno task test:coverage
 
       - name: Coverage LCOV
         run: deno task coverage:lcov
 
-      - name: Publish dry-run
+      - name: Publish dry run
         run: deno task publish:dry

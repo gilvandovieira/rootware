@@ -9,14 +9,15 @@
   },
   "description": "Structured JSON logger for Rootware packages and Deno backends.",
   "keywords": [
+    "deno",
+    "jsr",
+    "rootware",
+    "backend",
+    "log",
     "logger",
     "logging",
     "structured-logging",
-    "json",
-    "deno",
-    "jsr",
-    "backend",
-    "rootware"
+    "json"
   ],
   "publish": {
     "include": [

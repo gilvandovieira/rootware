@@ -9,14 +9,14 @@
   },
   "description": "Async-first object storage abstraction for Rootware packages and Deno backends.",
   "keywords": [
-    "storage",
-    "object-storage",
-    "buckets",
-    "files",
     "deno",
     "jsr",
+    "rootware",
     "backend",
-    "rootware"
+    "storage",
+    "object-storage",
+    "files",
+    "buckets"
   ],
   "publish": {
     "include": [

@@ -22,15 +22,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-          cache: true
-
       - name: Validate package input
         run: |
           case "${{ inputs.package }}" in
@@ -42,6 +33,15 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+          cache: true
 
       - name: Run CI checks
         run: deno task ci

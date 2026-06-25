@@ -9,15 +9,15 @@
   },
   "description": "Production-safe fetch wrapper for Rootware packages and Deno backends.",
   "keywords": [
-    "fetch",
-    "http",
-    "client",
-    "retry",
-    "timeout",
     "deno",
     "jsr",
+    "rootware",
     "backend",
-    "rootware"
+    "http",
+    "fetch",
+    "client",
+    "retry",
+    "timeout"
   ],
   "publish": {
     "include": [

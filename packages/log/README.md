@@ -2,9 +2,9 @@
 
 Structured JSON logger for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { createLogger, stdoutSink } from "jsr:@rootware/log";
@@ -21,7 +21,7 @@ const logger = createLogger({
 logger.info({ port: 8000 }, "server started");
 ```
 
-## API Summary
+## API
 
 - `createLogger`
 - `memorySink`
@@ -42,5 +42,13 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 This package does not include pretty printing, file transports, or OpenTelemetry
 integration yet.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

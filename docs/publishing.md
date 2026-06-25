@@ -32,9 +32,9 @@ Run one package dry-run:
 deno task publish:dry:errors
 ```
 
-The shared dry-run tasks use `--allow-dirty` so local validation can run before
-committing. The manual publish workflow does not use `--allow-dirty` for real
-publication.
+The shared dry-run tasks use `--allow-dirty` so local validation can run without
+committing preparation changes. The manual publish workflow does not use
+`--allow-dirty` for real publication.
 
 ## GitHub Actions Publishing
 

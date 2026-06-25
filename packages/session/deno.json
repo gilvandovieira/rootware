@@ -9,14 +9,14 @@
   },
   "description": "Session and actor boundary primitives for Rootware packages and Deno backends.",
   "keywords": [
-    "session",
-    "cookies",
-    "auth-boundary",
-    "actor",
     "deno",
     "jsr",
+    "rootware",
     "backend",
-    "rootware"
+    "session",
+    "cookies",
+    "auth",
+    "actor"
   ],
   "publish": {
     "include": [

@@ -9,14 +9,15 @@
   },
   "description": "Background job queue primitives for Rootware packages and Deno backends.",
   "keywords": [
+    "deno",
+    "jsr",
+    "rootware",
+    "backend",
     "jobs",
     "queue",
     "background-jobs",
     "worker",
-    "deno",
-    "jsr",
-    "backend",
-    "rootware"
+    "retries"
   ],
   "publish": {
     "include": [

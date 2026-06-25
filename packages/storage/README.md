@@ -2,9 +2,9 @@
 
 Async-first object storage abstraction for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { createStorage, memoryStorageStore } from "jsr:@rootware/storage";
@@ -29,7 +29,7 @@ const avatar = await storage.get("avatars/u_123.png");
 const url = storage.publicUrl("avatars/u_123.png");
 ```
 
-## API Summary
+## API
 
 - `createStorage`
 - `memoryStorageStore`
@@ -48,5 +48,13 @@ metadata values, and blobs are not logged by default.
 
 This package does not implement filesystem, S3, R2, Supabase Storage, signed
 URLs, multipart uploads, or streaming adapters yet.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

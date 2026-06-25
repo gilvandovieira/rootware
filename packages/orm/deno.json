@@ -9,14 +9,14 @@
   },
   "description": "Small typed SQL and ORM primitives for Rootware packages and Deno backends.",
   "keywords": [
+    "deno",
+    "jsr",
+    "rootware",
+    "backend",
     "orm",
     "sql",
     "query-builder",
-    "database",
-    "deno",
-    "jsr",
-    "backend",
-    "rootware"
+    "database"
   ],
   "publish": {
     "include": [

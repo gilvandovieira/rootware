@@ -2,9 +2,9 @@
 
 Async-first cache abstraction for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { createCache, memoryCacheStore } from "jsr:@rootware/cache";
@@ -23,7 +23,7 @@ await cache.set("settings", { theme: "dark" }, { ttlMs: 60_000 });
 const settings = await cache.get<{ theme: string }>("settings");
 ```
 
-## API Summary
+## API
 
 - `createCache`
 - `memoryCacheStore`
@@ -44,5 +44,13 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 This package ships memory and noop primitives only. Distributed adapters such as
 Redis, Deno KV, and SQL stores are future work.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)

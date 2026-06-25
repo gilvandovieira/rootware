@@ -19,35 +19,21 @@ packages later in the list.
 10. `@rootware/orm`
 11. `@rootware/jobs`
 
-## Status
+## Package Matrix
 
-| Package             | Status       | Depends On                                             |
-| ------------------- | ------------ | ------------------------------------------------------ |
-| `@rootware/errors`  | Experimental | none                                                   |
-| `@rootware/env`     | Experimental | `@rootware/errors`                                     |
-| `@rootware/log`     | Experimental | `@rootware/errors`                                     |
-| `@rootware/testing` | Experimental | `@rootware/errors`, `@rootware/env`, `@rootware/log`   |
-| `@rootware/http`    | Experimental | `@rootware/errors`, `@rootware/log`                    |
-| `@rootware/cache`   | Experimental | `@rootware/errors`, `@rootware/log`                    |
-| `@rootware/storage` | Experimental | `@rootware/errors`, `@rootware/log`                    |
-| `@rootware/session` | Experimental | `@rootware/errors`, `@rootware/log`, `@rootware/cache` |
-| `@rootware/migrate` | Experimental | `@rootware/errors`, `@rootware/log`                    |
-| `@rootware/orm`     | Experimental | `@rootware/errors`, `@rootware/log`                    |
-| `@rootware/jobs`    | Experimental | `@rootware/errors`, `@rootware/log`                    |
-
-## Descriptions
-
-- `@rootware/errors`: shared application error primitives.
-- `@rootware/env`: typed environment configuration.
-- `@rootware/log`: structured JSON logging.
-- `@rootware/testing`: deterministic test utilities.
-- `@rootware/http`: fetch wrapper with timeouts and retries.
-- `@rootware/cache`: async-first cache abstraction.
-- `@rootware/storage`: object storage abstraction.
-- `@rootware/session`: session and actor boundary primitives.
-- `@rootware/migrate`: migration planning and execution primitives.
-- `@rootware/orm`: small typed SQL and ORM primitives.
-- `@rootware/jobs`: background job queue primitives.
+| Package             | Folder             | Description                        | Allowed Dependencies                                   | Status       |
+| ------------------- | ------------------ | ---------------------------------- | ------------------------------------------------------ | ------------ |
+| `@rootware/errors`  | `packages/errors`  | Application error primitives       | none                                                   | Experimental |
+| `@rootware/env`     | `packages/env`     | Typed environment configuration    | `@rootware/errors`                                     | Experimental |
+| `@rootware/log`     | `packages/log`     | Structured JSON logging            | `@rootware/errors`                                     | Experimental |
+| `@rootware/testing` | `packages/testing` | Deterministic test utilities       | `@rootware/errors`, `@rootware/env`, `@rootware/log`   | Experimental |
+| `@rootware/http`    | `packages/http`    | Fetch wrapper with timeout/retry   | `@rootware/errors`, `@rootware/log`                    | Experimental |
+| `@rootware/cache`   | `packages/cache`   | Async-first cache abstraction      | `@rootware/errors`, `@rootware/log`                    | Experimental |
+| `@rootware/storage` | `packages/storage` | Object storage abstraction         | `@rootware/errors`, `@rootware/log`                    | Experimental |
+| `@rootware/session` | `packages/session` | Session and actor boundary helpers | `@rootware/errors`, `@rootware/log`, `@rootware/cache` | Experimental |
+| `@rootware/migrate` | `packages/migrate` | Migration planning and execution   | `@rootware/errors`, `@rootware/log`                    | Experimental |
+| `@rootware/orm`     | `packages/orm`     | Small typed SQL and ORM primitives | `@rootware/errors`, `@rootware/log`                    | Experimental |
+| `@rootware/jobs`    | `packages/jobs`    | Background job queue primitives    | `@rootware/errors`, `@rootware/log`                    | Experimental |
 
 ## No Circular Dependencies
 

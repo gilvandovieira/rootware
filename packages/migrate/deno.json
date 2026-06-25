@@ -9,14 +9,14 @@
   },
   "description": "Database migration primitives for Rootware packages and Deno backends.",
   "keywords": [
+    "deno",
+    "jsr",
+    "rootware",
+    "backend",
     "migrations",
     "database",
     "sql",
-    "schema",
-    "deno",
-    "jsr",
-    "backend",
-    "rootware"
+    "schema"
   ],
   "publish": {
     "include": [

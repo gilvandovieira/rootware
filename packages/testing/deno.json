@@ -9,14 +9,14 @@
   },
   "description": "Testing utilities for Rootware packages and Deno backends.",
   "keywords": [
+    "deno",
+    "jsr",
+    "rootware",
+    "backend",
     "testing",
     "test-utils",
     "assertions",
-    "fake-clock",
-    "deno",
-    "jsr",
-    "backend",
-    "rootware"
+    "fake-clock"
   ],
   "publish": {
     "include": [

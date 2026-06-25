@@ -2,9 +2,9 @@
 
 Production-safe fetch wrapper for Rootware packages and Deno backends.
 
-Status: experimental / early development.
+Experimental JSR-native package for Rootware.
 
-## Import
+## Install
 
 ```ts
 import { createHttpClient } from "jsr:@rootware/http";
@@ -22,7 +22,7 @@ const api = createHttpClient({
 const user = await api.getJson<{ id: string }>("/users/u_123");
 ```
 
-## API Summary
+## API
 
 - `createHttpClient`
 - `request`
@@ -43,5 +43,13 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 This package does not implement interceptors, OAuth, cookie jars, circuit
 breakers, or OpenTelemetry yet.
+
+## Status
+
+Experimental. API may change before 1.0.
+
+## License
+
+MIT
 
 [Back to Rootware](../../README.md)
