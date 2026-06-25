@@ -1,71 +1,1265 @@
-/**
- * Public entrypoint for @rootware/migrate.
- *
- * TODO: Implement migration discovery, locking, planning, and execution.
- */
+import { RootwareError } from "@rootware/errors";
+import type { Logger } from "@rootware/log";
+
+const DEFAULT_LOCK_ID = "rootware:migrate";
+
+export type MigrationErrorCode =
+  | "MIGRATION_INVALID"
+  | "MIGRATION_DUPLICATE_ID"
+  | "MIGRATION_CHECKSUM_MISMATCH"
+  | "MIGRATION_LOCK_FAILED"
+  | "MIGRATION_UNLOCK_FAILED"
+  | "MIGRATION_EXECUTE_FAILED"
+  | "MIGRATION_ROLLBACK_FAILED"
+  | "MIGRATION_MARK_APPLIED_FAILED"
+  | "MIGRATION_UNMARK_APPLIED_FAILED"
+  | "MIGRATION_DRIVER_MISSING"
+  | "MIGRATION_STORE_MISSING"
+  | "MIGRATION_UNKNOWN_ERROR"
+  | (string & Record<never, never>);
 
 export type MigrationId = string;
+
 export type MigrationDirection = "up" | "down";
 
+export type MigrationStatus =
+  | "pending"
+  | "applied"
+  | "rolled_back"
+  | "failed"
+  | "skipped";
+
+export type MigrationKind = "sql" | "programmatic";
+
+export type MigrationChecksum = string;
+
+/** Context passed to programmatic migrations. */
 export interface MigrationContext {
+  readonly driver: MigrationDriver;
+  readonly logger?: Logger;
+  readonly dryRun: boolean;
   readonly direction: MigrationDirection;
-  readonly metadata?: Record<string, unknown>;
 }
 
-export type MigrationOperation = (
-  context: MigrationContext,
-) => void | Promise<void>;
+/** Minimal async driver contract for future database adapters. */
+export interface MigrationDriver {
+  execute(sql: string): Promise<void>;
 
-export interface Migration {
-  readonly id: MigrationId;
-  readonly name?: string;
-  readonly up: MigrationOperation;
-  readonly down?: MigrationOperation;
+  transaction?<T>(
+    fn: () => Promise<T>,
+  ): Promise<T>;
+
+  close?(): Promise<void>;
 }
 
-export interface MigrationRecord {
+export type MigrationStep =
+  | string
+  | ((ctx: MigrationContext) => void | Promise<void>);
+
+export interface MigrationBase {
   readonly id: MigrationId;
-  readonly appliedAt: Date;
+  readonly description?: string;
+  readonly checksum?: MigrationChecksum;
+  readonly createdAt?: string;
+}
+
+/** SQL migration definition. */
+export interface SqlMigration extends MigrationBase {
+  readonly kind: "sql";
+  readonly up: string;
+  readonly down?: string;
+}
+
+/** Programmatic migration definition. */
+export interface ProgrammaticMigration extends MigrationBase {
+  readonly kind: "programmatic";
+  readonly up: MigrationStep;
+  readonly down?: MigrationStep;
+}
+
+export type Migration = SqlMigration | ProgrammaticMigration;
+
+/** Applied migration history record. */
+export interface AppliedMigration {
+  readonly id: MigrationId;
+  readonly checksum: MigrationChecksum;
+  readonly appliedAt: string;
+  readonly executionMs?: number;
+  readonly description?: string;
+}
+
+export interface MigrationPlanItem {
+  readonly migration: Migration;
+  readonly status: MigrationStatus;
+  readonly checksum: MigrationChecksum;
+  readonly applied?: AppliedMigration;
+  readonly reason?: string;
 }
 
 export interface MigrationPlan {
+  readonly items: MigrationPlanItem[];
+  readonly pending: MigrationPlanItem[];
+  readonly applied: MigrationPlanItem[];
+  readonly checksumMismatches: MigrationPlanItem[];
+  readonly hasPending: boolean;
+  readonly hasChecksumMismatches: boolean;
+}
+
+export interface MigrationResult {
   readonly direction: MigrationDirection;
-  readonly pending: readonly Migration[];
+  readonly dryRun: boolean;
+  readonly executed: AppliedMigration[];
+  readonly skipped: MigrationId[];
+  readonly failed?: {
+    readonly id: MigrationId;
+    readonly error: unknown;
+  };
+  readonly executionMs: number;
 }
 
+export interface MigrationRunOptions {
+  readonly dryRun?: boolean;
+  readonly steps?: number;
+  readonly allowDirty?: boolean;
+}
+
+export interface MigrationDownOptions extends MigrationRunOptions {
+  readonly to?: MigrationId;
+}
+
+/** Async-first store for applied migration history and optional locks. */
 export interface MigrationStore {
-  listApplied(): Promise<readonly MigrationRecord[]>;
-  recordApplied(migration: Migration): Promise<void>;
-  recordReverted(migration: Migration): Promise<void>;
+  listApplied(): Promise<AppliedMigration[]>;
+
+  getApplied(
+    id: MigrationId,
+  ): Promise<AppliedMigration | undefined>;
+
+  markApplied(
+    migration: AppliedMigration,
+  ): Promise<void>;
+
+  unmarkApplied(
+    id: MigrationId,
+  ): Promise<boolean>;
+
+  acquireLock?(
+    lockId?: string,
+  ): Promise<boolean>;
+
+  releaseLock?(
+    lockId?: string,
+  ): Promise<void>;
+
+  clear?(): Promise<void>;
+
+  close?(): Promise<void>;
 }
 
-export interface MigrationRunnerOptions {
-  readonly migrations?: readonly Migration[];
+/** Public migration runner. */
+export interface Migrator {
+  plan(): Promise<MigrationPlan>;
+
+  up(
+    options?: MigrationRunOptions,
+  ): Promise<MigrationResult>;
+
+  down(
+    options?: MigrationDownOptions,
+  ): Promise<MigrationResult>;
+
+  pending(): Promise<Migration[]>;
+
+  applied(): Promise<AppliedMigration[]>;
+
+  close(): Promise<void>;
+}
+
+export interface MigratorOptions {
+  readonly migrations: Migration[];
   readonly store?: MigrationStore;
+  readonly driver?: MigrationDriver;
+  readonly logger?: Logger;
+  readonly lockId?: string;
+  readonly useTransaction?: boolean;
 }
 
-export class RootwareMigrator {
-  constructor(readonly options: MigrationRunnerOptions = {}) {}
+export interface MemoryMigrationStoreOptions {
+  readonly applied?: AppliedMigration[];
+  readonly locked?: boolean;
+  readonly cloneValues?: boolean;
+}
 
-  plan(_direction?: MigrationDirection): Promise<MigrationPlan> {
-    throw new Error("Not implemented");
-  }
+export interface MigrationErrorOptions {
+  readonly code?: MigrationErrorCode;
+  readonly status?: number;
+  readonly expose?: boolean;
+  readonly severity?: "debug" | "info" | "warn" | "error" | "fatal";
+  readonly details?: Record<string, unknown>;
+  readonly cause?: unknown;
+}
 
-  up(): Promise<MigrationPlan> {
-    throw new Error("Not implemented");
-  }
-
-  down(_steps?: number): Promise<MigrationPlan> {
-    throw new Error("Not implemented");
-  }
-
-  status(): Promise<readonly MigrationRecord[]> {
-    throw new Error("Not implemented");
+/** Error thrown for migration validation, planning, locking, and execution. */
+export class MigrationError extends RootwareError {
+  constructor(message: string, options: MigrationErrorOptions = {}) {
+    super(message, {
+      code: options.code ?? "MIGRATION_UNKNOWN_ERROR",
+      status: options.status ?? 500,
+      expose: options.expose ?? false,
+      severity: options.severity ?? "error",
+      details: options.details,
+      cause: options.cause,
+    });
   }
 }
 
-export function createMigrator(
-  _options?: MigrationRunnerOptions,
-): RootwareMigrator {
-  throw new Error("Not implemented");
+/** Defines a programmatic migration and validates its public shape. */
+export function defineMigration(
+  options: Omit<ProgrammaticMigration, "kind">,
+): ProgrammaticMigration {
+  const migration: ProgrammaticMigration = {
+    ...options,
+    kind: "programmatic",
+  };
+
+  validateMigration(migration);
+  return migration;
 }
+
+/** Defines a SQL migration and validates its public shape. */
+export function defineSqlMigration(
+  options: Omit<SqlMigration, "kind">,
+): SqlMigration {
+  const migration: SqlMigration = {
+    ...options,
+    kind: "sql",
+  };
+
+  validateMigration(migration);
+  return migration;
+}
+
+/** Creates a migrator with memory store and noop driver defaults. */
+export function createMigrator(options: MigratorOptions): Migrator {
+  validateMigrations(options.migrations);
+
+  return new RootwareMigrator({
+    migrations: sortMigrations(options.migrations),
+    store: options.store ?? memoryMigrationStore(),
+    driver: options.driver ?? noopMigrationDriver(),
+    logger: options.logger,
+    lockId: options.lockId ?? DEFAULT_LOCK_ID,
+    useTransaction: options.useTransaction ?? true,
+  });
+}
+
+/** Creates an in-memory migration history store for tests and scaffolding. */
+export function memoryMigrationStore(
+  options: MemoryMigrationStoreOptions = {},
+): MigrationStore {
+  const applied = new Map<MigrationId, AppliedMigration>();
+  let locked = options.locked ?? false;
+  const cloneValues = options.cloneValues ?? false;
+
+  for (const migration of options.applied ?? []) {
+    const cloned = cloneAppliedMigration(migration, cloneValues);
+    applied.set(cloned.id, cloned);
+  }
+
+  return {
+    listApplied(): Promise<AppliedMigration[]> {
+      const migrations = [...applied.values()]
+        .map((migration) => cloneAppliedMigration(migration, cloneValues))
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+      return Promise.resolve(migrations);
+    },
+
+    getApplied(id: MigrationId): Promise<AppliedMigration | undefined> {
+      const migration = applied.get(normalizeMigrationId(id));
+
+      return Promise.resolve(
+        migration === undefined
+          ? undefined
+          : cloneAppliedMigration(migration, cloneValues),
+      );
+    },
+
+    markApplied(migration: AppliedMigration): Promise<void> {
+      const cloned = cloneAppliedMigration(migration, cloneValues);
+      applied.set(cloned.id, cloned);
+      return Promise.resolve();
+    },
+
+    unmarkApplied(id: MigrationId): Promise<boolean> {
+      return Promise.resolve(applied.delete(normalizeMigrationId(id)));
+    },
+
+    acquireLock(_lockId?: string): Promise<boolean> {
+      if (locked) {
+        return Promise.resolve(false);
+      }
+
+      locked = true;
+      return Promise.resolve(true);
+    },
+
+    releaseLock(_lockId?: string): Promise<void> {
+      locked = false;
+      return Promise.resolve();
+    },
+
+    clear(): Promise<void> {
+      applied.clear();
+      locked = false;
+      return Promise.resolve();
+    },
+
+    close(): Promise<void> {
+      return Promise.resolve();
+    },
+  };
+}
+
+/** Creates a plan from known migrations and applied history. */
+export function createMigrationPlan(
+  migrations: Migration[],
+  applied: AppliedMigration[],
+): MigrationPlan {
+  validateMigrations(migrations);
+  const sortedMigrations = sortMigrations(migrations);
+  const appliedById = new Map<MigrationId, AppliedMigration>();
+
+  for (const migration of applied) {
+    appliedById.set(normalizeMigrationId(migration.id), migration);
+  }
+
+  const items: MigrationPlanItem[] = sortedMigrations.map((migration) => {
+    const checksum = getMigrationChecksum(migration);
+    const appliedMigration = appliedById.get(migration.id);
+
+    if (appliedMigration === undefined) {
+      return {
+        migration,
+        status: "pending",
+        checksum,
+        reason: "Migration has not been applied",
+      };
+    }
+
+    if (appliedMigration.checksum !== checksum) {
+      return {
+        migration,
+        status: "applied",
+        checksum,
+        applied: appliedMigration,
+        reason: "Applied migration checksum differs from current migration",
+      };
+    }
+
+    return {
+      migration,
+      status: "applied",
+      checksum,
+      applied: appliedMigration,
+    };
+  });
+
+  const pending = items.filter((item) => item.status === "pending");
+  const appliedItems = items.filter((item) => item.status === "applied");
+  const checksumMismatches = items.filter((item) =>
+    item.applied !== undefined && item.applied.checksum !== item.checksum
+  );
+
+  return {
+    items,
+    pending,
+    applied: appliedItems,
+    checksumMismatches,
+    hasPending: pending.length > 0,
+    hasChecksumMismatches: checksumMismatches.length > 0,
+  };
+}
+
+/** Returns a new migration list sorted by id. */
+export function sortMigrations(migrations: Migration[]): Migration[] {
+  return [...migrations].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Validates one migration definition. */
+export function validateMigration(migration: Migration): void {
+  if (typeof migration !== "object" || migration === null) {
+    throwInvalidMigration("Migration must be an object");
+  }
+
+  normalizeMigrationId(migration.id);
+  const migrationKind = (migration as { readonly kind?: unknown }).kind;
+
+  if (migrationKind !== "sql" && migrationKind !== "programmatic") {
+    throwInvalidMigration("Migration kind must be sql or programmatic", {
+      id: migration.id,
+    });
+  }
+
+  if (migration.createdAt !== undefined) {
+    toIsoString(migration.createdAt, "createdAt");
+  }
+
+  if (migration.checksum !== undefined) {
+    normalizeChecksum(migration.checksum);
+  }
+
+  if (migration.kind === "sql") {
+    assertNonEmptyString(migration.up, "up", migration.id);
+
+    if (migration.down !== undefined) {
+      assertNonEmptyString(migration.down, "down", migration.id);
+    }
+
+    return;
+  }
+
+  validateMigrationStep(migration.up, "up", migration.id);
+
+  if (migration.down !== undefined) {
+    validateMigrationStep(migration.down, "down", migration.id);
+  }
+}
+
+/** Validates a migration list and rejects duplicate ids. */
+export function validateMigrations(migrations: Migration[]): void {
+  if (!Array.isArray(migrations)) {
+    throw new MigrationError("Migrations must be an array", {
+      code: "MIGRATION_INVALID",
+    });
+  }
+
+  const seen = new Set<MigrationId>();
+
+  for (const migration of migrations) {
+    validateMigration(migration);
+
+    if (seen.has(migration.id)) {
+      throw new MigrationError("Duplicate migration id", {
+        code: "MIGRATION_DUPLICATE_ID",
+        details: { id: migration.id },
+      });
+    }
+
+    seen.add(migration.id);
+  }
+}
+
+/** Calculates a deterministic non-cryptographic checksum for a migration. */
+export function calculateMigrationChecksum(
+  migration: Migration,
+): MigrationChecksum {
+  validateMigration(migration);
+
+  const input = [
+    migration.id,
+    migration.kind,
+    migrationStepToString(migration.up),
+    migration.down === undefined ? "" : migrationStepToString(migration.down),
+  ].join("\n");
+
+  return `migr_${hashString(input)}`;
+}
+
+/** Throws when an applied migration checksum differs from the current one. */
+export function assertMigrationChecksum(
+  applied: AppliedMigration,
+  migration: Migration,
+): void {
+  const expected = applied.checksum;
+  const actual = getMigrationChecksum(migration);
+
+  if (expected !== actual) {
+    throw new MigrationError("Migration checksum mismatch", {
+      code: "MIGRATION_CHECKSUM_MISMATCH",
+      details: {
+        id: migration.id,
+        expected,
+        actual,
+      },
+    });
+  }
+}
+
+/** Creates an applied migration history record. */
+export function createAppliedMigration(
+  migration: Migration,
+  options: {
+    readonly appliedAt?: Date | string | number;
+    readonly executionMs?: number;
+  } = {},
+): AppliedMigration {
+  validateMigration(migration);
+  const appliedAt = toIsoString(options.appliedAt ?? new Date(), "appliedAt");
+  const executionMs = options.executionMs === undefined
+    ? undefined
+    : normalizeNonNegativeNumber(options.executionMs, "executionMs");
+
+  return {
+    id: migration.id,
+    checksum: getMigrationChecksum(migration),
+    appliedAt,
+    ...(executionMs === undefined ? {} : { executionMs }),
+    ...(migration.description === undefined
+      ? {}
+      : { description: migration.description }),
+  };
+}
+
+/** Returns true if a migration id exists in applied history. */
+export function isMigrationApplied(
+  migration: Migration,
+  applied: AppliedMigration[],
+): boolean {
+  return applied.some((item) => item.id === migration.id);
+}
+
+/** Returns migrations that are not present in applied history. */
+export function getPendingMigrations(
+  migrations: Migration[],
+  applied: AppliedMigration[],
+): Migration[] {
+  const appliedIds = new Set(applied.map((migration) => migration.id));
+
+  return sortMigrations(migrations).filter((migration) =>
+    !appliedIds.has(migration.id)
+  );
+}
+
+/** Returns applied history for migrations known to the current codebase. */
+export function getAppliedMigrations(
+  migrations: Migration[],
+  applied: AppliedMigration[],
+): AppliedMigration[] {
+  const knownIds = new Set(migrations.map((migration) => migration.id));
+
+  return applied
+    .filter((migration) => knownIds.has(migration.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Returns known applied migrations in rollback order. */
+export function getRollbackMigrations(
+  migrations: Migration[],
+  applied: AppliedMigration[],
+  steps?: number,
+): Migration[] {
+  const knownAppliedIds = new Set(applied.map((migration) => migration.id));
+  const rollbackMigrations = sortMigrations(migrations)
+    .filter((migration) => knownAppliedIds.has(migration.id))
+    .reverse();
+  const normalizedSteps = normalizeOptionalSteps(steps);
+
+  return normalizedSteps === undefined
+    ? rollbackMigrations
+    : rollbackMigrations.slice(0, normalizedSteps);
+}
+
+/**
+ * Creates a noop driver.
+ *
+ * It never executes a real database operation and is intended for dry-runs,
+ * tests, and scaffolding only.
+ */
+export function noopMigrationDriver(): MigrationDriver {
+  return {
+    execute(_sql: string): Promise<void> {
+      return Promise.resolve();
+    },
+
+    transaction<T>(fn: () => Promise<T>): Promise<T> {
+      return fn();
+    },
+
+    close(): Promise<void> {
+      return Promise.resolve();
+    },
+  };
+}
+
+/** Creates a migrator that reports no migrations and executes nothing. */
+export function noopMigrator(): Migrator {
+  return {
+    plan(): Promise<MigrationPlan> {
+      return Promise.resolve(createMigrationPlan([], []));
+    },
+
+    up(options: MigrationRunOptions = {}): Promise<MigrationResult> {
+      return Promise.resolve({
+        direction: "up",
+        dryRun: options.dryRun ?? false,
+        executed: [],
+        skipped: [],
+        executionMs: 0,
+      });
+    },
+
+    down(options: MigrationDownOptions = {}): Promise<MigrationResult> {
+      return Promise.resolve({
+        direction: "down",
+        dryRun: options.dryRun ?? false,
+        executed: [],
+        skipped: [],
+        executionMs: 0,
+      });
+    },
+
+    pending(): Promise<Migration[]> {
+      return Promise.resolve([]);
+    },
+
+    applied(): Promise<AppliedMigration[]> {
+      return Promise.resolve([]);
+    },
+
+    close(): Promise<void> {
+      return Promise.resolve();
+    },
+  };
+}
+
+interface RootwareMigratorOptions {
+  readonly migrations: Migration[];
+  readonly store: MigrationStore;
+  readonly driver: MigrationDriver;
+  readonly logger?: Logger;
+  readonly lockId: string;
+  readonly useTransaction: boolean;
+}
+
+class RootwareMigrator implements Migrator {
+  readonly #migrations: Migration[];
+  readonly #store: MigrationStore;
+  readonly #driver: MigrationDriver;
+  readonly #logger?: Logger;
+  readonly #lockId: string;
+  readonly #useTransaction: boolean;
+
+  constructor(options: RootwareMigratorOptions) {
+    this.#migrations = options.migrations;
+    this.#store = options.store;
+    this.#driver = options.driver;
+    this.#logger = options.logger;
+    this.#lockId = options.lockId;
+    this.#useTransaction = options.useTransaction;
+  }
+
+  async plan(): Promise<MigrationPlan> {
+    this.#debug(undefined, "migration plan started");
+    const applied = await this.#store.listApplied();
+    const plan = createMigrationPlan(this.#migrations, applied);
+    this.#debug(
+      { pending: plan.pending.length, applied: plan.applied.length },
+      "migration plan completed",
+    );
+    return plan;
+  }
+
+  async up(options: MigrationRunOptions = {}): Promise<MigrationResult> {
+    const startedAt = performance.now();
+    const dryRun = options.dryRun ?? false;
+    const steps = normalizeOptionalSteps(options.steps);
+    const plan = await this.plan();
+
+    this.#assertCleanPlan(plan, options.allowDirty);
+
+    const migrations = steps === undefined
+      ? plan.pending.map((item) => item.migration)
+      : plan.pending.slice(0, steps).map((item) => item.migration);
+
+    if (dryRun) {
+      for (const migration of migrations) {
+        this.#info({ id: migration.id, direction: "up" }, "migration dry run");
+      }
+
+      return {
+        direction: "up",
+        dryRun,
+        executed: [],
+        skipped: migrations.map((migration) => migration.id),
+        executionMs: elapsedMs(startedAt),
+      };
+    }
+
+    const executed: AppliedMigration[] = [];
+    let lockAcquired = false;
+
+    try {
+      lockAcquired = await this.#acquireLock();
+
+      for (const migration of migrations) {
+        const applied = await this.#runUpMigration(migration);
+        executed.push(applied);
+      }
+    } catch (error) {
+      const failedId = getErrorMigrationId(error);
+      throw toMigrationError(error, "MIGRATION_EXECUTE_FAILED", {
+        id: failedId,
+        direction: "up",
+      });
+    } finally {
+      if (lockAcquired) {
+        await this.#releaseLock();
+      }
+    }
+
+    return {
+      direction: "up",
+      dryRun,
+      executed,
+      skipped: [],
+      executionMs: elapsedMs(startedAt),
+    };
+  }
+
+  async down(options: MigrationDownOptions = {}): Promise<MigrationResult> {
+    const startedAt = performance.now();
+    const dryRun = options.dryRun ?? false;
+    const applied = await this.#store.listApplied();
+    const steps = normalizeOptionalSteps(options.steps);
+    const migrations = selectRollbackMigrations(
+      this.#migrations,
+      applied,
+      steps,
+      options.to,
+    );
+    const plan = createMigrationPlan(this.#migrations, applied);
+
+    this.#assertCleanPlan(plan, options.allowDirty);
+    assertRollbackSteps(migrations);
+
+    if (dryRun) {
+      for (const migration of migrations) {
+        this.#info(
+          { id: migration.id, direction: "down" },
+          "migration dry run",
+        );
+      }
+
+      return {
+        direction: "down",
+        dryRun,
+        executed: [],
+        skipped: migrations.map((migration) => migration.id),
+        executionMs: elapsedMs(startedAt),
+      };
+    }
+
+    const executed: AppliedMigration[] = [];
+    let lockAcquired = false;
+
+    try {
+      lockAcquired = await this.#acquireLock();
+
+      for (const migration of migrations) {
+        const rolledBack = await this.#runDownMigration(migration);
+        executed.push(rolledBack);
+      }
+    } catch (error) {
+      const failedId = getErrorMigrationId(error);
+      throw toMigrationError(error, "MIGRATION_ROLLBACK_FAILED", {
+        id: failedId,
+        direction: "down",
+      });
+    } finally {
+      if (lockAcquired) {
+        await this.#releaseLock();
+      }
+    }
+
+    return {
+      direction: "down",
+      dryRun,
+      executed,
+      skipped: [],
+      executionMs: elapsedMs(startedAt),
+    };
+  }
+
+  async pending(): Promise<Migration[]> {
+    const applied = await this.#store.listApplied();
+    return getPendingMigrations(this.#migrations, applied);
+  }
+
+  async applied(): Promise<AppliedMigration[]> {
+    return await this.#store.listApplied();
+  }
+
+  async close(): Promise<void> {
+    await this.#store.close?.();
+    await this.#driver.close?.();
+  }
+
+  async #runUpMigration(migration: Migration): Promise<AppliedMigration> {
+    this.#info({ id: migration.id, direction: "up" }, "migration started");
+    const startedAt = performance.now();
+
+    try {
+      await this.#runInTransaction(async () => {
+        await executeMigrationStep(migration.up, {
+          driver: this.#driver,
+          logger: this.#logger,
+          dryRun: false,
+          direction: "up",
+        });
+      });
+
+      const applied = createAppliedMigration(migration, {
+        executionMs: elapsedMs(startedAt),
+      });
+
+      try {
+        await this.#store.markApplied(applied);
+      } catch (error) {
+        throw new MigrationError("Failed to mark migration as applied", {
+          code: "MIGRATION_MARK_APPLIED_FAILED",
+          details: { id: migration.id },
+          cause: error,
+        });
+      }
+
+      this.#info(
+        { id: migration.id, direction: "up", executionMs: applied.executionMs },
+        "migration completed",
+      );
+      return applied;
+    } catch (error) {
+      this.#error({ id: migration.id, direction: "up" }, "migration failed");
+      throw toMigrationError(error, "MIGRATION_EXECUTE_FAILED", {
+        id: migration.id,
+        direction: "up",
+      });
+    }
+  }
+
+  async #runDownMigration(migration: Migration): Promise<AppliedMigration> {
+    if (migration.down === undefined) {
+      throw new MigrationError("Migration does not define a down step", {
+        code: "MIGRATION_ROLLBACK_FAILED",
+        details: { id: migration.id, direction: "down" },
+      });
+    }
+
+    this.#info({ id: migration.id, direction: "down" }, "migration started");
+    const startedAt = performance.now();
+
+    try {
+      await this.#runInTransaction(async () => {
+        await executeMigrationStep(migration.down!, {
+          driver: this.#driver,
+          logger: this.#logger,
+          dryRun: false,
+          direction: "down",
+        });
+      });
+
+      try {
+        await this.#store.unmarkApplied(migration.id);
+      } catch (error) {
+        throw new MigrationError("Failed to remove applied migration record", {
+          code: "MIGRATION_UNMARK_APPLIED_FAILED",
+          details: { id: migration.id },
+          cause: error,
+        });
+      }
+
+      const rolledBack = createAppliedMigration(migration, {
+        appliedAt: new Date(),
+        executionMs: elapsedMs(startedAt),
+      });
+
+      this.#info(
+        {
+          id: migration.id,
+          direction: "down",
+          executionMs: rolledBack.executionMs,
+        },
+        "migration completed",
+      );
+      return rolledBack;
+    } catch (error) {
+      this.#error({ id: migration.id, direction: "down" }, "migration failed");
+      throw toMigrationError(error, "MIGRATION_ROLLBACK_FAILED", {
+        id: migration.id,
+        direction: "down",
+      });
+    }
+  }
+
+  async #runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.#useTransaction && this.#driver.transaction !== undefined) {
+      return await this.#driver.transaction(fn);
+    }
+
+    return await fn();
+  }
+
+  #assertCleanPlan(plan: MigrationPlan, allowDirty: boolean | undefined): void {
+    if (!plan.hasChecksumMismatches || allowDirty === true) {
+      return;
+    }
+
+    const mismatch = plan.checksumMismatches[0];
+
+    if (mismatch?.applied !== undefined) {
+      assertMigrationChecksum(mismatch.applied, mismatch.migration);
+    }
+  }
+
+  async #acquireLock(): Promise<boolean> {
+    if (this.#store.acquireLock === undefined) {
+      this.#warn({ lockId: this.#lockId }, "migration store has no lock");
+      return false;
+    }
+
+    const acquired = await this.#store.acquireLock(this.#lockId);
+
+    if (!acquired) {
+      throw new MigrationError("Failed to acquire migration lock", {
+        code: "MIGRATION_LOCK_FAILED",
+        details: { lockId: this.#lockId },
+      });
+    }
+
+    this.#debug({ lockId: this.#lockId }, "migration lock acquired");
+    return true;
+  }
+
+  async #releaseLock(): Promise<void> {
+    if (this.#store.releaseLock === undefined) {
+      return;
+    }
+
+    try {
+      await this.#store.releaseLock(this.#lockId);
+      this.#debug({ lockId: this.#lockId }, "migration lock released");
+    } catch (error) {
+      throw new MigrationError("Failed to release migration lock", {
+        code: "MIGRATION_UNLOCK_FAILED",
+        details: { lockId: this.#lockId },
+        cause: error,
+      });
+    }
+  }
+
+  #debug(record: Record<string, unknown> | undefined, message: string): void {
+    try {
+      if (record === undefined) {
+        this.#logger?.debug(message);
+      } else {
+        this.#logger?.debug(record, message);
+      }
+    } catch {
+      // Logging must not break migrations.
+    }
+  }
+
+  #info(record: Record<string, unknown>, message: string): void {
+    try {
+      this.#logger?.info(record, message);
+    } catch {
+      // Logging must not break migrations.
+    }
+  }
+
+  #warn(record: Record<string, unknown>, message: string): void {
+    try {
+      this.#logger?.warn(record, message);
+    } catch {
+      // Logging must not break migrations.
+    }
+  }
+
+  #error(record: Record<string, unknown>, message: string): void {
+    try {
+      this.#logger?.error(record, message);
+    } catch {
+      // Logging must not break migrations.
+    }
+  }
+}
+
+async function executeMigrationStep(
+  step: MigrationStep,
+  context: MigrationContext,
+): Promise<void> {
+  if (context.dryRun) {
+    return;
+  }
+
+  if (typeof step === "string") {
+    await context.driver.execute(step);
+    return;
+  }
+
+  await step(context);
+}
+
+function selectRollbackMigrations(
+  migrations: Migration[],
+  applied: AppliedMigration[],
+  steps: number | undefined,
+  to: MigrationId | undefined,
+): Migration[] {
+  let rollbackMigrations = getRollbackMigrations(migrations, applied, steps);
+
+  if (to !== undefined) {
+    const targetId = normalizeMigrationId(to);
+    const targetIndex = rollbackMigrations.findIndex((migration) =>
+      migration.id === targetId
+    );
+
+    if (targetIndex < 0) {
+      throw new MigrationError("Rollback target migration is not applied", {
+        code: "MIGRATION_INVALID",
+        details: { id: targetId },
+      });
+    }
+
+    rollbackMigrations = rollbackMigrations.slice(0, targetIndex + 1);
+  }
+
+  return rollbackMigrations;
+}
+
+function assertRollbackSteps(migrations: Migration[]): void {
+  for (const migration of migrations) {
+    if (migration.down === undefined) {
+      throw new MigrationError("Migration does not define a down step", {
+        code: "MIGRATION_ROLLBACK_FAILED",
+        details: { id: migration.id, direction: "down" },
+      });
+    }
+  }
+}
+
+function getMigrationChecksum(migration: Migration): MigrationChecksum {
+  return migration.checksum ?? calculateMigrationChecksum(migration);
+}
+
+function normalizeMigrationId(id: MigrationId): MigrationId {
+  if (typeof id !== "string") {
+    throwInvalidMigration("Migration id must be a string");
+  }
+
+  const normalized = id.trim();
+
+  if (normalized.length === 0) {
+    throwInvalidMigration("Migration id cannot be empty");
+  }
+
+  if (!/^[A-Za-z0-9_.-]+$/.test(normalized)) {
+    throwInvalidMigration(
+      "Migration id can only contain letters, numbers, underscore, hyphen, and dot",
+      { id: normalized },
+    );
+  }
+
+  return normalized;
+}
+
+function normalizeChecksum(checksum: MigrationChecksum): MigrationChecksum {
+  if (typeof checksum !== "string" || checksum.trim().length === 0) {
+    throwInvalidMigration("Migration checksum must be a non-empty string");
+  }
+
+  return checksum.trim();
+}
+
+function validateMigrationStep(
+  step: MigrationStep,
+  field: string,
+  id: MigrationId,
+): void {
+  if (typeof step === "function") {
+    return;
+  }
+
+  if (typeof step === "string") {
+    assertNonEmptyString(step, field, id);
+    return;
+  }
+
+  throwInvalidMigration("Migration step must be SQL or a function", {
+    id,
+    field,
+  });
+}
+
+function assertNonEmptyString(
+  value: string,
+  field: string,
+  id: MigrationId,
+): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throwInvalidMigration(`Migration ${field} must be a non-empty string`, {
+      id,
+      field,
+    });
+  }
+}
+
+function migrationStepToString(step: MigrationStep): string {
+  return typeof step === "string" ? step : step.toString();
+}
+
+function cloneAppliedMigration(
+  migration: AppliedMigration,
+  useStructuredClone: boolean,
+): AppliedMigration {
+  if (useStructuredClone) {
+    try {
+      if (typeof globalThis.structuredClone === "function") {
+        return globalThis.structuredClone(migration);
+      }
+    } catch {
+      // Fall through to a safe shallow clone.
+    }
+  }
+
+  return {
+    id: normalizeMigrationId(migration.id),
+    checksum: normalizeChecksum(migration.checksum),
+    appliedAt: toIsoString(migration.appliedAt, "appliedAt"),
+    ...(migration.executionMs === undefined ? {} : {
+      executionMs: normalizeNonNegativeNumber(
+        migration.executionMs,
+        "executionMs",
+      ),
+    }),
+    ...(migration.description === undefined
+      ? {}
+      : { description: migration.description }),
+  };
+}
+
+function normalizeOptionalSteps(steps: number | undefined): number | undefined {
+  if (steps === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isFinite(steps) || steps <= 0) {
+    throw new MigrationError("Migration steps must be greater than zero", {
+      code: "MIGRATION_INVALID",
+      details: { option: "steps" },
+    });
+  }
+
+  return Math.floor(steps);
+}
+
+function normalizeNonNegativeNumber(value: number, field: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new MigrationError(`${field} must be zero or greater`, {
+      code: "MIGRATION_INVALID",
+      details: { field },
+    });
+  }
+
+  return value;
+}
+
+function toIsoString(value: Date | string | number, field: string): string {
+  const date = value instanceof Date
+    ? new Date(value.getTime())
+    : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new MigrationError("Migration timestamp is invalid", {
+      code: "MIGRATION_INVALID",
+      details: { field },
+    });
+  }
+
+  return date.toISOString();
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, performance.now() - startedAt);
+}
+
+function hashString(input: string): string {
+  let hash = 2166136261;
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(36);
+}
+
+function throwInvalidMigration(
+  message: string,
+  details: Record<string, unknown> = {},
+): never {
+  throw new MigrationError(message, {
+    code: "MIGRATION_INVALID",
+    details,
+  });
+}
+
+function getErrorMigrationId(error: unknown): MigrationId | undefined {
+  if (error instanceof MigrationError) {
+    const id = error.details?.id;
+    return typeof id === "string" ? id : undefined;
+  }
+
+  return undefined;
+}
+
+function toMigrationError(
+  error: unknown,
+  code: MigrationErrorCode,
+  details: Record<string, unknown>,
+): MigrationError {
+  if (error instanceof MigrationError) {
+    return error;
+  }
+
+  return new MigrationError("Migration operation failed", {
+    code,
+    details,
+    cause: error,
+  });
+}
+
+// Examples:
+//
+// const createUsers = defineSqlMigration({
+//   id: "001_create_users",
+//   up: `
+//     create table users (
+//       id text primary key,
+//       name text not null
+//     );
+//   `,
+//   down: `
+//     drop table users;
+//   `,
+// });
+//
+// const migrator = createMigrator({
+//   migrations: [createUsers],
+//   store: memoryMigrationStore(),
+//   driver,
+// });
+//
+// const plan = await migrator.plan();
+// await migrator.up({ dryRun: true });
+// await migrator.up();
+// await migrator.down({ steps: 1 });
+//
+// const programmatic = defineMigration({
+//   id: "002_programmatic",
+//   up: async (ctx) => {
+//     await ctx.driver.execute("select 1");
+//   },
+// });
+//
+// const disabledMigrator = noopMigrator();
