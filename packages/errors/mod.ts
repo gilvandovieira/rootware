@@ -25,8 +25,9 @@ export type RootwareErrorCode =
   | "ROOTWARE_TIMEOUT"
   | "ROOTWARE_ABORTED"
   | "ROOTWARE_EXTERNAL_SERVICE_ERROR"
-  | (string & {});
+  | (string & Record<never, never>);
 
+/** Options accepted when constructing or converting a Rootware error. */
 export interface RootwareErrorOptions {
   readonly name?: string;
   readonly code?: RootwareErrorCode;
@@ -37,6 +38,7 @@ export interface RootwareErrorOptions {
   readonly cause?: unknown;
 }
 
+/** JSON-safe representation emitted by {@link RootwareError.toJSON}. */
 export interface RootwareErrorJson {
   readonly name: string;
   readonly code: RootwareErrorCode;
@@ -53,6 +55,7 @@ export type RootwareErrorFactory = (
   options?: RootwareErrorOptions,
 ) => RootwareError;
 
+/** Base error type shared by Rootware packages. */
 export class RootwareError extends Error {
   override name: string;
   override cause: unknown;
@@ -78,26 +81,32 @@ export class RootwareError extends Error {
     this.cause = options.cause;
   }
 
+  /** Returns a JSON-safe error payload that respects the `expose` flag. */
   toJSON(): RootwareErrorJson {
     return serializeRootwareError(this, new Set<unknown>());
   }
 
+  /** Returns a copy of this error with new structured details. */
   withDetails(details: Record<string, unknown>): RootwareError {
     return this.copyWith({ details });
   }
 
+  /** Returns a copy of this error with a new cause. */
   withCause(cause: unknown): RootwareError {
     return this.copyWith({ cause });
   }
 
+  /** Returns a copy of this error with a different message. */
   withMessage(message: string): RootwareError {
     return this.copyWith({}, message);
   }
 
+  /** Checks whether this error has a specific Rootware error code. */
   is(code: RootwareErrorCode): boolean {
     return this.code === code;
   }
 
+  /** Converts an unknown value into a RootwareError. */
   static from(
     value: unknown,
     fallbackOptions: RootwareErrorOptions = {},
@@ -128,10 +137,12 @@ export class RootwareError extends Error {
   }
 }
 
+/** Returns true only for RootwareError instances. */
 export function isRootwareError(value: unknown): value is RootwareError {
   return value instanceof RootwareError;
 }
 
+/** Converts native errors, strings, and unknown values into RootwareError. */
 export function toRootwareError(
   value: unknown,
   fallbackOptions: RootwareErrorOptions = {},
@@ -164,6 +175,7 @@ export function toRootwareError(
   });
 }
 
+/** Extracts a safe message from an unknown error-like value. */
 export function getErrorMessage(value: unknown): string {
   if (isRootwareError(value)) {
     return value.message;
@@ -180,6 +192,7 @@ export function getErrorMessage(value: unknown): string {
   return DEFAULT_ERROR_MESSAGE;
 }
 
+/** Extracts the cause from a native Error when available. */
 export function getErrorCause(value: unknown): unknown {
   if (value instanceof Error) {
     return value.cause;
@@ -188,14 +201,17 @@ export function getErrorCause(value: unknown): unknown {
   return undefined;
 }
 
+/** Serializes any thrown value into a JSON-safe Rootware error payload. */
 export function serializeError(value: unknown): RootwareErrorJson {
   return serializeRootwareError(toRootwareError(value), new Set<unknown>());
 }
 
+/** Defines an application-specific error code while preserving string literals. */
 export function defineErrorCode(code: string): RootwareErrorCode {
   return code as RootwareErrorCode;
 }
 
+/** Creates a small factory for specialized Rootware errors. */
 export function createErrorFactory(
   defaults: RootwareErrorOptions,
 ): RootwareErrorFactory {

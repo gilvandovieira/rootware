@@ -44,6 +44,7 @@ export interface LogObject {
 
 export type LogBindings = LogObject;
 
+/** JSON-safe record emitted by Rootware loggers. */
 export interface LogRecord {
   level: LogLevelNumber;
   levelName: LogLevelName;
@@ -56,12 +57,14 @@ export interface LogRecord {
 
 export type LogSinkResult = void | Promise<void>;
 
+/** Destination for encoded JSON Lines log entries. */
 export interface LogSink {
   write(line: Uint8Array): LogSinkResult;
   flush?(): LogSinkResult;
   close?(): LogSinkResult;
 }
 
+/** Structured logger interface used by Rootware packages. */
 export interface Logger {
   readonly level: LogLevelName;
   readonly bindings: LogBindings;
@@ -78,6 +81,7 @@ export interface Logger {
   close(): LogSinkResult;
 }
 
+/** Options for creating a logger. */
 export interface LoggerOptions {
   readonly level?: LogLevelName;
   readonly name?: string;
@@ -92,12 +96,14 @@ export interface ChildLoggerOptions {
   readonly name?: string;
 }
 
+/** In-memory sink useful for deterministic tests. */
 export interface MemoryLogSink extends LogSink {
   lines(): string[];
   records<T = LogRecord>(): T[];
   clear(): void;
 }
 
+/** Options for batching writes before sending them to an inner sink. */
 export interface BufferedSinkOptions {
   readonly maxRecords?: number;
   readonly maxBytes?: number;
@@ -114,6 +120,7 @@ export interface LogErrorOptions {
   readonly cause?: unknown;
 }
 
+/** Numeric mapping for supported log levels. */
 export const levels = {
   trace: 10,
   debug: 20,
@@ -124,6 +131,7 @@ export const levels = {
   silent: Infinity as LogLevelNumber,
 } as const;
 
+/** Error thrown for invalid levels, serialization failures, and sink failures. */
 export class LogError extends RootwareError {
   constructor(message: string, options: LogErrorOptions = {}) {
     super(message, {
@@ -137,6 +145,7 @@ export class LogError extends RootwareError {
   }
 }
 
+/** Creates a structured JSON Lines logger. */
 export function createLogger(
   options: LoggerOptions = {},
   sink: LogSink = stdoutSink(),
@@ -144,6 +153,7 @@ export function createLogger(
   return new RootwareLogger(options, sink);
 }
 
+/** Creates a logger implementation that discards all records. */
 export function createNoopLogger(): Logger {
   return new RootwareLogger(
     {
@@ -155,14 +165,17 @@ export function createNoopLogger(): Logger {
   );
 }
 
+/** Creates a sink that writes encoded lines to `Deno.stdout`. */
 export function stdoutSink(): LogSink {
   return denoStreamSink("stdout");
 }
 
+/** Creates a sink that writes encoded lines to `Deno.stderr`. */
 export function stderrSink(): LogSink {
   return denoStreamSink("stderr");
 }
 
+/** Creates an in-memory sink for tests and assertions. */
 export function memorySink(): MemoryLogSink {
   const buffer: string[] = [];
 
@@ -193,6 +206,7 @@ export function memorySink(): MemoryLogSink {
   };
 }
 
+/** Wraps a sink to make immediate writes explicit. */
 export function unbufferedSink(sink: LogSink): LogSink {
   return {
     write(line: Uint8Array): LogSinkResult {
@@ -209,6 +223,7 @@ export function unbufferedSink(sink: LogSink): LogSink {
   };
 }
 
+/** Wraps a sink with an in-memory batch buffer. */
 export function bufferedSink(
   sink: LogSink,
   options: BufferedSinkOptions = {},
@@ -316,11 +331,13 @@ export function bufferedSink(
   };
 }
 
+/** Returns true when a value is a supported log level name. */
 export function isLogLevelName(value: unknown): value is LogLevelName {
   return typeof value === "string" &&
     Object.prototype.hasOwnProperty.call(levels, value);
 }
 
+/** Resolves a level name or number into its numeric representation. */
 export function getLogLevelNumber(level: LogLevel): LogLevelNumber {
   if (isLogLevelName(level)) {
     return levels[level];
@@ -345,6 +362,7 @@ export function getLogLevelNumber(level: LogLevel): LogLevelNumber {
   });
 }
 
+/** Checks whether a message should be written at the current level. */
 export function shouldLog(
   currentLevel: LogLevel,
   messageLevel: LogLevel,
@@ -357,6 +375,7 @@ export function shouldLog(
     messageLevelNumber >= currentLevelNumber;
 }
 
+/** Serializes unknown error values into JSON-safe log fields. */
 export function serializeError(error: unknown): Record<string, unknown> {
   try {
     return serializeErrorValue(error, new WeakSet<object>());
@@ -368,6 +387,7 @@ export function serializeError(error: unknown): Record<string, unknown> {
   }
 }
 
+/** Normalizes Pino-like log arguments into object, message, and error fields. */
 export function normalizeLogInput(args: unknown[]): {
   object?: LogObject;
   message?: string;
@@ -404,6 +424,7 @@ export function normalizeLogInput(args: unknown[]): {
   };
 }
 
+/** Formats a log record as one JSON line. */
 export function formatLogRecord(record: LogRecord): string {
   try {
     return `${JSON.stringify(sanitizeObject(record, new WeakSet<object>()))}\n`;
@@ -415,6 +436,7 @@ export function formatLogRecord(record: LogRecord): string {
   }
 }
 
+/** Returns the default ISO timestamp used by loggers. */
 export function defaultTimestamp(): string {
   return new Date().toISOString();
 }

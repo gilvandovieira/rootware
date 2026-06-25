@@ -23,6 +23,7 @@ export type CacheValue =
   | unknown[]
   | unknown;
 
+/** Stored cache entry with value metadata and optional TTL. */
 export interface CacheEntry<T = unknown> {
   value: T;
   createdAt: number;
@@ -46,6 +47,7 @@ export interface GetOrSetOptions extends CacheSetOptions {
   readonly forceRefresh?: boolean;
 }
 
+/** Async-first adapter interface for cache backends. */
 export interface CacheStore {
   get<T = unknown>(
     key: CacheKey,
@@ -74,6 +76,7 @@ export interface CacheStore {
   close?(): Promise<void>;
 }
 
+/** User-facing cache client that exposes values instead of raw entries. */
 export interface CacheClient {
   get<T = unknown>(
     key: CacheKey,
@@ -108,6 +111,7 @@ export interface CacheClient {
   close(): Promise<void>;
 }
 
+/** Options for creating a cache client. */
 export interface CacheOptions {
   readonly store?: CacheStore;
   readonly namespace?: string;
@@ -115,6 +119,7 @@ export interface CacheOptions {
   readonly logger?: Logger;
 }
 
+/** Options for the in-memory cache store. */
 export interface MemoryCacheStoreOptions {
   readonly maxEntries?: number;
   readonly cloneValues?: boolean;
@@ -129,6 +134,7 @@ export interface CacheErrorOptions {
   readonly cause?: unknown;
 }
 
+/** Error thrown for invalid keys and cache operation failures. */
 export class CacheError extends RootwareError {
   constructor(message: string, options: CacheErrorOptions = {}) {
     super(message, {
@@ -142,6 +148,7 @@ export class CacheError extends RootwareError {
   }
 }
 
+/** Creates a cache client backed by a store, defaulting to in-memory storage. */
 export function createCache(options: CacheOptions = {}): CacheClient {
   const store = options.store ?? memoryCacheStore();
   const namespace = options.namespace === undefined
@@ -158,6 +165,7 @@ export function createCache(options: CacheOptions = {}): CacheClient {
   });
 }
 
+/** Creates an in-memory CacheStore with TTL and optional value cloning. */
 export function memoryCacheStore(
   options: MemoryCacheStoreOptions = {},
 ): CacheStore {
@@ -260,6 +268,7 @@ export function memoryCacheStore(
   };
 }
 
+/** Creates a client wrapper that prefixes all keys with a namespace. */
 export function createNamespacedCache(
   cache: CacheClient,
   namespace: string,
@@ -326,6 +335,7 @@ export function createNamespacedCache(
   };
 }
 
+/** Trims and validates a cache key. */
 export function normalizeCacheKey(key: CacheKey): CacheKey {
   if (typeof key !== "string") {
     throwInvalidKey("Cache key must be a string");
@@ -344,6 +354,7 @@ export function normalizeCacheKey(key: CacheKey): CacheKey {
   return normalizedKey;
 }
 
+/** Joins key parts with `:` after validation, skipping empty parts. */
 export function joinCacheKey(
   parts: Array<string | null | undefined>,
 ): CacheKey {
@@ -360,9 +371,10 @@ export function joinCacheKey(
   return normalizeCacheKey(normalizedParts.join(":"));
 }
 
+/** Returns true when a cache entry has expired at the provided timestamp. */
 export function isExpired(
   entry: CacheEntry<unknown>,
-  now = Date.now(),
+  now: number = Date.now(),
 ): boolean {
   if (entry.expiresAt === undefined) {
     return false;
@@ -371,6 +383,7 @@ export function isExpired(
   return now >= entry.expiresAt;
 }
 
+/** Resolves operation TTL with an optional fallback and validates it. */
 export function resolveTtlMs(
   options?: CacheSetOptions,
   fallback?: number,
@@ -391,6 +404,7 @@ export function resolveTtlMs(
   return ttlMs;
 }
 
+/** Creates a cache entry using the current timestamp and optional TTL. */
 export function createCacheEntry<T>(
   value: T,
   options: CacheSetOptions = {},
@@ -408,6 +422,7 @@ export function createCacheEntry<T>(
   };
 }
 
+/** Clones cache metadata while preserving the original value reference. */
 export function cloneCacheEntry<T>(entry: CacheEntry<T>): CacheEntry<T> {
   return {
     value: entry.value,
@@ -417,6 +432,7 @@ export function cloneCacheEntry<T>(entry: CacheEntry<T>): CacheEntry<T> {
   };
 }
 
+/** Creates a cache client that never stores values. */
 export function noopCache(): CacheClient {
   const cache: CacheClient = {
     get<T = unknown>(

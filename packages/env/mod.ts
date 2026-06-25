@@ -9,10 +9,11 @@ export type EnvErrorCode =
   | "ENV_INVALID_VARIABLE"
   | "ENV_ACCESS_DENIED"
   | "ENV_UNKNOWN_ERROR"
-  | (string & {});
+  | (string & Record<never, never>);
 
 export type EnvSource = Record<string, string | undefined>;
 
+/** Builder-produced definition for one environment variable. */
 export interface EnvVarDefinition<T> {
   readonly type:
     | "string"
@@ -52,6 +53,7 @@ export type InferEnv<TSchema extends EnvSchema> = {
     : never;
 };
 
+/** Options for resolving and validating an environment schema. */
 export interface DefineEnvOptions {
   readonly source?: EnvSource;
   readonly mode?: EnvMode;
@@ -59,11 +61,13 @@ export interface DefineEnvOptions {
   readonly allowEmpty?: boolean;
 }
 
+/** Controls how `.env.example` output is generated. */
 export interface GenerateEnvExampleOptions {
   readonly includeDescriptions?: boolean;
   readonly includeDefaults?: boolean;
 }
 
+/** Options for EnvError construction. */
 export interface EnvErrorOptions {
   readonly code?: EnvErrorCode;
   readonly status?: number;
@@ -92,6 +96,7 @@ interface EnvDefinitionState<T> {
   readonly parse: EnvParser<T>;
 }
 
+/** Error thrown for environment access, missing variables, and validation failures. */
 export class EnvError extends RootwareError {
   constructor(message: string, options: EnvErrorOptions = {}) {
     super(message, {
@@ -210,6 +215,7 @@ class EnvDefinition<T> implements EnvVarDefinition<T> {
   }
 }
 
+/** Validates a schema using an explicit source or `Deno.env` when no source is provided. */
 export function defineEnv<TSchema extends EnvSchema>(
   schema: TSchema,
   options: DefineEnvOptions = {},
@@ -221,6 +227,7 @@ export function defineEnv<TSchema extends EnvSchema>(
   return validateEnv(schema, readDenoEnv(), options);
 }
 
+/** Validates an environment schema against an explicit source without reading globals. */
 export function validateEnv<TSchema extends EnvSchema>(
   schema: TSchema,
   source: EnvSource,
@@ -258,6 +265,7 @@ export function validateEnv<TSchema extends EnvSchema>(
   return Object.freeze(values) as InferEnv<TSchema>;
 }
 
+/** Reads `Deno.env` into an EnvSource and converts permission failures to EnvError. */
 export function readDenoEnv(): EnvSource {
   const deno = (globalThis as {
     readonly Deno?: {
@@ -285,6 +293,7 @@ export function readDenoEnv(): EnvSource {
   }
 }
 
+/** Creates a shallow copy of an object suitable for explicit env validation. */
 export function fromRecord(record: EnvSource): EnvSource {
   const source: EnvSource = {};
 
@@ -295,6 +304,7 @@ export function fromRecord(record: EnvSource): EnvSource {
   return source;
 }
 
+/** Generates `.env.example` text from an environment schema. */
 export function generateEnvExample<TSchema extends EnvSchema>(
   schema: TSchema,
   options: GenerateEnvExampleOptions = {},
@@ -329,6 +339,7 @@ export function generateEnvExample<TSchema extends EnvSchema>(
   return `${entries.join("\n\n")}\n`;
 }
 
+/** Returns a copy of validated values with sensitive entries replaced. */
 export function redactEnv<TSchema extends EnvSchema>(
   values: InferEnv<TSchema>,
   schema: TSchema,
@@ -347,6 +358,7 @@ export function redactEnv<TSchema extends EnvSchema>(
   return redacted;
 }
 
+/** Detects common secret-like environment variable names. */
 export function isSecretKey(key: string): boolean {
   const normalizedKey = key.toUpperCase();
 
@@ -360,6 +372,7 @@ export function isSecretKey(key: string): boolean {
   ].some((part) => normalizedKey.includes(part));
 }
 
+/** Parses a boolean environment value using common true/false spellings. */
 export function parseBoolean(value: string): boolean {
   switch (value.trim().toLowerCase()) {
     case "true":
@@ -377,6 +390,7 @@ export function parseBoolean(value: string): boolean {
   }
 }
 
+/** Parses a finite number from an environment string. */
 export function parseNumber(value: string): number {
   const normalizedValue = value.trim();
 
@@ -393,6 +407,7 @@ export function parseNumber(value: string): number {
   return parsed;
 }
 
+/** Parses a finite integer from an environment string. */
 export function parseInteger(value: string): number {
   const normalizedValue = value.trim();
 
@@ -409,6 +424,7 @@ export function parseInteger(value: string): number {
   return parsed;
 }
 
+/** Parses and normalizes a URL string. */
 export function parseUrl(value: string): string {
   const normalizedValue = value.trim();
 
@@ -423,6 +439,7 @@ export function parseUrl(value: string): string {
   }
 }
 
+/** Builder namespace for defining typed environment variables. */
 export const env: {
   string(): EnvVarDefinition<string>;
   secret(): EnvVarDefinition<string>;

@@ -21,6 +21,7 @@ export type TestErrorCode =
   | "TEST_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Structured assertion failure details used by TestError. */
 export interface AssertionFailure {
   message: string;
   actual?: unknown;
@@ -37,6 +38,7 @@ export interface AssertThrowsOptions {
 
 export type AssertRejectsOptions = AssertThrowsOptions;
 
+/** Small setup/teardown fixture abstraction for Deno tests. */
 export interface TestFixture<T> {
   readonly name: string;
   setup(): T | Promise<T>;
@@ -49,6 +51,7 @@ export interface TestContextOptions {
   readonly clock?: FakeClock;
 }
 
+/** Reusable test context with fake clock, memory logs, and cleanup hooks. */
 export interface TestContext {
   readonly name: string;
   readonly clock: FakeClock;
@@ -61,6 +64,7 @@ export interface FakeClockOptions {
   readonly now?: Date | string | number;
 }
 
+/** Fake clock that does not mutate global Date. */
 export interface FakeClock {
   now(): Date;
   nowMs(): number;
@@ -70,6 +74,7 @@ export interface FakeClock {
   reset(): Date;
 }
 
+/** Assertion helper for records captured by a memory log sink. */
 export interface LogAssertion {
   hasMessage(message: string): void;
   hasLevel(level: string): void;
@@ -94,6 +99,7 @@ export interface TestErrorOptions {
   readonly cause?: unknown;
 }
 
+/** Error thrown by Rootware testing helpers and assertions. */
 export class TestError extends RootwareError {
   constructor(message: string, options: TestErrorOptions = {}) {
     super(message, {
@@ -107,6 +113,7 @@ export class TestError extends RootwareError {
   }
 }
 
+/** Asserts that a value is truthy. */
 export function assert(value: unknown, message?: string): asserts value {
   if (!value) {
     throwAssertionFailure({
@@ -118,6 +125,7 @@ export function assert(value: unknown, message?: string): asserts value {
   }
 }
 
+/** Asserts structural equality for primitives, arrays, and JSON-like objects. */
 export function assertEquals(
   actual: unknown,
   expected: unknown,
@@ -136,6 +144,7 @@ export function assertEquals(
   }
 }
 
+/** Asserts that two values are not structurally equal. */
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
@@ -152,6 +161,7 @@ export function assertNotEquals(
   }
 }
 
+/** Asserts that a value is neither null nor undefined. */
 export function assertExists<T>(
   value: T,
   message?: string,
@@ -166,6 +176,7 @@ export function assertExists<T>(
   }
 }
 
+/** Asserts that an async function rejects and optionally matches the error. */
 export async function assertRejects(
   fn: () => Promise<unknown>,
   options: AssertRejectsOptions = {},
@@ -183,6 +194,7 @@ export async function assertRejects(
   return error;
 }
 
+/** Asserts that a synchronous function throws and optionally matches the error. */
 export function assertThrows(
   fn: () => unknown,
   options: AssertThrowsOptions = {},
@@ -200,6 +212,7 @@ export function assertThrows(
   return error;
 }
 
+/** Fails a test immediately. */
 export function fail(message = "Test failed"): never {
   throwAssertionFailure({
     message,
@@ -207,6 +220,7 @@ export function fail(message = "Test failed"): never {
   });
 }
 
+/** Creates a deterministic Rootware test context. */
 export function createTestContext(
   options: TestContextOptions = {},
 ): TestContext {
@@ -247,6 +261,7 @@ export function createTestContext(
   };
 }
 
+/** Creates a fake clock with explicit advancement and reset. */
 export function createFakeClock(
   options: FakeClockOptions = {},
 ): FakeClock {
@@ -290,6 +305,7 @@ export function createFakeClock(
   };
 }
 
+/** Validates env schemas using an explicit test source and default test mode. */
 export function testEnv<TSchema extends EnvSchema>(
   schema: TSchema,
   source: EnvSource = {},
@@ -303,6 +319,7 @@ export function testEnv<TSchema extends EnvSchema>(
   });
 }
 
+/** Creates a debug logger backed by an in-memory sink. */
 export function testLogger(): {
   sink: MemoryLogSink;
   logger: ReturnType<typeof createLogger>;
@@ -316,6 +333,7 @@ export function testLogger(): {
   return { sink, logger };
 }
 
+/** Creates log assertions for a memory sink. */
 export function assertLog(sink: MemoryLogSink): LogAssertion {
   const readRecords = (): LogRecord[] => sink.records<LogRecord>();
   const hasRecord = (
@@ -387,6 +405,7 @@ export function assertLog(sink: MemoryLogSink): LogAssertion {
   };
 }
 
+/** Creates a named fixture with optional teardown. */
 export function createFixture<T>(
   name: string,
   setup: () => T | Promise<T>,
@@ -406,6 +425,7 @@ export function createFixture<T>(
   };
 }
 
+/** Runs a fixture around a test callback and always attempts teardown. */
 export async function useFixture<T>(
   fixture: TestFixture<T>,
   fn: (value: T) => void | Promise<void>,
@@ -449,6 +469,7 @@ export async function useFixture<T>(
   }
 }
 
+/** Captures a synchronous thrown value without failing the test. */
 export function captureError(fn: () => unknown): unknown | undefined {
   try {
     fn();
@@ -458,6 +479,7 @@ export function captureError(fn: () => unknown): unknown | undefined {
   }
 }
 
+/** Captures an async rejection without failing the test. */
 export async function captureAsyncError(
   fn: () => Promise<unknown>,
 ): Promise<unknown | undefined> {
@@ -469,12 +491,14 @@ export async function captureAsyncError(
   }
 }
 
+/** Waits for a number of milliseconds using setTimeout. */
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, Math.max(0, ms));
   });
 }
 
+/** Intentionally empty helper for callbacks and placeholders. */
 export function noop(): void {
   // Intentionally empty.
 }

@@ -65,6 +65,7 @@ export type HttpResponseErrorBody =
   | boolean
   | null;
 
+/** Retry configuration for transient HTTP failures. */
 export interface RetryOptions {
   readonly attempts?: number;
   readonly backoffMs?: number;
@@ -81,6 +82,7 @@ export interface RequiredRetryOptions {
   readonly retryOnMethods: HttpMethod[];
 }
 
+/** Context passed to retry decision helpers. */
 export interface RetryContext {
   readonly attempt: number;
   readonly method: HttpMethod;
@@ -89,6 +91,7 @@ export interface RetryContext {
   readonly options: RequiredRetryOptions;
 }
 
+/** Options used when creating an HTTP client. */
 export interface HttpClientOptions {
   readonly baseUrl?: string | URL;
   readonly headers?: HttpHeaders;
@@ -99,6 +102,7 @@ export interface HttpClientOptions {
   readonly userAgent?: string;
 }
 
+/** Options for one raw HTTP request. */
 export interface HttpRequestOptions {
   readonly method?: HttpMethod;
   readonly path?: string;
@@ -111,10 +115,12 @@ export interface HttpRequestOptions {
   readonly expectOk?: boolean;
 }
 
+/** Options for one JSON request. */
 export interface JsonRequestOptions extends Omit<HttpRequestOptions, "body"> {
   readonly json?: unknown;
 }
 
+/** Small typed wrapper around the Web Fetch API. */
 export interface HttpClient {
   request(path: string, options?: HttpRequestOptions): Promise<Response>;
 
@@ -158,6 +164,7 @@ export interface HttpClient {
   ): Promise<T>;
 }
 
+/** Parsed data paired with the original HTTP response metadata. */
 export interface HttpResult<T> {
   readonly data: T;
   readonly response: Response;
@@ -165,6 +172,7 @@ export interface HttpResult<T> {
   readonly headers: Headers;
 }
 
+/** Route definition used by createMockFetch. */
 export interface MockRoute {
   readonly method?: HttpMethod;
   readonly path: string;
@@ -184,6 +192,7 @@ export interface HttpErrorOptions {
   readonly cause?: unknown;
 }
 
+/** Error thrown for URL, timeout, network, response, and JSON parse failures. */
 export class HttpError extends RootwareError {
   constructor(message: string, options: HttpErrorOptions = {}) {
     super(message, {
@@ -197,6 +206,7 @@ export class HttpError extends RootwareError {
   }
 }
 
+/** Creates a production-safe fetch wrapper with optional base URL, timeout, retry, and logger. */
 export function createHttpClient(
   options: HttpClientOptions = {},
 ): HttpClient {
@@ -350,6 +360,7 @@ export function createHttpClient(
   };
 }
 
+/** Top-level shortcut for a one-off HTTP request. */
 export function request(
   input: string | URL,
   options: HttpRequestOptions & HttpClientOptions = {},
@@ -357,6 +368,7 @@ export function request(
   return createHttpClient(options).request(String(input), options);
 }
 
+/** Resolves a path against an optional base URL and appends query parameters. */
 export function buildUrl(
   baseUrl: string | URL | undefined,
   path: string,
@@ -386,6 +398,7 @@ export function buildUrl(
   }
 }
 
+/** Merges multiple HeadersInit values into a new Headers instance. */
 export function mergeHeaders(
   ...headers: Array<HeadersInit | undefined>
 ): Headers {
@@ -406,6 +419,7 @@ export function mergeHeaders(
   return merged;
 }
 
+/** Reads and parses a response body as JSON, throwing HttpError on invalid JSON. */
 export async function parseJsonResponse<T = unknown>(
   response: Response,
 ): Promise<T> {
@@ -450,6 +464,7 @@ export async function parseJsonResponse<T = unknown>(
   }
 }
 
+/** Safely reads and parses JSON, returning undefined for empty or invalid bodies. */
 export async function safeParseJsonResponse<T = unknown>(
   response: Response,
 ): Promise<T | undefined> {
@@ -460,12 +475,14 @@ export async function safeParseJsonResponse<T = unknown>(
   }
 }
 
+/** Returns true for default retryable HTTP status codes. */
 export function isRetryableStatus(status: number): boolean {
   return DEFAULT_RETRYABLE_STATUSES.includes(
     status as typeof DEFAULT_RETRYABLE_STATUSES[number],
   );
 }
 
+/** Returns true for transient network and timeout errors. */
 export function isRetryableError(error: unknown): boolean {
   if (error instanceof HttpError) {
     return error.code === "HTTP_TIMEOUT" ||
@@ -480,6 +497,7 @@ export function isRetryableError(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
+/** Applies retry count, method, status, and error rules. */
 export function shouldRetry(context: RetryContext): boolean {
   if (context.attempt >= context.options.attempts) {
     return false;
@@ -500,12 +518,14 @@ export function shouldRetry(context: RetryContext): boolean {
   return false;
 }
 
+/** Waits for a number of milliseconds using setTimeout. */
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, Math.max(0, ms));
   });
 }
 
+/** Wraps a fetch promise with an AbortController-backed timeout. */
 export async function withTimeout<T>(
   fetchPromise: Promise<T>,
   timeoutMs: number | undefined,
@@ -559,6 +579,7 @@ export async function withTimeout<T>(
   }
 }
 
+/** Creates a deterministic fetch implementation for tests. */
 export function createMockFetch(routes: MockRoute[]): FetchLike {
   const routeList = [...routes];
 
@@ -586,6 +607,7 @@ export function createMockFetch(routes: MockRoute[]): FetchLike {
   };
 }
 
+/** Creates a Response with an application/json content type. */
 export function createJsonResponse(
   body: unknown,
   init: ResponseInit = {},
@@ -602,6 +624,7 @@ export function createJsonResponse(
   });
 }
 
+/** Creates a Response with a text/plain UTF-8 content type. */
 export function createTextResponse(
   body: string,
   init: ResponseInit = {},

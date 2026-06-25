@@ -1,0 +1,33 @@
+{
+  "name": "@rootware/http",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "license": "MIT",
+  "description": "Production-safe fetch wrapper for Rootware packages and Deno backends.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gilvandovieira/rootware.git"
+  },
+  "keywords": [
+    "fetch",
+    "http",
+    "client",
+    "retry",
+    "timeout",
+    "deno",
+    "jsr",
+    "backend",
+    "rootware"
+  ],
+  "exclude": [
+    "coverage",
+    ".github",
+    "node_modules",
+    "dist",
+    ".DS_Store",
+    "*.lcov",
+    "*.log",
+    "tmp",
+    "temp"
+  ]
+}

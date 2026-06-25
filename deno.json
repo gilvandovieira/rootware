@@ -1,0 +1,30 @@
+{
+  "workspace": [
+    "packages/errors",
+    "packages/env",
+    "packages/log",
+    "packages/testing",
+    "packages/http",
+    "packages/cache"
+  ],
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1"
+  },
+  "tasks": {
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "check": "deno check packages/errors/mod.ts packages/env/mod.ts packages/log/mod.ts packages/testing/mod.ts packages/http/mod.ts packages/cache/mod.ts packages/errors/mod_test.ts packages/env/mod_test.ts packages/log/mod_test.ts packages/testing/mod_test.ts packages/http/mod_test.ts packages/cache/mod_test.ts",
+    "test": "deno test --allow-env",
+    "test:coverage": "deno test --allow-env --coverage=coverage",
+    "coverage:lcov": "deno coverage coverage --lcov > coverage.lcov",
+    "ci": "deno task fmt:check && deno task lint && deno task check && deno task test",
+    "publish:dry": "deno task publish:dry:errors && deno task publish:dry:env && deno task publish:dry:log && deno task publish:dry:testing && deno task publish:dry:http && deno task publish:dry:cache",
+    "publish:dry:errors": "cd packages/errors && deno publish --dry-run --allow-dirty",
+    "publish:dry:env": "cd packages/env && deno publish --dry-run --allow-dirty",
+    "publish:dry:log": "cd packages/log && deno publish --dry-run --allow-dirty",
+    "publish:dry:testing": "cd packages/testing && deno publish --dry-run --allow-dirty",
+    "publish:dry:http": "cd packages/http && deno publish --dry-run --allow-dirty",
+    "publish:dry:cache": "cd packages/cache && deno publish --dry-run --allow-dirty"
+  }
+}

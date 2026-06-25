@@ -1,0 +1,32 @@
+{
+  "name": "@rootware/testing",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "license": "MIT",
+  "description": "Testing utilities for Rootware packages and Deno backends.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gilvandovieira/rootware.git"
+  },
+  "keywords": [
+    "testing",
+    "test-utils",
+    "assertions",
+    "fake-clock",
+    "deno",
+    "jsr",
+    "backend",
+    "rootware"
+  ],
+  "exclude": [
+    "coverage",
+    ".github",
+    "node_modules",
+    "dist",
+    ".DS_Store",
+    "*.lcov",
+    "*.log",
+    "tmp",
+    "temp"
+  ]
+}

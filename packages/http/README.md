@@ -1,0 +1,40 @@
+# @rootware/http
+
+Production-safe fetch wrapper for Rootware packages and Deno backends.
+
+Status: experimental / early development.
+
+## Import
+
+```ts
+import { createHttpClient } from "jsr:@rootware/http";
+```
+
+## Example
+
+```ts
+const api = createHttpClient({
+  baseUrl: "https://api.example.com",
+  timeoutMs: 5000,
+  retry: { attempts: 3, backoffMs: 250 },
+});
+
+const user = await api.getJson<{ id: string }>("/users/u_123");
+```
+
+## API Summary
+
+- `createHttpClient`
+- `request`
+- `buildUrl`
+- `mergeHeaders`
+- `parseJsonResponse`
+- `createMockFetch`
+- `createJsonResponse`
+
+## Security
+
+Request bodies and sensitive headers are not logged. URLs are redacted before
+entering logs and error details.
+
+See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).

@@ -1,0 +1,58 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package directory name to publish.
+        required: true
+        type: string
+      dry_run:
+        description: Run deno publish --dry-run instead of publishing.
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+          cache: true
+
+      - name: Validate package input
+        run: |
+          case "${{ inputs.package }}" in
+            errors|env|log|testing|http|cache)
+              echo "Publishing package: ${{ inputs.package }}"
+              ;;
+            *)
+              echo "Unsupported package: ${{ inputs.package }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Run CI checks
+        run: deno task ci
+
+      - name: Publish package
+        run: |
+          # Before publishing via GitHub Actions, the JSR package must be
+          # linked to this GitHub repository in the package settings.
+          cd "packages/${{ inputs.package }}"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            deno publish --dry-run
+          else
+            deno publish
+          fi

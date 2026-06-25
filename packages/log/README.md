@@ -1,0 +1,39 @@
+# @rootware/log
+
+Structured JSON logger for Rootware packages and Deno backends.
+
+Status: experimental / early development.
+
+## Import
+
+```ts
+import { createLogger, stdoutSink } from "jsr:@rootware/log";
+```
+
+## Example
+
+```ts
+const logger = createLogger({
+  level: "info",
+  name: "api",
+}, stdoutSink());
+
+logger.info({ port: 8000 }, "server started");
+```
+
+## API Summary
+
+- `createLogger`
+- `memorySink`
+- `bufferedSink`
+- `unbufferedSink`
+- `createNoopLogger`
+- `serializeError`
+
+## Security
+
+The logger serializes errors safely and does not require logging request bodies
+or secrets. Application code should avoid passing sensitive fields as log
+objects.
+
+See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).

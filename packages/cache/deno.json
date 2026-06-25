@@ -1,0 +1,31 @@
+{
+  "name": "@rootware/cache",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "license": "MIT",
+  "description": "Async-first cache abstraction for Rootware packages and Deno backends.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gilvandovieira/rootware.git"
+  },
+  "keywords": [
+    "cache",
+    "ttl",
+    "memory-cache",
+    "backend",
+    "deno",
+    "jsr",
+    "rootware"
+  ],
+  "exclude": [
+    "coverage",
+    ".github",
+    "node_modules",
+    "dist",
+    ".DS_Store",
+    "*.lcov",
+    "*.log",
+    "tmp",
+    "temp"
+  ]
+}
