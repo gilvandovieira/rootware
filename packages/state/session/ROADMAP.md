@@ -315,16 +315,28 @@ the genuine gaps:
   `assertActorPermission` (throw `SESSION_FORBIDDEN`, 403) over the existing
   actor `roles`/`permissions` shape — no policy engine.
 
-## v0.5.0 — Provider adapters
+## v0.5.0 — Provider adapters — **done (`0.5.0`)**
 
-Possible adapters:
+The concrete provider adapters (Clerk, Supabase, Auth0, …) stay **separate
+packages** so the core takes no provider SDK — but the seam they plug into ships
+now, with two SDK-free reference providers:
 
-- Clerk.
-- Supabase.
-- Auth0.
-- Custom JWT.
+- **`SessionProvider` contract** — `resolveActor(request) => actor | undefined`,
+  the interface every provider adapter implements to turn a request into a
+  `SessionActor`.
+- **`bearerTokenProvider({ verify, header?, scheme? })`** — parses an
+  `Authorization: Bearer <token>` (configurable header/scheme) and delegates to
+  an injected `TokenVerifier`. A Clerk/Auth0/custom-JWT adapter supplies
+  `verify` using its own SDK in its own package.
+- **`cookieTokenProvider({ cookieName, verify })`** — reads a provider session
+  cookie (e.g. Supabase) and delegates to `verify`.
+- **`requireProviderActor(provider, request)`** — the provider-side counterpart
+  to `SessionManager.requireActor`, throwing `SESSION_ACTOR_REQUIRED` (401) when
+  unauthenticated. Resolved actors compose with the `0.4` `actorHasRole`/
+  `assertActorPermission` guards.
 
-Adapters should be separate packages or subpaths.
+Stateless signed-cookie/JWT sessions remain out of the core's ownership (the
+verifier is injected); concrete adapters live in separate packages or subpaths.
 
 ## v1.0.0 — Stable session contract
 

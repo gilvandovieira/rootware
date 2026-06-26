@@ -22,7 +22,13 @@ interface DocSymbol {
   readonly declarations?: readonly DocDeclaration[];
 }
 
+interface ModuleDoc {
+  readonly doc?: string;
+  readonly tags?: readonly { readonly kind?: string }[];
+}
+
 interface DocNode {
+  readonly module_doc?: ModuleDoc;
   readonly symbols?: readonly DocSymbol[];
 }
 
@@ -42,6 +48,7 @@ interface EntryCoverage {
   readonly total: number;
   readonly documented: number;
   readonly missing: readonly MissingDoc[];
+  readonly missingModuleDoc?: MissingModuleDoc;
 }
 
 interface MissingDoc {
@@ -50,6 +57,11 @@ interface MissingDoc {
   readonly kind: string;
   readonly path?: string;
   readonly line?: number;
+}
+
+interface MissingModuleDoc {
+  readonly label: string;
+  readonly path: string;
 }
 
 const DEFAULT_MINIMUM_PERCENT = 80;
@@ -69,6 +81,9 @@ const percent = total === 0 ? 100 : (documented / total) * 100;
 const minimumPercent = options.minimumPercent;
 const entryMinimumPercent = options.entryMinimumPercent;
 const missing = coverages.flatMap((coverage) => coverage.missing);
+const missingModuleDocs = coverages.flatMap((coverage) =>
+  coverage.missingModuleDoc === undefined ? [] : [coverage.missingModuleDoc]
+);
 const lowEntries = coverages.filter((coverage) =>
   percentage(coverage.documented, coverage.total) < entryMinimumPercent
 );
@@ -82,6 +97,7 @@ if (options.json) {
       total,
       documented,
       missing: missing.length,
+      missingModuleDocs,
       entries: coverages.map((coverage) => ({
         packageName: coverage.entry.packageName,
         exportName: coverage.entry.exportName,
@@ -91,6 +107,7 @@ if (options.json) {
         documented: coverage.documented,
         percent: percentage(coverage.documented, coverage.total),
         missing: coverage.missing,
+        missingModuleDoc: coverage.missingModuleDoc,
       })),
     },
     null,
@@ -143,10 +160,21 @@ if (options.json) {
       );
     }
   }
+
+  if (missingModuleDocs.length > 0) {
+    console.log("");
+    console.log("Missing module docs:");
+    for (const item of missingModuleDocs) {
+      console.log(`- ${item.label} ${item.path}`);
+    }
+  }
 }
 
-if (percent < minimumPercent || lowEntries.length > 0) {
-  console.error("Documentation coverage is below the configured minimum.");
+if (
+  percent < minimumPercent || lowEntries.length > 0 ||
+  missingModuleDocs.length > 0
+) {
+  console.error("Documentation checks failed.");
   Deno.exit(1);
 }
 
@@ -292,6 +320,7 @@ async function checkEntry(entry: DocEntry): Promise<EntryCoverage> {
   }
 
   const doc = JSON.parse(textDecoder.decode(output.stdout)) as DenoDocJson;
+  const entryNode = findEntryNode(entry, doc);
   let total = 0;
   let documented = 0;
   const missing: MissingDoc[] = [];
@@ -326,12 +355,36 @@ async function checkEntry(entry: DocEntry): Promise<EntryCoverage> {
     }
   }
 
-  return { entry, total, documented, missing };
+  const missingModuleDoc = hasModuleDoc(entryNode)
+    ? undefined
+    : { label: entry.label, path: entry.path };
+
+  return { entry, total, documented, missing, missingModuleDoc };
 }
 
 function hasJsDoc(declaration: DocDeclaration): boolean {
   return typeof declaration.jsDoc?.doc === "string" &&
     declaration.jsDoc.doc.trim().length > 0;
+}
+
+function findEntryNode(entry: DocEntry, doc: DenoDocJson): DocNode | undefined {
+  for (const [path, node] of Object.entries(doc.nodes ?? {})) {
+    if (pathFromFileUrl(path) === entry.path) {
+      return node;
+    }
+  }
+
+  return undefined;
+}
+
+function hasModuleDoc(node: DocNode | undefined): boolean {
+  const moduleDoc = node?.module_doc;
+  const hasDescription = typeof moduleDoc?.doc === "string" &&
+    moduleDoc.doc.trim().length > 0;
+  const hasModuleTag = moduleDoc?.tags?.some((tag) => tag.kind === "module") ??
+    false;
+
+  return hasDescription && hasModuleTag;
 }
 
 function parseMinimumPercent(value: string): number {

@@ -1,3 +1,12 @@
+/**
+ * Background job queue primitives for Rootware packages and Deno backends.
+ *
+ * Provides serializable job records, recurrence helpers, in-memory and no-op
+ * stores, queue/worker orchestration, retry backoff, and portable table DDL.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 

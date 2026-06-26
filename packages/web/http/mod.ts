@@ -1,3 +1,12 @@
+/**
+ * Fetch-based HTTP client helpers for Rootware packages and Deno backends.
+ *
+ * Provides URL/header utilities, JSON response parsing, retries, timeouts,
+ * lifecycle hooks, mock fetch handlers, redaction, and safe response caching.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 

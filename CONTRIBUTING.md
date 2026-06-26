@@ -58,6 +58,9 @@ packages.
 Add concise JSDoc for public classes, major interfaces, public helper functions,
 and exported objects. Prefer README examples for longer usage snippets.
 
+Every published entrypoint must also start with a module-level JSDoc block that
+includes `@module`; `deno task docs:check` enforces this in pre-commit.
+
 ## Versioning
 
 Packages use independent versions. Bump only the package being released:

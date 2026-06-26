@@ -125,3 +125,13 @@ services:
           until aws --endpoint-url http://rustfs:9000 s3 ls >/dev/null 2>&1; do
           echo "waiting for rustfs..."; sleep 2; done;
           aws --endpoint-url http://rustfs:9000 s3 mb s3://rootware-test || true
+
+  # libSQL server (sqld) for the @rootware/orm|migrate libSQL integration tests.
+  # Speaks the libSQL HTTP/hrana protocol on port 8080.
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    environment:
+      SQLD_NODE: primary
+    ports:
+      - "8080:8080"
+    tmpfs: ["/var/lib/sqld"]

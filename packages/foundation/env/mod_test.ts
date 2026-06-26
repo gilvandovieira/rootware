@@ -13,6 +13,7 @@ import {
   parseInteger,
   parseNumber,
   parseUrl,
+  presets,
   readDenoEnv,
   redactEnv,
   validateEnv,
@@ -349,4 +350,60 @@ Deno.test("@rootware/env - loadEnvFiles feeds defineEnv as a source", () => {
 
   assertEquals(values.PORT, 3000);
   assertEquals(values.LOG_LEVEL, "warn");
+});
+
+Deno.test("@rootware/env - provider presets compose into a schema", () => {
+  const config = defineEnv({
+    ...presets.neon(),
+    ...presets.s3(),
+    ...presets.resend(),
+    PORT: env.integer().default(8000),
+  }, {
+    source: {
+      DATABASE_URL: "postgres://user:pass@ep-x.region.neon.tech/db",
+      S3_REGION: "us-east-1",
+      S3_ACCESS_KEY_ID: "AKID",
+      S3_SECRET_ACCESS_KEY: "secret",
+      S3_BUCKET: "uploads",
+      RESEND_API_KEY: "re_123",
+      // S3_ENDPOINT omitted (optional, AWS default).
+    },
+  });
+
+  assertEquals(config.S3_REGION, "us-east-1");
+  assertEquals(config.S3_BUCKET, "uploads");
+  assertEquals(config.S3_ENDPOINT, undefined);
+  assertEquals(config.PORT, 8000);
+  assert(config.DATABASE_URL.startsWith("postgres://"));
+
+  // Secrets in presets are redacted.
+  const redacted = redactEnv(config, {
+    ...presets.neon(),
+    ...presets.s3(),
+    ...presets.resend(),
+    PORT: env.integer().default(8000),
+  });
+  assertEquals(redacted.RESEND_API_KEY, "[REDACTED]");
+  assertEquals(redacted.S3_SECRET_ACCESS_KEY, "[REDACTED]");
+  assertEquals(redacted.DATABASE_URL, "[REDACTED]");
+  assertEquals(redacted.S3_REGION, "us-east-1");
+});
+
+Deno.test("@rootware/env - turso and clerk presets mark the right secrets", () => {
+  const turso = defineEnv(presets.turso(), {
+    source: {
+      TURSO_DATABASE_URL: "libsql://db-org.turso.io",
+      TURSO_AUTH_TOKEN: "tok_123",
+    },
+  });
+  assertEquals(turso.TURSO_DATABASE_URL, "libsql://db-org.turso.io");
+  assertEquals(turso.TURSO_AUTH_TOKEN, "tok_123");
+
+  const clerk = presets.clerk();
+  // Publishable key is not a secret; secret key is.
+  assertEquals(clerk.CLERK_PUBLISHABLE_KEY.type, "string");
+  assertEquals(clerk.CLERK_SECRET_KEY.type, "secret");
+
+  const example = generateEnvExample(presets.turso());
+  assert(example.includes("TURSO_DATABASE_URL="));
 });

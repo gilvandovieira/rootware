@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, current package manifest version `@rootware/log@0.4.0`\
+Status: experimental, current package manifest version `@rootware/log@0.5.0`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -1390,20 +1390,29 @@ Acceptance criteria:
 - Web stream sink works with standard `WritableStream<Uint8Array>`. ✔
 - All sink behavior is covered by tests. ✔
 
-### `0.5.0` — HTTP Logging Adapters
+### `0.5.0` — HTTP Logging Adapters — **done (`0.5.0`)**
 
 Goal: provide production-safe request logging for Deno fetch-style servers.
 
-Scope:
+Shipped — the `@rootware/log/http` subpath:
 
-- Add a fetch handler wrapper or secondary module.
-- Add Hono middleware in the dedicated `@rootware/hono` package (decided; not a
-  `/hono` subpath).
-- Add request ID support.
-- Add duration measurement.
-- Add safe header policy.
-- Add status and error logging.
-- Avoid body logging by default.
+- **`withRequestLogging(handler, options)`** — wraps a `Deno.serve`-style
+  handler and emits a structured record per request: `http.request.received`
+  (debug) then `http.request.completed` (or `http.request.failed` on a thrown
+  handler, re-thrown unchanged). Logging never alters the response except for
+  the optional `x-request-id` echo.
+- **Request ID** — honors an inbound `x-request-id` (configurable header) or
+  generates one (`crypto.randomUUID`); echoed on the response by default.
+- **Duration measurement** — `durationMs` via an injectable clock.
+- **Safe header policy** — **bodies are never logged**, the query string is
+  dropped (only `pathname` is logged, so query secrets never leak), and headers
+  are logged only when explicitly allow-listed (`logHeaders`).
+- **Status/error logging** — completion level escalates with status (`5xx` →
+  error, `4xx` → warn, else the configured `level`).
+
+Hono middleware remains the dedicated `@rootware/hono` package (decided; not a
+`/hono` subpath), so it is out of scope here. `/compat/pino` and `/http` stay on
+`@rootware/log` because they carry no external dependency.
 
 Possible API:
 

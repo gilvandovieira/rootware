@@ -149,6 +149,24 @@ const streamed = writableStreamSink(someWritableStream);
 - `createNoopLogger`
 - `serializeErrorForLog`
 - `pino` (from `@rootware/log/compat/pino`)
+- `withRequestLogging` (from `@rootware/log/http`)
+
+## Request logging (`0.5`)
+
+`@rootware/log/http` wraps a `Deno.serve`-style handler so each request is
+logged safely — no bodies, only the pathname (query secrets never leak), and
+headers only when allow-listed:
+
+```ts
+import { withRequestLogging } from "jsr:@rootware/log/http";
+
+Deno.serve(withRequestLogging(handler, { logger }));
+```
+
+It honors/generates an `x-request-id` (echoed on the response), measures
+`durationMs`, escalates the completion level by status (`5xx` → error, `4xx` →
+warn), and logs + re-throws a handler that throws. (Hono middleware lives in the
+separate `@rootware/hono` package, not here.)
 
 ## Security
 

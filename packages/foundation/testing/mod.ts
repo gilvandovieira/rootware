@@ -1,3 +1,12 @@
+/**
+ * Deterministic test utilities for Rootware packages and Deno tests.
+ *
+ * Provides assertions, Rootware error matchers, environment and logger helpers,
+ * fake clocks, cleanup stacks, fixtures, and request handler test helpers.
+ *
+ * @module
+ */
+
 import {
   isRootwareError,
   RootwareError,
@@ -965,6 +974,128 @@ export async function useFixture<T>(
     throw testError;
   }
 }
+
+// --- Data testing foundation (v0.5) ---
+
+/**
+ * A scope that can be undone. {@link rollbackFixture} / {@link withRollback}
+ * begin one (typically a database transaction) and always roll it back, so a
+ * test leaves the database untouched. Higher packages inject the `begin` — this
+ * core never imports a database.
+ */
+export interface RollbackHandle<T> {
+  /** The transactional value exposed to the test (e.g. a db connection). */
+  readonly value: T;
+  /** Undoes everything done within the scope; called automatically on teardown. */
+  rollback(): void | Promise<void>;
+}
+
+/**
+ * The contract a test-database fixture (e.g. from a future `@rootware/orm/testing`
+ * subpath) implements: open a rollback-scoped connection whose every write is
+ * undone on `rollback`. Defined here so the shared scaffolding and docs live in
+ * the testing core without it depending on the ORM.
+ */
+export interface TestDatabaseContract<TConnection> {
+  connect():
+    | RollbackHandle<TConnection>
+    | Promise<RollbackHandle<TConnection>>;
+}
+
+/**
+ * Creates a {@link TestFixture} that begins a rollback scope in setup and always
+ * rolls it back in teardown. Compose it with {@link createTestContext.use} or
+ * {@link useFixture}; an `@rootware/orm/testing` fixture supplies `begin` by
+ * wrapping a real `db.transaction(...)`.
+ */
+export function rollbackFixture<T>(
+  name: string,
+  begin: () => RollbackHandle<T> | Promise<RollbackHandle<T>>,
+): TestFixture<T> {
+  const handles = new WeakMap<object, RollbackHandle<T>>();
+  // Track the latest handle by value identity so teardown can find its rollback.
+  let latest: RollbackHandle<T> | undefined;
+
+  return createFixture(
+    name,
+    async () => {
+      const handle = await begin();
+      latest = handle;
+      if (handle.value !== null && typeof handle.value === "object") {
+        handles.set(handle.value as object, handle);
+      }
+      return handle.value;
+    },
+    async (value) => {
+      const handle = value !== null && typeof value === "object"
+        ? handles.get(value as object) ?? latest
+        : latest;
+      await handle?.rollback();
+    },
+  );
+}
+
+/**
+ * Runs `fn` inside a rollback scope and ALWAYS rolls back afterwards, even when
+ * `fn` throws (the original failure is re-thrown). The data-testing analogue of
+ * {@link useFixture}.
+ */
+export async function withRollback<T>(
+  begin: () => RollbackHandle<T> | Promise<RollbackHandle<T>>,
+  fn: (value: T) => void | Promise<void>,
+): Promise<void> {
+  let handle: RollbackHandle<T>;
+
+  try {
+    handle = await begin();
+  } catch (cause) {
+    throw new TestError("Rollback scope failed to begin", {
+      code: "TEST_FIXTURE_FAILED",
+      details: { phase: "begin" },
+      cause,
+    });
+  }
+
+  let testError: unknown;
+
+  try {
+    await fn(handle.value);
+  } catch (cause) {
+    testError = cause;
+  }
+
+  try {
+    await handle.rollback();
+  } catch (cause) {
+    if (testError !== undefined) {
+      throw testError;
+    }
+
+    throw new TestError("Rollback scope failed to roll back", {
+      code: "TEST_FIXTURE_FAILED",
+      details: { phase: "rollback" },
+      cause,
+    });
+  }
+
+  if (testError !== undefined) {
+    throw testError;
+  }
+}
+
+/**
+ * Compile-time equality of two types — `true` when `A` and `B` are identical.
+ * Pair with {@link Expect} for ORM and schema **type** tests:
+ *
+ * ```ts
+ * type _ = Expect<Equal<InferSelect<typeof users>, { id: string }>>;
+ * ```
+ */
+export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2) ? true : false;
+
+/** Compile-time assertion: only accepts `true` (use with {@link Equal}). */
+export type Expect<T extends true> = T;
 
 /** Captures a synchronous thrown value without failing the test. */
 export function captureError(fn: () => unknown): unknown | undefined {

@@ -1,3 +1,12 @@
+/**
+ * Session and actor boundary primitives for Rootware packages and Deno backends.
+ *
+ * Provides session stores, cache-backed sessions, cookie helpers, CSRF helpers,
+ * actor authorization utilities, and a no-op manager for tests.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 import type { CacheClient } from "@rootware/cache";
 import type { Logger } from "@rootware/log";
@@ -1021,6 +1030,136 @@ export function assertActorPermission(
       details: { required: permission, kind: "permission" },
     });
   }
+}
+
+// --- Provider adapter contract (v0.5) ---
+
+/**
+ * Resolves the current {@link SessionActor} from a request using an external
+ * identity provider (Clerk, Supabase, Auth0, a custom JWT verifier, …). It is
+ * the seam those adapters implement; concrete provider adapters live in their
+ * own packages so this core takes **no** provider SDK dependency.
+ */
+export interface SessionProvider {
+  /** Returns the actor for the request, or `undefined` when unauthenticated. */
+  resolveActor(
+    requestOrHeaders: Request | Headers,
+  ): Promise<SessionActor | undefined>;
+}
+
+/** Verifies a credential and resolves the actor it represents. */
+export type TokenVerifier = (
+  token: string,
+) => SessionActor | undefined | Promise<SessionActor | undefined>;
+
+/** Options for {@link bearerTokenProvider}. */
+export interface BearerTokenProviderOptions {
+  /** Verifies the bearer token; an injected adapter (e.g. a JWT/Clerk verifier). */
+  readonly verify: TokenVerifier;
+  /** Request header to read; defaults to `authorization`. */
+  readonly header?: string;
+  /** Auth scheme prefix; defaults to `Bearer`. */
+  readonly scheme?: string;
+}
+
+/** Options for {@link cookieTokenProvider}. */
+export interface CookieTokenProviderOptions {
+  /** Verifies the cookie value; an injected adapter (e.g. a Supabase verifier). */
+  readonly verify: TokenVerifier;
+  /** Cookie name carrying the provider token. */
+  readonly cookieName: string;
+}
+
+/**
+ * A {@link SessionProvider} that reads a bearer token from the `Authorization`
+ * header and delegates to an injected `verify`. The verifier is where a Clerk /
+ * Auth0 / custom-JWT adapter plugs in its SDK — this core ships only the
+ * header-parsing shell, so it stays SDK-free.
+ */
+export function bearerTokenProvider(
+  options: BearerTokenProviderOptions,
+): SessionProvider {
+  const header = (options.header ?? "authorization").toLowerCase();
+  const scheme = (options.scheme ?? "Bearer").toLowerCase();
+
+  return {
+    resolveActor(
+      requestOrHeaders: Request | Headers,
+    ): Promise<SessionActor | undefined> {
+      const headers = requestOrHeaders instanceof Request
+        ? requestOrHeaders.headers
+        : requestOrHeaders;
+      const raw = headers.get(header);
+
+      if (raw === null) {
+        return Promise.resolve(undefined);
+      }
+
+      const separator = raw.indexOf(" ");
+      const token = separator === -1 ? raw : raw.slice(separator + 1).trim();
+      const presentedScheme = separator === -1
+        ? ""
+        : raw.slice(0, separator).toLowerCase();
+
+      if (separator !== -1 && presentedScheme !== scheme) {
+        return Promise.resolve(undefined);
+      }
+
+      if (token.length === 0) {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(options.verify(token));
+    },
+  };
+}
+
+/**
+ * A {@link SessionProvider} that reads a provider token from a cookie and
+ * delegates to an injected `verify`. Use it for providers that set their own
+ * session cookie (e.g. Supabase) rather than a bearer header.
+ */
+export function cookieTokenProvider(
+  options: CookieTokenProviderOptions,
+): SessionProvider {
+  validateCookieName(options.cookieName);
+
+  return {
+    resolveActor(
+      requestOrHeaders: Request | Headers,
+    ): Promise<SessionActor | undefined> {
+      const token = getCookie(requestOrHeaders, options.cookieName);
+
+      if (token === undefined || token.length === 0) {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(options.verify(token));
+    },
+  };
+}
+
+/**
+ * Resolves the actor from a provider, throwing `SESSION_ACTOR_REQUIRED` (401)
+ * when the request is unauthenticated — the provider-side counterpart to
+ * {@link SessionManager.requireActor}.
+ */
+export async function requireProviderActor(
+  provider: SessionProvider,
+  requestOrHeaders: Request | Headers,
+): Promise<SessionActor> {
+  const actor = await provider.resolveActor(requestOrHeaders);
+
+  if (actor === undefined) {
+    throw new SessionError("Session actor is required", {
+      code: "SESSION_ACTOR_REQUIRED",
+      status: 401,
+      expose: true,
+      severity: "warn",
+    });
+  }
+
+  return actor;
 }
 
 /** Creates a session manager that never persists sessions. */

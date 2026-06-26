@@ -11,10 +11,13 @@ import {
   cloneStorageObject,
   createStorage,
   createStorageObject,
+  createUploadValidator,
+  extensionOf,
   getBlobSize,
   getBodySize,
   joinStorageKey,
   localStorageStore,
+  matchesContentType,
   memoryStorageStore,
   noopStorage,
   normalizeBucketName,
@@ -482,6 +485,116 @@ Deno.test("@rootware/storage - s3StorageStore validates required options", () =>
         region: "us-east-1",
         accessKeyId: "AKID",
         secretAccessKey: "SECRET",
+      }),
+    StorageError,
+  );
+});
+
+Deno.test("@rootware/storage - createUploadValidator enforces size, type, extension, metadata", () => {
+  const validator = createUploadValidator({
+    maxSizeBytes: 1_000,
+    allowedContentTypes: ["image/*", "application/pdf"],
+    allowedExtensions: ["png", ".jpg", "pdf"],
+    requiredMetadata: ["owner"],
+    maxMetadataKeys: 3,
+    maxMetadataValueLength: 64,
+  });
+
+  // A valid upload passes.
+  validator.validate({
+    key: "avatars/u_1.png",
+    size: 500,
+    contentType: "image/png",
+    metadata: { owner: "u_1" },
+  });
+
+  // Oversized.
+  assertThrows(
+    () =>
+      validator.validate({
+        key: "a.png",
+        size: 2_000,
+        contentType: "image/png",
+        metadata: { owner: "u" },
+      }),
+    StorageError,
+  );
+
+  // Disallowed content type.
+  const typeError = assertThrows(
+    () =>
+      validator.validate({
+        key: "a.png",
+        size: 10,
+        contentType: "text/plain",
+        metadata: { owner: "u" },
+      }),
+    StorageError,
+  ) as StorageError;
+  assertEquals(typeError.code, "STORAGE_INVALID_CONTENT_TYPE");
+
+  // Disallowed extension.
+  const extError = assertThrows(
+    () =>
+      validator.validate({
+        key: "a.gif",
+        size: 10,
+        contentType: "image/gif",
+        metadata: { owner: "u" },
+      }),
+    StorageError,
+  ) as StorageError;
+  assertEquals(extError.code, "STORAGE_INVALID_EXTENSION");
+
+  // Missing required metadata.
+  const metaError = assertThrows(
+    () =>
+      validator.validate({
+        key: "a.png",
+        size: 10,
+        contentType: "image/png",
+        metadata: {},
+      }),
+    StorageError,
+  ) as StorageError;
+  assertEquals(metaError.code, "STORAGE_INVALID_METADATA");
+});
+
+Deno.test("@rootware/storage - matchesContentType and extensionOf helpers", () => {
+  assert(matchesContentType("image/png", ["image/*"]));
+  assert(matchesContentType("application/pdf", ["application/pdf"]));
+  assert(matchesContentType("anything/here", ["*/*"]));
+  assert(!matchesContentType("text/plain", ["image/*", "application/pdf"]));
+
+  assertEquals(extensionOf("avatars/u_1.PNG"), "png");
+  assertEquals(extensionOf("nested/path/archive.tar.gz"), "gz");
+  assertEquals(extensionOf("noext"), undefined);
+  assertEquals(extensionOf(".dotfile"), undefined);
+});
+
+Deno.test("@rootware/storage - upload validator integrates with getBodySize before put", async () => {
+  const validator = createUploadValidator({
+    maxSizeBytes: 5,
+    allowedContentTypes: ["text/plain"],
+  });
+  const storage = createStorage({ store: memoryStorageStore() });
+
+  const body = "hello"; // 5 bytes, exactly at the limit
+  validator.validate({
+    key: "docs/a.txt",
+    size: getBodySize(body),
+    contentType: "text/plain",
+  });
+  await storage.put("docs/a.txt", body, { contentType: "text/plain" });
+  assertEquals(await storage.exists("docs/a.txt"), true);
+
+  // A 6-byte body is rejected before put runs.
+  assertThrows(
+    () =>
+      validator.validate({
+        key: "docs/b.txt",
+        size: getBodySize("hello!"),
+        contentType: "text/plain",
       }),
     StorageError,
   );

@@ -1,3 +1,12 @@
+/**
+ * SQLite adapter for `@rootware/migrate`.
+ *
+ * Provides SQLite migration drivers, history stores, migrators, DDL generation,
+ * and lazy `@db/sqlite` database opening for local migration workflows.
+ *
+ * @module
+ */
+
 export { SQLITE_DIALECT } from "./dialect.ts";
 
 export type {

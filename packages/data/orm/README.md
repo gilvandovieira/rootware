@@ -85,6 +85,8 @@ await db.select().from(users).where(eq(users.columns.id, "u_123")).execute();
   `createPgExecutor`, `createPgPool`
 - `@rootware/orm/sqlite` — `createSqliteDb`, `connect`, `createSqliteOrmDriver`,
   `createSqliteExecutor`, `sqliteColumnAffinity`
+- `@rootware/orm/libsql` — `createLibsqlDb`, `connect`, `createLibsqlOrmDriver`,
+  `createLibsqlExecutor` (libSQL/Turso over `@libsql/client`)
 
 ## Query expansion (`0.3`)
 
@@ -152,6 +154,25 @@ to fetch the native library the first time); the driver is imported lazily, so
 importing the subpath and injecting a fake database needs no permissions.
 `sqliteColumnAffinity(dataType)` exposes the type→storage-class mapping
 (`TEXT`/`INTEGER`/`REAL`).
+
+### libSQL / Turso (`0.5`)
+
+`@rootware/orm/libsql` runs the same surface against libSQL/Turso over
+`@libsql/client` (libSQL is SQLite-compatible, so the dialect is `sqlite`):
+
+```ts
+import { createLibsqlDb } from "jsr:@rootware/orm/libsql";
+
+const db = await createLibsqlDb({
+  url: Deno.env.get("TURSO_DATABASE_URL")!,
+  authToken: Deno.env.get("TURSO_AUTH_TOKEN"),
+});
+```
+
+Because libSQL over HTTP is autocommit per request, `db.transaction(...)` uses
+the client's interactive transaction handle. The `@libsql/client` driver is
+imported lazily (needs `--allow-net`/`--allow-env`), so importing the subpath
+and injecting a structural `client` for tests needs no npm dependency.
 
 Postgres-typed columns (`varchar`, `bigint`, `jsonb`, `timestamptz`) carry their
 type — and `varchar` length — through to the `@rootware/schema` snapshot

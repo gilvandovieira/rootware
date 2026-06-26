@@ -47,6 +47,21 @@ export function s3Target(): S3Target {
   };
 }
 
+/** Connection settings for the libSQL (sqld) target. */
+export interface LibsqlTarget {
+  readonly url: string;
+  readonly authToken?: string;
+}
+
+/** libSQL target, from `RW_LIBSQL_URL`/`RW_LIBSQL_TOKEN` or the compose default. */
+export function libsqlTarget(): LibsqlTarget {
+  const token = readEnv("RW_LIBSQL_TOKEN");
+  return {
+    url: readEnv("RW_LIBSQL_URL") ?? "http://localhost:8080",
+    ...(token === undefined ? {} : { authToken: token }),
+  };
+}
+
 /** PostgreSQL targets, from `RW_PG_URLS` or the compose defaults. */
 export function pgTargets(): readonly DbTarget[] {
   return targetsFromEnv("RW_PG_URLS", DEFAULT_PG_TARGETS);

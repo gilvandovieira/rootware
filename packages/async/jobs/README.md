@@ -45,6 +45,8 @@ await queue.processNext();
   `cronMatches`, `nextCronRun`
 - Durable adapters (`0.4`) — `DurableJobStore`, `JobClaimOptions`,
   `jobsTableDdl`, `JOB_TABLE_COLUMNS`, `DEFAULT_JOBS_TABLE`
+- `@rootware/jobs/postgres` (`0.5`) — `createPostgresJobStore`,
+  `ensureJobsTable`, `rowToJobRecord`, `jobToParams`
 
 ## Recurring scheduling (`0.3`)
 
@@ -100,6 +102,27 @@ const { statements } = jobsTableDdl({ dialect: "postgres" }); // or "sqlite"
 // feed `statements` (CREATE TABLE + claim/lease/idempotency indexes) to migrate
 ```
 
+## PostgreSQL durable queue (`0.5`)
+
+`@rootware/jobs/postgres` is the concrete `DurableJobStore` over PostgreSQL:
+
+```ts
+import {
+  createPostgresJobStore,
+  ensureJobsTable,
+} from "jsr:@rootware/jobs/postgres";
+
+await ensureJobsTable({ url }); // CREATE TABLE + indexes (once)
+const store = createPostgresJobStore({ url });
+const queue = createJobQueue({ jobs: [sendEmail], store });
+```
+
+Claims are atomic (`FOR UPDATE SKIP LOCKED`) with a visibility lease, so
+multiple workers share a queue safely; `store.heartbeat(id, leaseMs)` extends a
+held lease and `store.reclaimExpired()` recovers crashed workers' jobs. Delivery
+is **at-least-once** — keep handlers idempotent. The `@db/postgres` driver is
+imported only by this subpath (jobs-core stays driver-free).
+
 ## Security
 
 Jobs never log payloads, outputs, or full metadata by default. Memory storage is
@@ -110,10 +133,10 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package ships the in-memory store and the **durable adapter contract**
-(`DurableJobStore`) plus its table DDL (`0.4`); the concrete Postgres/SQLite
-queue implementations, Redis/Deno KV adapters, dashboards, and OpenTelemetry are
-still future work.
+This package ships the in-memory store, the **durable adapter contract**
+(`DurableJobStore`) plus its table DDL (`0.4`), and the concrete **PostgreSQL**
+durable queue (`@rootware/jobs/postgres`, `0.5`). A SQLite durable queue,
+Redis/Deno KV adapters, dashboards, and OpenTelemetry are still future work.
 
 ## Status
 

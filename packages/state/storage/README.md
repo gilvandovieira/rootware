@@ -41,10 +41,37 @@ const url = storage.publicUrl("avatars/u_123.png");
 - `normalizeStorageKey`
 - `normalizeBucketName`
 - `signUrl` + `SignUrlOptions` / `SignedUrl` / `ResolvedSignUrlOptions`
+- `createUploadValidator` (+ `matchesContentType`, `extensionOf`) — `0.5`
 
 `localStorageStore({ rootDir })` persists objects to disk using Deno file APIs
 (needs `--allow-read`/`--allow-write` on `rootDir`). Inject a custom
 `StorageFileSystem` to test without touching disk.
+
+## Upload validation (`0.5`)
+
+`createUploadValidator` validates a prospective upload before `put` — useful at
+an upload endpoint — throwing a typed `StorageError` on the first violation:
+
+```ts
+import { createUploadValidator, getBodySize } from "jsr:@rootware/storage";
+
+const validate = createUploadValidator({
+  maxSizeBytes: 5_000_000,
+  allowedContentTypes: ["image/*", "application/pdf"], // exact or type/* wildcard
+  allowedExtensions: ["png", "jpg", "pdf"],
+  requiredMetadata: ["owner"],
+  maxMetadataValueLength: 256,
+}).validate;
+
+validate({
+  key: "avatars/u_1.png",
+  size: getBodySize(body),
+  contentType: "image/png",
+  metadata: { owner: "u_1" },
+});
+// throws STORAGE_MAX_SIZE_EXCEEDED / _INVALID_CONTENT_TYPE / _INVALID_EXTENSION /
+// _INVALID_METADATA otherwise.
+```
 
 ## S3-compatible storage (`0.4`)
 

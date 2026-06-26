@@ -319,12 +319,21 @@ services); the contract and unsupported behavior they plug into ship now.
   signed round-trip (put → get → list → signed-GET → delete) against RustFS (an
   actively maintained S3-compatible server).
 
-## v0.5.0 — Upload validation
+## v0.5.0 — Upload validation — **done (`0.5.0`)**
 
-- Max size.
-- Allowed content types.
-- Extension checks.
-- Metadata validation.
+- **`createUploadValidator(options)`** → a reusable `UploadValidator` for
+  app-level upload endpoints; `validate(candidate)` throws a typed
+  `StorageError` on the first violation (before `put`):
+  - **Max size** — `maxSizeBytes` → `STORAGE_MAX_SIZE_EXCEEDED`.
+  - **Allowed content types** — exact or `type/*` wildcard; a missing type when
+    a list is set is rejected → `STORAGE_INVALID_CONTENT_TYPE` (415).
+  - **Extension checks** — `allowedExtensions` (case-insensitive, dot optional)
+    → `STORAGE_INVALID_EXTENSION` (415).
+  - **Metadata validation** — `requiredMetadata`, `maxMetadataKeys`,
+    `maxMetadataValueLength` → `STORAGE_INVALID_METADATA` (422).
+- **Pure helpers** — `matchesContentType(type, patterns)` and `extensionOf(key)`
+  are exported and unit-tested; the validator composes with `getBodySize` to
+  check a body before persisting.
 - Range reads and multipart upload remain future work.
 
 ## v1.0.0 — Stable storage contract

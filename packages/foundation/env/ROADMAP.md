@@ -280,17 +280,23 @@ Implemented `mode` semantics:
 - **Production guidance** — README documents not loading `.env` files in
   production (inject real env vars instead).
 
-## v0.5.0 — Provider presets
+## v0.5.0 — Provider presets — **done (`0.5.0`)**
 
-Possible presets:
-
-- Neon.
-- Turso.
-- Resend.
-- Clerk.
-- S3/R2.
-
-Presets must not force provider dependencies into the core.
+- **`presets`** — ready-made `EnvSchema` fragments for common providers, built
+  from the existing `env.*` builders and spread into `defineEnv`:
+  - `presets.neon()` → `DATABASE_URL` (secret url)
+  - `presets.turso()` → `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (secret)
+  - `presets.resend()` → `RESEND_API_KEY` (secret)
+  - `presets.clerk()` → `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (secret)
+  - `presets.s3()` → `S3_REGION`, `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`
+    (secrets), `S3_BUCKET`, optional `S3_ENDPOINT`
+- **No provider dependency in core** — presets only declare conventional
+  variable names, types, secret-marking, and `.describe()`/`.example()`
+  metadata; they pull in zero provider SDKs. Each returns fresh definitions, so
+  apps spread and override individual keys
+  (`{ ...presets.s3(), S3_ENDPOINT:
+  env.url().required() }`). Preset secrets
+  participate in `redactEnv` and `generateEnvExample` like any other definition.
 
 ## v1.0.0 — Stable configuration contract
 

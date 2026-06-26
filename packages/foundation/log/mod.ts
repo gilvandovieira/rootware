@@ -1,3 +1,12 @@
+/**
+ * Structured JSON logging primitives for Rootware packages and Deno backends.
+ *
+ * Provides log levels, child loggers, sinks, redaction, error serialization,
+ * filtering, buffering, fanout, and failover helpers.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 
 const textEncoder = new TextEncoder();

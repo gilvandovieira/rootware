@@ -315,13 +315,32 @@ database or `@rootware/migrate` dependency.
   The strings are data, so an app feeds them to `@rootware/migrate` itself —
   jobs never imports migrate.
 
-## v0.5.0 — Postgres durable queue
+## v0.5.0 — Postgres durable queue — **done (`0.5.0`)**
 
-- Durable job table.
-- Locking strategy.
-- Retry persistence.
-- Dead-letter persistence.
-- Visibility timeout semantics.
+The concrete `DurableJobStore` from the `0.4` contract, shipped as the
+`@rootware/jobs/postgres` subpath (it imports `@db/postgres` — allowed for an
+adapter subpath; jobs-core stays driver-free):
+
+- **Durable job table** — `ensureJobsTable()` applies the `0.4` `jobsTableDdl`
+  (table + claim/lease/idempotency indexes);
+  `createPostgresJobStore({ url |
+  pool | client })` reads/writes it.
+  `rowToJobRecord`/`jobToParams` are pure and unit-tested (JSON columns ↔
+  objects, timestamps ↔ ISO).
+- **Locking strategy** — `claimNext` is an atomic
+  `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED LIMIT 1)`, so many
+  workers pull from the same queue without double-processing; priority +
+  `run_at` ordering decides which job is next.
+- **Visibility timeout semantics** — a claim stamps `locked_by` and
+  `lease_expires_at = now() + leaseMs`; `heartbeat(id, leaseMs)` extends a held
+  lease (returns `false` when it was already lost) and `reclaimExpired()`
+  returns expired-lease `running` jobs to `queued` for crash recovery — delivery
+  is at-least-once.
+- **Retry / dead-letter persistence** — `attempts`/`attempt_history`/`error` and
+  the terminal `dead` status persist across restarts via `update`/`get`/`list`.
+- **Tested** — fake-client unit tests in CI (no DB) plus an integration test
+  (`integration/jobs_postgres_test.ts`) exercising claim → heartbeat → expire →
+  reclaim → re-claim against real PostgreSQL.
 
 ## v0.6.0 — Integration packages
 
