@@ -1,33 +1,36 @@
-# Rootware Other Package Roadmaps
+# Rootware Roadmaps
 
 Last reviewed: 2026-06-26
 
-This set complements the existing Rootware docs:
+This directory holds workspace-level roadmap material. Package-specific roadmaps
+live beside the package they describe.
 
-- `log.md`
-- `migrate.md`
-- `orm.md`
+## Workspace roadmaps
+
+- `rootware-roadmap.md`
+- `adapters.md`
 - `template.md`
 
-The files in this archive cover the remaining core package roadmaps:
+## Package roadmaps
 
-- `errors.md`
-- `env.md`
-- `schema.md`
-- `testing.md`
-- `http.md`
-- `cache.md`
-- `storage.md`
-- `session.md`
-- `jobs.md`
-- `adapters.md`
-- `rootware-roadmap.md`
+- `../packages/errors/ROADMAP.md`
+- `../packages/env/ROADMAP.md`
+- `../packages/log/ROADMAP.md`
+- `../packages/testing/ROADMAP.md`
+- `../packages/http/ROADMAP.md`
+- `../packages/cache/ROADMAP.md`
+- `../packages/storage/ROADMAP.md`
+- `../packages/session/ROADMAP.md`
+- `../packages/schema/ROADMAP.md`
+- `../packages/migrate/ROADMAP.md`
+- `../packages/orm/ROADMAP.md`
+- `../packages/jobs/ROADMAP.md`
 
-`schema.md` covers the dependency-free `@rootware/schema` leaf package added
-during the 2026-06-26 alignment pass. It owns the serializable schema-snapshot
-type so `@rootware/orm` can produce snapshots and `@rootware/migrate` can
-consume prebuilt snapshots without importing each other. See `CHANGELOG.md` for
-the reconciliation history.
+`../packages/schema/ROADMAP.md` covers the dependency-free `@rootware/schema`
+leaf package added during the 2026-06-26 alignment pass. It owns the
+serializable schema-snapshot type so `@rootware/orm` can produce snapshots and
+`@rootware/migrate` can consume prebuilt snapshots without importing each other.
+See `../CHANGELOG.md` for the reconciliation history.
 
 Subpath packages such as `@rootware/orm/postgres`, `@rootware/orm/neon`,
 `@rootware/http/testing`, `@rootware/migrate/cli`, and

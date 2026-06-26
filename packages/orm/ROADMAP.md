@@ -128,7 +128,7 @@ primary.
 belongs to `@rootware/migrate`.
 
 Ownership of the snapshot is split three ways (decided — see
-`rootware-roadmap.md`, "Schema snapshot handoff"):
+`../../roadmaps/rootware-roadmap.md`, "Schema snapshot handoff"):
 
 - **`@rootware/schema`** owns the snapshot _type_ (`RootwareSchemaSnapshot` and
   its members). A dependency-free leaf package, so neither orm nor migrate
@@ -266,10 +266,10 @@ The ORM must _produce_ a stable, serializable schema snapshot for
 `@rootware/migrate`.
 
 The snapshot **type** is not defined here. It is owned by the dependency-free
-**`@rootware/schema`** leaf package (see `schema.md`). `@rootware/orm` imports
-the type to produce snapshots; `@rootware/migrate` imports the same type to
-consume them. Neither package redeclares the shape, and neither imports the
-other.
+**`@rootware/schema`** leaf package (see `../schema/ROADMAP.md`).
+`@rootware/orm` imports the type to produce snapshots; `@rootware/migrate`
+imports the same type to consume them. Neither package redeclares the shape, and
+neither imports the other.
 
 ```ts
 import type { RootwareSchemaSnapshot } from "@rootware/schema";
@@ -288,7 +288,7 @@ The ORM's job for this contract is **production only**:
 - Keep the persisted `dialect` aligned with `@rootware/schema`'s
   `RootwareDialectName` union (the runtime `SqlDialect` includes
   `mysql`/`generic`; whether those are valid snapshot dialects is the open
-  decision tracked in `schema.md`).
+  decision tracked in `../schema/ROADMAP.md`).
 
 Diffing, persistence, journaling, and SQL generation are not the ORM's concern —
 they belong to `@rootware/migrate`, which consumes the snapshot through

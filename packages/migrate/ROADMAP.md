@@ -239,8 +239,8 @@ Manual SQL migrations should still be journaled and checked.
 
 The schema snapshot is serializable, explicit, and versioned. Its **type is not
 defined here** — it is owned by the dependency-free `@rootware/schema` leaf
-package (see `schema.md`). `@rootware/migrate` imports the type and consumes
-prebuilt snapshots; it does not redeclare the shape and does not import
+package (see `../schema/ROADMAP.md`). `@rootware/migrate` imports the type and
+consumes prebuilt snapshots; it does not redeclare the shape and does not import
 `@rootware/orm`.
 
 ```ts
@@ -261,8 +261,9 @@ Rules:
 - Generated SQL should be inspectable and editable.
 - The accepted `dialect` values are whatever `@rootware/schema`'s
   `RootwareDialectName` union defines (the open
-  `mysql`/`generic`/`libsql`/`turso` question is tracked in `schema.md`, not
-  here). Migrate rejects dialects it has no generator for.
+  `mysql`/`generic`/`libsql`/`turso` question is tracked in
+  `../schema/ROADMAP.md`, not here). Migrate rejects dialects it has no
+  generator for.
 
 ## Migration file convention
 

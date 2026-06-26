@@ -101,10 +101,10 @@ Depends on:
 
 This is the **single home** for Hono middleware. Because Hono is a meaningful
 external dependency, it belongs in this separate package rather than a
-`@rootware/log/hono` subpath. `log.md` agrees: its request-logging section
-points Hono middleware here, not to a `log` subpath. The request-logging
-middleware is folded into `@rootware/hono` so there is exactly one place Hono
-integration lives. This is settled.
+`@rootware/log/hono` subpath. `../packages/log/ROADMAP.md` agrees: its
+request-logging section points Hono middleware here, not to a `log` subpath. The
+request-logging middleware is folded into `@rootware/hono` so there is exactly
+one place Hono integration lives. This is settled.
 
 ### @rootware/otel
 

@@ -1,5 +1,14 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — Move package roadmaps beside package code
+
+- Moved package-specific roadmaps from `roadmaps/*.md` to
+  `packages/*/ROADMAP.md` so each roadmap now lives with the package it owns.
+- Kept `roadmaps/` for workspace-level planning only: the root package roadmap,
+  adapters roadmap, template, and roadmap index.
+- Left package `deno.json` publish includes unchanged, so `ROADMAP.md` files
+  remain repository-only and are not included in JSR package contents.
+
 ## 2026-06-26 — Roadmap/code alignment and foundational hardening
 
 - Corrected roadmap status language so missing adapter/subpath packages are no

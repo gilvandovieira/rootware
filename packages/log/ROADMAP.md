@@ -678,7 +678,7 @@ includes `stack` (correct for logs), while `@rootware/errors` exports a
 two collide if an app imports both. Before `1.0`, resolve this — rename log's
 variant (`serializeErrorForLog`), or have it delegate to `@rootware/errors`'
 serializer and attach `stack` itself — and document which serializer to reach
-for. See `errors.md`, Chunk 9.
+for. See `../errors/ROADMAP.md`, Chunk 9.
 
 ---
 
@@ -1379,7 +1379,7 @@ Deno.serve(withRequestLogging(handler, { logger }));
 ```
 
 Hono option (lives in the dedicated `@rootware/hono` package, **not** a
-`@rootware/log/hono` subpath — see `adapters.md`):
+`@rootware/log/hono` subpath — see `../../roadmaps/adapters.md`):
 
 ```ts
 import { loggerMiddleware } from "jsr:@rootware/hono";
