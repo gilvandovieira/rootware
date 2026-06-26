@@ -2,6 +2,10 @@
 
 ## Status
 
+> **API freeze (`0.9.0`):** the public surface is audited and frozen to reduce
+> churn toward `1.0`. The package stays **experimental** until it has real
+> consumers — breaking changes remain possible even at `1.0`.
+
 `@rootware/orm` is an experimental pre-1.0 package. This plan assumes the
 package is not a proof of concept. It is a real Rootware product that should be
 productized through small, testable releases.

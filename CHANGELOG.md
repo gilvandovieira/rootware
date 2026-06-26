@@ -1,5 +1,34 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `v0.9` — workspace-wide API freeze
+
+**Every package is now aligned at `0.9.0`** as the API-freeze candidate. This is
+an audit/finalization round — **no new runtime surface and no behavior change**
+anywhere; versions were advanced to a single freeze baseline (`errors` 0.4 →
+0.9, `schema` 0.3.1 → 0.9, `env`/`session`/`storage` 0.5 → 0.9, `cache`/`http`
+0.4 → 0.9, `testing`/`jobs` 0.6 → 0.9, `orm`/`migrate` 0.7 → 0.9; `log` was
+already 0.9.0).
+
+Stability stance (now stated in every package README **Status** section): the
+public surface is **audited and frozen at `0.9`** to reduce churn toward `1.0`,
+but **every `@rootware/*` package stays experimental until it has real-world
+consumers** — breaking changes remain possible **even at `1.0`**. We have no
+production consumers yet, so the version tracks roadmap progress, not a
+stability guarantee. The freeze is about minimizing needless churn.
+
+- **Audit result** — `deno task docs:check` reports **100% JSDoc** on all
+  package entrypoints and subpaths; no accidental exports were found (internal
+  helpers stay unexported). `deno task ci` and `deno task publish:dry` are green
+  across the workspace.
+- **`log`** (already `0.9.0`) keeps its detailed freeze from the prior step:
+  audited root + `/compat/pino` + `/http`; `pino` stays **subpath-only** (no
+  root default export at `1.0`); frozen `LogRecord` shape, `LogSink` contract,
+  and read-only `Logger`; redaction and error-field naming finalized; README
+  carries a tiered **API** inventory and a **Stability** section.
+- **Docs** — added the freeze note to every package ROADMAP `## Status` and
+  replaced the old "API may change before 1.0" README blurb with the
+  experimental-until-consumers stance above.
+
 ## 2026-06-26 — `log` `0.8.1` — logger hot-path performance
 
 A follow-up to the `v0.8` benchmark milestone: the benchmark exposed a redundant

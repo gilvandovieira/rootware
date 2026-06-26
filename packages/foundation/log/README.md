@@ -136,19 +136,44 @@ const streamed = writableStreamSink(someWritableStream);
 
 ## API
 
-- `createLogger`
-- `memorySink`
-- `bufferedSink`
-- `unbufferedSink`
-- `fileSink`
-- `writableStreamSink`
-- `fanoutSink`
-- `filterSink`
-- `levelSink`
-- `failoverSink`
-- `createNoopLogger`
-- `serializeErrorForLog`
-- `pino` (from `@rootware/log/compat/pino`)
+The complete, stable public surface (frozen for `1.0` — see
+[Stability](#stability-and-the-10-freeze-09)).
+
+**Loggers**
+
+- `createLogger(options?, sink?)` · `createNoopLogger()`
+
+**Sinks**
+
+- `stdoutSink` · `stderrSink` · `memorySink` · `fileSink` · `writableStreamSink`
+- `unbufferedSink` · `bufferedSink` · `fanoutSink` · `filterSink` · `levelSink`
+  · `failoverSink`
+
+**Levels**
+
+- `levels` · `isLogLevelName` · `getLogLevelNumber` · `shouldLog`
+
+**Observability conventions**
+
+- `logFields` · `eventName` · `isEventName`
+
+**Errors & formatting (advanced / custom sinks)**
+
+- `LogError` · `serializeErrorForLog` · `formatLogRecord` · `normalizeLogInput`
+  · `defaultTimestamp`
+
+**Types**
+
+- `Logger` · `LogSink` · `LogRecord` · `LogLevel` · `LogLevelName` ·
+  `LogLevelNumber` · `LogValue` · `LogObject` · `LogBindings` · `LoggerOptions`
+  · `ChildLoggerOptions` · `MemoryLogSink` · `BufferedSinkOptions` ·
+  `FileSinkOptions` · `RedactOptions` · `LogRecordFilter` · `LogSinkResult` ·
+  `LogWriteErrorHandler` · `LogFields` · `LogFieldName` · `LogErrorCode` ·
+  `LogErrorOptions`
+
+**Subpaths**
+
+- `pino` (default export, from `@rootware/log/compat/pino`)
 - `withRequestLogging` (from `@rootware/log/http`)
 
 ## Request logging (`0.5`)
@@ -274,6 +299,46 @@ it no longer collides with the safe, `expose`-respecting `serializeError` from
 See [publishing](../../../docs/publishing.md) and
 [testing](../../../docs/testing.md).
 
+## Stability and the 1.0 freeze (`0.9`)
+
+`0.9` is the API-freeze candidate: the public surface above was audited, found
+intentional (no accidental exports — internal helpers like the record sanitizer
+stay unexported), and is now **frozen** to reduce churn toward `1.0`. The
+package nonetheless stays **experimental** until it has real-world consumers —
+breaking changes remain possible even at `1.0` (the whole `@rootware/*`
+workspace holds this stance). The freeze is about minimizing needless churn, not
+a production-stability promise.
+
+Frozen contracts:
+
+- **`LogRecord` shape** — `level` (number), `levelName`, `time` (always
+  emitted), optional `msg`/`name`/`error`, plus arbitrary structured fields. The
+  message and error keys are configurable (`messageKey`/`errorKey`).
+- **`LogSink` contract** — `write(line: Uint8Array)` with optional
+  `flush()`/`close()`, each returning `void | Promise<void>`.
+- **`Logger` interface** — the level methods, `child()`, `isLevelEnabled()`,
+  `flush()`, `close()`; `level` stays **read-only** (derive a new level with
+  `child(bindings, { level })`, not `logger.level = …`).
+- **Redaction** — `redact: string[] | RedactOptions`; dot-separated paths with a
+  single-key `*` wildcard; matched leaves become `censor` (default
+  `"[Redacted]"`).
+- **Error field naming** — the Rootware default key is `error`; the
+  `/compat/pino` constructor defaults it to `err` (Pino's name). Override either
+  with `errorKey`.
+- **Pino compatibility stays subpath-only** — `pino` is exported only from
+  `@rootware/log/compat/pino`, never as a root default export, so the root
+  module stays explicit (`createLogger`, sinks). This is final for `1.0`.
+
+### Migrating `0.x` → `1.0`
+
+No code changes are required from `0.9`; `1.0` is the same surface with
+stability guarantees. The only historical rename, already in effect since `0.2`,
+is the internal error serializer `serializeError` → **`serializeErrorForLog`**
+(the safe, `expose`-respecting `serializeError` lives in `@rootware/errors`).
+Anything relying on a settable `logger.level` should switch to
+`child(bindings, { level })` (read-only since `0.1`). Transports, worker
+threads, and `pino-pretty` remain out of scope — compose a `LogSink` instead.
+
 ## Limitations
 
 This package does not include pretty printing or OpenTelemetry integration yet.
@@ -282,7 +347,10 @@ file transport.
 
 ## Status
 
-Experimental. API may change before 1.0.
+**Experimental.** The public API was audited and **frozen at `0.9`** to reduce
+churn on the way to `1.0` — but until this package has real-world consumers it
+stays experimental, so breaking changes remain possible **even at `1.0`**. The
+version tracks roadmap progress, not a production-stability guarantee.
 
 ## License
 

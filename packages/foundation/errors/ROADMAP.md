@@ -2,6 +2,10 @@
 
 ## Status
 
+> **API freeze (`0.9.0`):** the public surface is audited and frozen to reduce
+> churn toward `1.0`. The package stays **experimental** until it has real
+> consumers — breaking changes remain possible even at `1.0`.
+
 `@rootware/errors` exists as part of the Rootware `v0.1` foundation.
 
 This package is the bottom of the Rootware dependency ladder. It should remain
