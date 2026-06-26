@@ -390,3 +390,138 @@ Deno.test("@rootware/http - retry lifecycle logs occur in order with delays", as
       typeof record.delayMs === "number",
   );
 });
+
+Deno.test("@rootware/http - hooks observe request/response lifecycle", async () => {
+  const events: string[] = [];
+  let requestId = "";
+  const client = createHttpClient({
+    baseUrl: "https://api.example.com",
+    fetch: createMockFetch([
+      {
+        path: "/users",
+        handler: () => createJsonResponse({ ok: true }),
+      },
+    ]),
+    hooks: {
+      onRequest(context) {
+        requestId = context.requestId;
+        events.push(`request:${context.method}:${context.attempt}`);
+      },
+      onResponse(context) {
+        events.push(
+          `response:${context.status}:${context.fromCache}:${
+            context.requestId === requestId
+          }`,
+        );
+        assert(context.durationMs >= 0);
+      },
+    },
+  });
+
+  await client.getJson("/users");
+  assertEquals(events, ["request:GET:0", "response:200:false:true"]);
+  assert(requestId.length > 0);
+});
+
+Deno.test("@rootware/http - onRetry fires with a stable requestId, then onError", async () => {
+  const retryIds = new Set<string>();
+  const retried = createHttpClient({
+    baseUrl: "https://api.example.com",
+    retry: { attempts: 1, backoffMs: 0, jitter: false },
+    fetch: createMockFetch([
+      {
+        path: "/flaky",
+        handler: () => createJsonResponse({ error: "busy" }, { status: 503 }),
+      },
+    ]),
+    hooks: {
+      onRequest(c) {
+        retryIds.add(c.requestId);
+      },
+      onRetry(c) {
+        retryIds.add(c.requestId);
+      },
+    },
+  });
+
+  // Exhausts the single retry, then surfaces the 503 as an HttpError.
+  await assertRejects(() => retried.get("/flaky"), HttpError);
+  // onRequest + onRetry shared one logical request id.
+  assertEquals(retryIds.size, 1);
+
+  const errors: string[] = [];
+  const failing = createHttpClient({
+    baseUrl: "https://api.example.com",
+    fetch: createMockFetch([
+      {
+        path: "/boom",
+        handler: () => createJsonResponse({ error: "nope" }, { status: 500 }),
+      },
+    ]),
+    hooks: {
+      onError(c) {
+        errors.push(c.error.code);
+      },
+    },
+  });
+
+  await assertRejects(() => failing.get("/boom"), HttpError);
+  assertEquals(errors, ["HTTP_RESPONSE_ERROR"]);
+});
+
+Deno.test("@rootware/http - a throwing hook never breaks the request", async () => {
+  const client = createHttpClient({
+    baseUrl: "https://api.example.com",
+    fetch: createMockFetch([
+      { path: "/ping", handler: () => createJsonResponse({ ok: true }) },
+    ]),
+    hooks: {
+      onRequest() {
+        throw new Error("hook exploded");
+      },
+      onResponse() {
+        return Promise.reject(new Error("async hook exploded"));
+      },
+    },
+  });
+
+  assertEquals(await client.getJson("/ping"), { ok: true });
+});
+
+Deno.test("@rootware/http - response cache serves safe GETs and skips authorized requests", async () => {
+  const store = new Map<string, Response>();
+  const cache = {
+    get: (key: string) => store.get(key),
+    set: (key: string, response: Response) => {
+      store.set(key, response);
+    },
+  };
+
+  let fetchCount = 0;
+  const fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchCount += 1;
+    return createMockFetch([
+      { path: "/cached", handler: () => createJsonResponse({ n: fetchCount }) },
+    ])(input, init);
+  };
+
+  const client = createHttpClient({
+    baseUrl: "https://api.example.com",
+    fetch,
+    cache,
+  });
+
+  const first = await client.getJson<{ n: number }>("/cached");
+  const second = await client.getJson<{ n: number }>("/cached");
+
+  // Second call is served from cache: same payload, only one real fetch.
+  assertEquals(first, { n: 1 });
+  assertEquals(second, { n: 1 });
+  assertEquals(fetchCount, 1);
+  assertEquals(store.size, 1);
+
+  // A request carrying Authorization is never cached.
+  await client.getJson("/cached", { headers: { authorization: "Bearer t" } });
+  assertEquals(fetchCount, 2);
+  assertEquals(store.size, 1);
+});

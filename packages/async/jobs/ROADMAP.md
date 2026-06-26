@@ -289,12 +289,31 @@ Enqueue, run, retry, failure, dead-letter, shutdown.
 - **Worker lifecycle tests** — added for `start`/`running`/`stop` guards
   alongside the existing graceful-shutdown coverage.
 
-## v0.4.0 — Durable adapter design
+## v0.4.0 — Durable adapter design — **done (`0.4.0`)**
 
-- Postgres adapter design.
-- SQLite adapter design.
-- Transaction behavior docs.
-- Migration requirements.
+This is a **contract + requirements** milestone (the concrete Postgres/SQLite
+queues are `0.5`/`0.6`); it pins down what a durable adapter must implement so
+the queue is at-least-once across crashes, without `@rootware/jobs` taking a
+database or `@rootware/migrate` dependency.
+
+- **Durable store contract** — `DurableJobStore extends JobStore` adds the
+  primitives the in-memory store does not need: an atomic `claimNext` with a
+  visibility **lease** (`JobClaimOptions` — `workerId`, `leaseMs`), a
+  `heartbeat` to extend a running job's lease (returns `false` when the lease
+  was lost), and `reclaimExpired` to return crashed workers' expired-lease jobs
+  to `queued`. The JSDoc documents the **transaction behavior**: Postgres claims
+  with `... FOR UPDATE SKIP LOCKED`, SQLite under its single-writer lock;
+  delivery is at-least-once, so handlers should be idempotent (pair with
+  `enqueue({ idempotencyKey })`).
+- **Migration requirements (Postgres + SQLite)** —
+  `jobsTableDdl({ dialect,
+  tableName })` returns pure `CREATE TABLE` + index
+  SQL (claim index on `(queue, status, run_at)`, lease index on
+  `(status, lease_expires_at)`, partial unique index on `idempotency_key`). JSON
+  fields are `jsonb`/`text`, timestamps `timestamptz`/ISO `text`.
+  `JOB_TABLE_COLUMNS` and `DEFAULT_JOBS_TABLE` expose the canonical column spec.
+  The strings are data, so an app feeds them to `@rootware/migrate` itself —
+  jobs never imports migrate.
 
 ## v0.5.0 — Postgres durable queue
 

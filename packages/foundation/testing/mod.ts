@@ -17,11 +17,14 @@ import {
   unbufferedSink,
 } from "@rootware/log";
 
+/** Error codes emitted by Rootware testing assertions and helpers. */
 export type TestErrorCode =
   | "TEST_ASSERTION_FAILED"
   | "TEST_EXPECTED_THROW"
   | "TEST_EXPECTED_REJECTION"
   | "TEST_FIXTURE_FAILED"
+  | "TEST_REQUEST_INVALID"
+  | "TEST_HANDLER_FAILED"
   | "TEST_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
@@ -33,6 +36,7 @@ export interface AssertionFailure {
   operator?: string;
 }
 
+/** Match options for synchronous throw assertions. */
 export interface AssertThrowsOptions {
   readonly message?: string;
   readonly errorClass?: abstract new (...args: never[]) => Error;
@@ -40,8 +44,10 @@ export interface AssertThrowsOptions {
   readonly code?: string;
 }
 
+/** Match options for async rejection assertions. */
 export type AssertRejectsOptions = AssertThrowsOptions;
 
+/** Match options for assertions that expect a {@link RootwareError}. */
 export interface AssertRootwareErrorOptions {
   readonly code?: RootwareErrorCode;
   readonly message?: string | RegExp;
@@ -55,6 +61,7 @@ export interface TestFixture<T> {
   teardown?(value: T): void | Promise<void>;
 }
 
+/** Options used when creating a reusable {@link TestContext}. */
 export interface TestContextOptions {
   readonly name?: string;
   readonly env?: Record<string, string | undefined>;
@@ -87,6 +94,7 @@ export interface CleanupStack {
   readonly size: number;
 }
 
+/** Initial state for a deterministic {@link FakeClock}. */
 export interface FakeClockOptions {
   readonly now?: Date | string | number;
 }
@@ -123,12 +131,14 @@ export interface LogAssertion {
   last(): LogRecord | undefined;
 }
 
+/** Options for validating env schemas in tests with an explicit source. */
 export interface EnvTestOptions {
   readonly mode?: "development" | "test" | "production";
   readonly prefix?: string;
   readonly allowEmpty?: boolean;
 }
 
+/** Options accepted when constructing a {@link TestError}. */
 export interface TestErrorOptions {
   readonly code?: TestErrorCode;
   readonly status?: number;
@@ -634,6 +644,262 @@ export function assertLog(sink: MemoryLogSink): LogAssertion {
       return records[records.length - 1];
     },
   };
+}
+
+/** Network address shape passed to a `Deno.serve`-style handler. */
+export interface NetAddr {
+  readonly transport: "tcp" | "udp";
+  readonly hostname: string;
+  readonly port: number;
+}
+
+/** The second argument a `Deno.serve` handler receives. */
+export interface ServeHandlerInfo {
+  readonly remoteAddr: NetAddr;
+  readonly completed: Promise<void>;
+}
+
+/**
+ * A `Deno.serve`-style request handler. Handlers that ignore the second
+ * argument (the common case) are still assignable, so a plain
+ * `(request: Request) => Response` works.
+ */
+export type ServeHandler = (
+  request: Request,
+  info: ServeHandlerInfo,
+) => Response | Promise<Response>;
+
+/** Options for {@link testRequest}. */
+export interface TestRequestInit {
+  readonly method?: string;
+  readonly headers?: HeadersInit;
+  readonly body?: BodyInit | null;
+  /**
+   * Convenience JSON body: serialized with `JSON.stringify` and given a
+   * `content-type: application/json` header unless one is already set. Mutually
+   * exclusive with `body`.
+   */
+  readonly json?: unknown;
+  /** Query parameters appended to the URL (stringified). */
+  readonly query?: Record<string, string | number | boolean>;
+}
+
+/** Options for {@link callHandler}. */
+export interface CallHandlerOptions extends TestRequestInit {
+  /** Overrides for the synthetic `remoteAddr` passed to the handler. */
+  readonly remoteAddr?: Partial<NetAddr>;
+}
+
+/**
+ * A handler's `Response` with its body buffered once so it can be read and
+ * asserted repeatedly. Assertion methods return the same object for chaining.
+ */
+export interface TestResponse {
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Headers;
+  readonly ok: boolean;
+  /** The full response body decoded as text. */
+  readonly bodyText: string;
+  /** Returns the buffered body as text. */
+  text(): string;
+  /** Parses the buffered body as JSON (throws a TestError on invalid JSON). */
+  json<T = unknown>(): T;
+  /** Returns a response header value, or null. */
+  header(name: string): string | null;
+  assertStatus(expected: number): TestResponse;
+  /** Asserts a 2xx status. */
+  assertOk(): TestResponse;
+  assertHeader(name: string, value?: string | RegExp): TestResponse;
+  /** Asserts the JSON body deep-equals `expected`. */
+  assertJson(expected: unknown): TestResponse;
+  /** Asserts the text body contains `text`. */
+  assertBodyIncludes(text: string): TestResponse;
+}
+
+/**
+ * Builds a `Request` for testing fetch-style handlers without a real server.
+ *
+ * A bare path (e.g. `/users`) is resolved against `http://localhost`. Use
+ * `json` for a JSON body or `query` to add search params.
+ */
+export function testRequest(
+  url: string | URL,
+  init: TestRequestInit = {},
+): Request {
+  const resolved = new URL(url, "http://localhost");
+
+  if (init.query !== undefined) {
+    for (const [key, value] of Object.entries(init.query)) {
+      resolved.searchParams.set(key, String(value));
+    }
+  }
+
+  const headers = new Headers(init.headers);
+  let body = init.body ?? null;
+
+  if (init.json !== undefined) {
+    if (body !== null) {
+      throw new TestError(
+        "testRequest: provide either `json` or `body`, not both",
+        {
+          code: "TEST_REQUEST_INVALID",
+          details: { expected: "json xor body" },
+        },
+      );
+    }
+
+    body = JSON.stringify(init.json);
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+  }
+
+  const method = init.method ?? (body !== null ? "POST" : "GET");
+
+  return new Request(resolved, { method, headers, body });
+}
+
+/**
+ * Invokes a `Deno.serve`-style handler with a constructed request and a
+ * synthetic `ServeHandlerInfo`, returning a {@link TestResponse} whose body is
+ * already buffered. No network, server, or permissions are involved.
+ */
+export async function callHandler(
+  handler: ServeHandler,
+  url: string | URL,
+  options: CallHandlerOptions = {},
+): Promise<TestResponse> {
+  const { remoteAddr, ...init } = options;
+  const request = testRequest(url, init);
+  const info: ServeHandlerInfo = {
+    remoteAddr: {
+      transport: remoteAddr?.transport ?? "tcp",
+      hostname: remoteAddr?.hostname ?? "127.0.0.1",
+      port: remoteAddr?.port ?? 0,
+    },
+    completed: Promise.resolve(),
+  };
+
+  let response: Response;
+  try {
+    response = await handler(request, info);
+  } catch (cause) {
+    throw new TestError("Handler threw while processing the request", {
+      code: "TEST_HANDLER_FAILED",
+      details: { url: request.url, method: request.method },
+      cause,
+    });
+  }
+
+  return await readResponse(response);
+}
+
+async function readResponse(response: Response): Promise<TestResponse> {
+  const bodyText = await response.text();
+  const headers = response.headers;
+
+  const self: TestResponse = {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+    ok: response.ok,
+    bodyText,
+
+    text(): string {
+      return bodyText;
+    },
+
+    json<T = unknown>(): T {
+      try {
+        return JSON.parse(bodyText) as T;
+      } catch (cause) {
+        throw new TestError("Response body is not valid JSON", {
+          code: "TEST_ASSERTION_FAILED",
+          details: { body: bodyText },
+          cause,
+        });
+      }
+    },
+
+    header(name: string): string | null {
+      return headers.get(name);
+    },
+
+    assertStatus(expected: number): TestResponse {
+      if (response.status !== expected) {
+        throwAssertionFailure({
+          message:
+            `Expected response status ${expected}, got ${response.status}`,
+          actual: response.status,
+          expected,
+          operator: "assertStatus",
+        });
+      }
+      return self;
+    },
+
+    assertOk(): TestResponse {
+      if (!response.ok) {
+        throwAssertionFailure({
+          message: `Expected a 2xx response status, got ${response.status}`,
+          actual: response.status,
+          expected: "2xx",
+          operator: "assertOk",
+        });
+      }
+      return self;
+    },
+
+    assertHeader(name: string, value?: string | RegExp): TestResponse {
+      const actual = headers.get(name);
+
+      if (actual === null) {
+        throwAssertionFailure({
+          message: `Expected response header ${formatValue(name)}`,
+          actual: null,
+          expected: name,
+          operator: "assertHeader",
+        });
+      }
+
+      if (value !== undefined) {
+        const matches = typeof value === "string"
+          ? actual === value
+          : value.test(actual);
+
+        if (!matches) {
+          throwAssertionFailure({
+            message: `Expected response header ${name} to match`,
+            actual,
+            expected: String(value),
+            operator: "assertHeader",
+          });
+        }
+      }
+
+      return self;
+    },
+
+    assertJson(expected: unknown): TestResponse {
+      assertEquals(self.json(), expected, "Expected response JSON to match");
+      return self;
+    },
+
+    assertBodyIncludes(text: string): TestResponse {
+      if (!bodyText.includes(text)) {
+        throwAssertionFailure({
+          message: `Expected response body to include ${formatValue(text)}`,
+          actual: bodyText,
+          expected: text,
+          operator: "assertBodyIncludes",
+        });
+      }
+      return self;
+    },
+  };
+
+  return self;
 }
 
 /** Creates a named fixture with optional teardown. */

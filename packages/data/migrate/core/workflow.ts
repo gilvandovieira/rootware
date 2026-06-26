@@ -177,6 +177,7 @@ export function defineConfig(config: MigrateConfig): MigrateConfig {
   });
 }
 
+/** Drift categories reported by {@link checkDrift}. */
 export type DriftKind =
   | "schema_changed"
   | "pending_migrations"

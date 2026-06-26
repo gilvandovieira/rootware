@@ -290,11 +290,20 @@ subpaths build on. The HTTP/cache/storage fixtures themselves ship from
 - `assertRootwareError` already lives here (its `/testing` home), satisfying the
   `@rootware/errors` v0.3 cross-reference.
 
-## v0.4.0 — App testing helpers
+## v0.4.0 — App testing helpers — **done (`0.4.0`)**
 
-- Request helper for `Deno.serve`-style handlers.
-- Optional Hono adapter in separate package or subpath.
-- Doomscrollr reference app testing utilities.
+- **Request helper for `Deno.serve`-style handlers** — `testRequest(url, init)`
+  builds a `Request` (bare paths resolve against `http://localhost`; `json` and
+  `query` conveniences), and `callHandler(handler, url, options)` invokes a
+  `ServeHandler` with a synthetic `ServeHandlerInfo` (overridable `remoteAddr`),
+  returning a `TestResponse` whose body is buffered once so it can be read and
+  asserted repeatedly (`assertStatus`/`assertOk`/`assertHeader`/`assertJson`/
+  `assertBodyIncludes`, chainable). No server, network, or permissions.
+- **Hono adapter** — deferred to the dedicated `@rootware/hono` package (it
+  carries an external dependency), not a `@rootware/testing` subpath. The
+  `ServeHandler`/`callHandler` seam is what that adapter will build on.
+- **Doomscrollr reference app testing utilities** — app-specific; they live with
+  the reference app, composed from these primitives rather than shipped here.
 
 ## v0.5.0 — Data testing foundation
 

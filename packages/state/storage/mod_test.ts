@@ -20,8 +20,10 @@ import {
   normalizeBucketName,
   normalizeStorageKey,
   type ResolvedSignUrlOptions,
+  s3StorageStore,
   type SignedUrl,
   StorageError,
+  type StorageFetch,
   type StorageFileSystem,
   type StorageKey,
   type StorageStore,
@@ -314,6 +316,173 @@ Deno.test("@rootware/storage - signUrl delegates to a signing store with resolve
   // Invalid expiry is rejected before reaching the store.
   await assertRejects(
     () => storage.signUrl("photos/p1.jpg", { expiresInMs: 0 }),
+    StorageError,
+  );
+});
+
+/** Mock S3 transport that records requests and returns canned responses. */
+interface CapturedS3Request {
+  method: string;
+  url: string;
+  headers: Headers;
+  body?: Uint8Array;
+}
+
+function mockS3(
+  handler: (request: CapturedS3Request) => Response,
+): { fetch: StorageFetch; calls: CapturedS3Request[] } {
+  const calls: CapturedS3Request[] = [];
+  const fetch: StorageFetch = async (input, init) => {
+    let body: Uint8Array | undefined;
+    if (init?.body !== undefined && init.body !== null) {
+      body = new Uint8Array(
+        await new Response(init.body as BodyInit).arrayBuffer(),
+      );
+    }
+    const request: CapturedS3Request = {
+      method: init?.method ?? "GET",
+      url: String(input),
+      headers: new Headers(init?.headers),
+      body,
+    };
+    calls.push(request);
+    return handler(request);
+  };
+  return { fetch, calls };
+}
+
+function makeS3(handler: (request: CapturedS3Request) => Response) {
+  const mock = mockS3(handler);
+  const storage = createStorage({
+    store: s3StorageStore({
+      bucket: "my-bucket",
+      region: "us-east-1",
+      accessKeyId: "AKID",
+      secretAccessKey: "SECRET",
+      endpoint: "http://localhost:9000", // path-style (RustFS/R2 shape)
+      fetch: mock.fetch,
+    }),
+  });
+  return { storage, calls: mock.calls };
+}
+
+Deno.test("@rootware/storage - s3StorageStore signs and shapes a PUT", async () => {
+  const { storage, calls } = makeS3(() =>
+    new Response(null, { status: 200, headers: { etag: '"abc"' } })
+  );
+
+  const info = await storage.put(
+    "photos/cat.png",
+    new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+    { metadata: { owner: "u1" } },
+  );
+  assertEquals(info.key, "photos/cat.png");
+
+  const req = calls[0];
+  assertEquals(req.method, "PUT");
+  assertEquals(req.url, "http://localhost:9000/my-bucket/photos/cat.png");
+  const auth = req.headers.get("authorization") ?? "";
+  assert(auth.startsWith("AWS4-HMAC-SHA256 Credential=AKID/"));
+  assert(auth.includes("SignedHeaders="));
+  assert(auth.includes("Signature="));
+  assertExists(req.headers.get("x-amz-date"));
+  assertExists(req.headers.get("x-amz-content-sha256"));
+  assertEquals(req.headers.get("content-type"), "image/png");
+  assertEquals(req.headers.get("x-amz-meta-owner"), "u1");
+  assertEquals([...(req.body ?? [])], [1, 2, 3]);
+});
+
+Deno.test("@rootware/storage - s3StorageStore GET maps response to a StorageObject", async () => {
+  const { storage } = makeS3((req) =>
+    req.method === "GET"
+      ? new Response(new Uint8Array([9, 9]), {
+        status: 200,
+        headers: {
+          "content-type": "text/plain",
+          etag: '"xyz"',
+          "x-amz-meta-owner": "u2",
+        },
+      })
+      : new Response(null, { status: 404 })
+  );
+
+  const object = await storage.get("notes/a.txt");
+  assertExists(object);
+  assertEquals(object!.contentType, "text/plain");
+  assertEquals(object!.size, 2);
+  assertEquals(object!.checksum, "xyz");
+  assertEquals(object!.metadata.owner, "u2");
+  assertEquals([...new Uint8Array(await object!.blob.arrayBuffer())], [9, 9]);
+});
+
+Deno.test("@rootware/storage - s3StorageStore GET 404 returns undefined", async () => {
+  const { storage } = makeS3(() => new Response(null, { status: 404 }));
+  assertEquals(await storage.get("missing"), undefined);
+});
+
+Deno.test("@rootware/storage - s3StorageStore delete checks existence then deletes", async () => {
+  const { storage, calls } = makeS3((req) => {
+    if (req.method === "HEAD") return new Response(null, { status: 200 });
+    if (req.method === "DELETE") return new Response(null, { status: 204 });
+    return new Response(null, { status: 404 });
+  });
+
+  assertEquals(await storage.delete("a/b.txt"), true);
+  assertEquals(calls.map((c) => c.method), ["HEAD", "DELETE"]);
+});
+
+Deno.test("@rootware/storage - s3StorageStore list parses the XML result", async () => {
+  const xml =
+    `<?xml version="1.0"?><ListBucketResult><IsTruncated>true</IsTruncated>` +
+    `<Contents><Key>a/1.txt</Key><Size>10</Size><ETag>&quot;e1&quot;</ETag>` +
+    `<LastModified>2026-01-01T00:00:00.000Z</LastModified></Contents>` +
+    `<Contents><Key>a/2.txt</Key><Size>20</Size><ETag>&quot;e2&quot;</ETag>` +
+    `<LastModified>2026-01-02T00:00:00.000Z</LastModified></Contents>` +
+    `<NextContinuationToken>tok123</NextContinuationToken></ListBucketResult>`;
+  const { storage, calls } = makeS3(() => new Response(xml, { status: 200 }));
+
+  const result = await storage.list({ prefix: "a/", limit: 2 });
+  assertEquals(result.objects.map((o) => o.key), ["a/1.txt", "a/2.txt"]);
+  assertEquals(result.objects[0].size, 10);
+  assertEquals(result.objects[0].checksum, "e1");
+  assertEquals(result.hasMore, true);
+  assertEquals(result.cursor, "tok123");
+
+  const url = calls[0].url;
+  assert(url.includes("list-type=2"));
+  assert(url.includes("prefix=a%2F"));
+  assert(url.includes("max-keys=2"));
+});
+
+Deno.test("@rootware/storage - s3StorageStore signUrl builds a presigned URL", async () => {
+  const { storage } = makeS3(() => new Response(null, { status: 200 }));
+
+  const signed = await storage.signUrl("downloads/file.zip", {
+    method: "GET",
+    expiresInMs: 60_000,
+  });
+
+  assertEquals(signed.method, "GET");
+  assertEquals(signed.key, "downloads/file.zip");
+
+  const url = new URL(signed.url);
+  assertEquals(url.host, "localhost:9000");
+  assertEquals(url.pathname, "/my-bucket/downloads/file.zip");
+  assertEquals(url.searchParams.get("X-Amz-Algorithm"), "AWS4-HMAC-SHA256");
+  assertEquals(url.searchParams.get("X-Amz-Expires"), "60");
+  assertExists(url.searchParams.get("X-Amz-Signature"));
+  assert(url.searchParams.get("X-Amz-Credential")?.startsWith("AKID/"));
+});
+
+Deno.test("@rootware/storage - s3StorageStore validates required options", () => {
+  assertThrows(
+    () =>
+      s3StorageStore({
+        bucket: "",
+        region: "us-east-1",
+        accessKeyId: "AKID",
+        secretAccessKey: "SECRET",
+      }),
     StorageError,
   );
 });

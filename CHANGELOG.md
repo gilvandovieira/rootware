@@ -1,5 +1,45 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `v0.4` milestones completed across all packages
+
+Every package advanced its `v0.4` roadmap milestone, bumping each to `0.4.0`
+(unpublished). Live-DB/FFI work stays in the right test tier: pure logic in CI
+(`deno task test` remains permission-free), real execution in the opt-in
+integration suite. `@rootware/schema` was unchanged, so it stays at its current
+version.
+
+- **errors** — `namespacedErrorCode(namespace, name)` builds and validates
+  SCREAMING_SNAKE_CASE codes for cross-package error taxonomies.
+- **env** — `loadEnvFiles` / `parseEnvFile`: conventional `.env` merging (`.env`
+  → `.env.<mode>` → `.env.local` → `.env.<mode>.local`, `*.local` skipped in
+  test) via an injectable reader, with no `@std/dotenv` dependency.
+- **log** — sink expansion: `fileSink`, `writableStreamSink`, `fanoutSink`,
+  `filterSink`/`levelSink`, `failoverSink` (file sink integration-tested).
+- **testing** — `Deno.serve` handler testing: `testRequest` + `callHandler` → a
+  buffered, chainable `TestResponse`.
+- **http** — integration hooks: lifecycle `HttpHooks`
+  (`onRequest`/`onResponse`/`onRetry`/`onError`, stable `requestId`, the OTel/
+  metrics seam) and an opt-in `HttpResponseCache` for safe GET/HEAD caching.
+- **cache** — rate limiting over the `CacheStore`: `fixedWindowRateLimiter` and
+  `tokenBucketRateLimiter` (`RateLimiter`/`RateLimitResult`), in-process
+  serialized per key.
+- **session** — fixation/CSRF/authorization: `SessionManager.rotate`, double-
+  submit + origin CSRF (`createCsrfToken`/`verifyCsrf`/`assertCsrf`), and actor
+  role/permission predicates and guards.
+- **storage** — `s3StorageStore`: an S3-compatible store (AWS/R2/RustFS) signing
+  with AWS SigV4 over an injectable `fetch` (no provider SDK), presigned URLs,
+  RustFS integration test.
+- **orm** — `@rootware/orm/sqlite`: `createSqliteDb` over `@db/sqlite` (lazy FFI
+  import), `sqliteColumnAffinity`; the compiler already emits `?` placeholders.
+- **migrate** — `@rootware/migrate/sqlite`: pure SQLite DDL generator and a
+  SQLite migration runner + history store (lazy `@db/sqlite`).
+- **jobs** — durable adapter design: the `DurableJobStore` contract (lease/
+  claim/heartbeat/reclaim, at-least-once docs) and pure `jobsTableDdl`
+  (Postgres/SQLite) so apps wire the table into `migrate` themselves.
+- **Integration suite** — added RustFS (`compose.yaml`, replacing the
+  unmaintained MinIO) for storage, plus permission-gated in-memory SQLite tests
+  for `orm`/`migrate` (`--allow-ffi`).
+
 ## 2026-06-26 — `orm` and `migrate` v0.3 milestones completed
 
 Finished the parts of the `orm` and `migrate` v0.3 milestones that v0.2/v0.3 had

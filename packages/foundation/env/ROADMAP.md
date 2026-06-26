@@ -265,12 +265,20 @@ Implemented `mode` semantics:
 - `production`: reject default secrets (no unsafe defaults) with clearer fatal
   configuration errors.
 
-## v0.4.0 — File loading helpers
+## v0.4.0 — File loading helpers — **done (`0.4.0`)**
 
-- Optional `.env` file loading helper.
-- Optional integration with `@std/dotenv`.
-- `.env`, `.env.local`, `.env.test` conventions.
-- Document when not to load files in production.
+- **`.env` loading helper** — `loadEnvFiles({ mode, dir, files, reader })`
+  merges conventional files into an `EnvSource` for `defineEnv({ source })`. The
+  reader is injectable (default `denoEnvFileReader`), so it is testable without
+  disk.
+- **`.env` / `.env.local` / `.env.<mode>` conventions** — merge order `.env` →
+  `.env.<mode>` → `.env.local` → `.env.<mode>.local` (later wins); `*.local`
+  skipped in `test` mode.
+- **Parser** — `parseEnvFile` (comments, `export` prefix, single/double quotes,
+  escape expansion). No `@std/dotenv` dependency; the package stays errors-only,
+  and `@std/dotenv` can still be used by passing a custom `reader`/`source`.
+- **Production guidance** — README documents not loading `.env` files in
+  production (inject real env vars instead).
 
 ## v0.5.0 — Provider presets
 

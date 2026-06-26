@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, current package manifest version `@rootware/log@0.3.0`\
+Status: experimental, current package manifest version `@rootware/log@0.4.0`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -1360,25 +1360,35 @@ Acceptance criteria:
 - Compatibility limitations are documented.
 - No Node stream or transport assumptions are introduced into the core.
 
-### `0.4.0` — Sink Expansion
+### `0.4.0` — Sink Expansion — **done (`0.4.0`)**
 
 Goal: make sinks practical beyond stdout and memory.
 
-Scope:
+Shipped:
 
-- Add `fileSink()`.
-- Add `writableStreamSink()`.
-- Add `fanoutSink()`.
-- Add `filterSink()` or `levelSink()` if useful.
-- Add `failoverSink()` if failure behavior is well-defined.
-- Add temporary-file integration tests for file sink.
-- Add examples for local file logging.
+- `fileSink(path, { append })` — Deno-native (`Deno.openSync` + `writeSync`),
+  permission-minimal (needs only `--allow-write` for the target path). Throws a
+  `LogError` (`LOG_WRITE_FAILED`) when `Deno` is absent, so non-Deno runtimes
+  fail clearly instead of crashing.
+- `writableStreamSink(stream)` — adapts any standard
+  `WritableStream<Uint8Array>` (web streams, `Deno.stdout.writable`, compression
+  streams) by holding a single writer; `close()` releases it.
+- `fanoutSink(...sinks)` — writes every line to all sinks and aggregates their
+  flush/close results, so one logger can tee to stdout + file + memory.
+- `filterSink(sink, predicate)` and `levelSink(sink, minLevel)` — drop records
+  that fail a predicate / fall below a level by decoding each JSON line; lines
+  that do not parse pass through untouched.
+- `failoverSink(primary, fallback)` — routes to `fallback` when the primary's
+  `write` throws or rejects, with deterministic (awaited) failure handling.
+- Pure sinks (`writableStreamSink`, `fanoutSink`, `filterSink`, `levelSink`,
+  `failoverSink`) are covered by in-memory unit tests in the default suite;
+  `fileSink` has a temporary-file integration test gated behind `--allow-write`.
 
 Acceptance criteria:
 
-- File sink is Deno-native and permission-minimal.
-- Web stream sink works with standard `WritableStream<Uint8Array>`.
-- All sink behavior is covered by tests.
+- File sink is Deno-native and permission-minimal. ✔
+- Web stream sink works with standard `WritableStream<Uint8Array>`. ✔
+- All sink behavior is covered by tests. ✔
 
 ### `0.5.0` — HTTP Logging Adapters
 

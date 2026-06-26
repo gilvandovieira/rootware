@@ -14,13 +14,16 @@ import {
   createJobQueue,
   createJobRecord,
   cronMatches,
+  DEFAULT_JOBS_TABLE,
   defineJob,
   defineJobs,
   deserializeJobError,
   isJobReady,
   isRetryableJobStatus,
   isTerminalJobStatus,
+  JOB_TABLE_COLUMNS,
   JobError,
+  jobsTableDdl,
   memoryJobStore,
   nextCronRun,
   nextRecurrenceAt,
@@ -356,4 +359,58 @@ Deno.test("@rootware/jobs - worker lifecycle: start, running flag, and stop guar
   await queue.enqueue("noop", {});
   const processed = await worker.tick();
   assertEquals(processed.length, 1);
+});
+
+Deno.test("@rootware/jobs - jobsTableDdl generates Postgres DDL with indexes", () => {
+  const ddl = jobsTableDdl({ dialect: "postgres" });
+
+  assert(
+    ddl.createTable.includes(`create table if not exists "rootware_jobs"`),
+  );
+  assert(ddl.createTable.includes(`"id" text primary key`));
+  assert(ddl.createTable.includes(`"payload" jsonb not null`));
+  assert(ddl.createTable.includes(`"lease_expires_at" timestamptz`));
+  assert(ddl.createTable.includes(`"locked_by" text`));
+  // Lease/claim/idempotency indexes are present.
+  assert(ddl.indexes.some((sql) => sql.includes("_claim_idx")));
+  assert(ddl.indexes.some((sql) => sql.includes("_lease_idx")));
+  assert(
+    ddl.indexes.some((sql) =>
+      sql.includes("_idempotency_idx") &&
+      sql.includes(`where "idempotency_key" is not null`)
+    ),
+  );
+  assertEquals(ddl.statements.length, 1 + ddl.indexes.length);
+  assertEquals(ddl.statements[0], ddl.createTable);
+});
+
+Deno.test("@rootware/jobs - jobsTableDdl maps SQLite types and honors a table name", () => {
+  const ddl = jobsTableDdl({ dialect: "sqlite", tableName: "app_jobs" });
+
+  assert(ddl.createTable.includes(`create table if not exists "app_jobs"`));
+  assert(ddl.createTable.includes(`"payload" TEXT not null`));
+  assert(ddl.createTable.includes(`"run_at" TEXT not null`));
+  assert(ddl.createTable.includes(`"attempts" INTEGER not null`));
+  assert(ddl.indexes.every((sql) => sql.includes(`"app_jobs"`)));
+
+  assertThrows(() =>
+    jobsTableDdl({ dialect: "sqlite", tableName: "bad name" })
+  );
+});
+
+Deno.test("@rootware/jobs - JOB_TABLE_COLUMNS covers the record and lease columns", () => {
+  assertEquals(DEFAULT_JOBS_TABLE, "rootware_jobs");
+  const names = JOB_TABLE_COLUMNS.map((column) => column.name);
+
+  // Lease columns exist for at-least-once durability.
+  assert(names.includes("lease_expires_at"));
+  assert(names.includes("locked_by"));
+  assert(names.includes("idempotency_key"));
+  // The primary key is id and exactly one column is flagged.
+  assertEquals(
+    JOB_TABLE_COLUMNS.filter((column) => column.primaryKey === true).map((c) =>
+      c.name
+    ),
+    ["id"],
+  );
 });

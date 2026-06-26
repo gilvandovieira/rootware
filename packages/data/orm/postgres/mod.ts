@@ -17,6 +17,7 @@ export { createPgOrmDriver } from "./driver.ts";
 export type { PgClient, PgConnectionOptions, PgPool } from "./pool.ts";
 export { createPgPool } from "./pool.ts";
 
+/** PostgreSQL-specialized database facade. */
 export interface PgDatabase extends Database {
   execute<T = unknown>(
     query: SqlInput,
@@ -29,10 +30,12 @@ export interface PgDatabase extends Database {
   ): Promise<OrmQueryResult<T>>;
 }
 
+/** Options for opening a PostgreSQL-backed database facade. */
 export interface CreatePgDbOptions extends PgOrmDriverOptions {
   readonly logger?: Logger;
 }
 
+/** Opens a PostgreSQL-backed database facade. */
 export function createPgDb(
   options: CreatePgDbOptions,
 ): Promise<PgDatabase> {

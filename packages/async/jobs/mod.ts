@@ -10,6 +10,7 @@ const DEFAULT_BACKOFF_STRATEGY: BackoffStrategy = "exponential";
 const DEFAULT_WORKER_INTERVAL_MS = 1_000;
 const DEFAULT_WORKER_CONCURRENCY = 1;
 
+/** Error codes emitted by job queue, store, worker, and execution helpers. */
 export type JobErrorCode =
   | "JOB_INVALID"
   | "JOB_UNKNOWN"
@@ -25,12 +26,16 @@ export type JobErrorCode =
   | "JOB_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Opaque job identifier. */
 export type JobId = string;
 
+/** Normalized job definition name. */
 export type JobName = string;
 
+/** Normalized queue name. */
 export type JobQueueName = string;
 
+/** Lifecycle status for a queued job record. */
 export type JobStatus =
   | "queued"
   | "running"
@@ -39,23 +44,29 @@ export type JobStatus =
   | "dead"
   | "canceled";
 
+/** Scheduling priority used when claiming queued jobs. */
 export type JobPriority =
   | "low"
   | "normal"
   | "high"
   | "critical";
 
+/** Payload value passed to a job handler. */
 export type JobPayload = unknown;
 
+/** Output value returned by a job handler. */
 export type JobOutput = unknown;
 
+/** Structured metadata attached to a queued job. */
 export type JobMetadata = Record<string, unknown>;
 
+/** Retry delay strategy for failed job attempts. */
 export type BackoffStrategy =
   | "fixed"
   | "linear"
   | "exponential";
 
+/** Retry policy shared by job definitions and enqueue calls. */
 export interface RetryOptions {
   readonly attempts?: number;
   readonly backoffMs?: number;
@@ -63,6 +74,7 @@ export interface RetryOptions {
   readonly backoffStrategy?: BackoffStrategy;
 }
 
+/** ISO timestamps tracked for a job record. */
 export interface JobTimestamps {
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -71,6 +83,7 @@ export interface JobTimestamps {
   readonly finishedAt?: string;
 }
 
+/** One recorded execution attempt for a job. */
 export interface JobAttempt {
   readonly attempt: number;
   readonly startedAt: string;
@@ -102,6 +115,7 @@ export interface JobRecord<
   readonly idempotencyKey?: string;
 }
 
+/** Function signature for executing a job payload. */
 export type JobHandler<TPayload = unknown, TOutput = unknown> = {
   bivarianceHack(
     payload: TPayload,
@@ -109,6 +123,7 @@ export type JobHandler<TPayload = unknown, TOutput = unknown> = {
   ): TOutput | Promise<TOutput>;
 }["bivarianceHack"];
 
+/** Context passed to a running job handler. */
 export interface JobContext {
   readonly job: JobRecord;
   readonly logger?: Logger;
@@ -117,12 +132,14 @@ export interface JobContext {
   now(): Date;
 }
 
+/** Result returned after a job handler finishes successfully. */
 export interface JobRunResult<TOutput = JobOutput> {
   readonly job: JobRecord<JobPayload, TOutput>;
   readonly output?: TOutput;
   readonly durationMs: number;
 }
 
+/** Options for defining a typed job handler. */
 export interface DefineJobOptions<
   TPayload = unknown,
   TOutput = unknown,
@@ -148,6 +165,7 @@ export interface JobDefinition<
   readonly description?: string;
 }
 
+/** Options for enqueueing a job record. */
 export interface EnqueueOptions extends RetryOptions {
   readonly id?: JobId;
   readonly queue?: JobQueueName;
@@ -158,6 +176,7 @@ export interface EnqueueOptions extends RetryOptions {
   readonly idempotencyKey?: string;
 }
 
+/** Options for creating a {@link JobQueue}. */
 export interface JobQueueOptions {
   readonly jobs?: JobDefinition[];
   readonly store?: JobStore;
@@ -165,6 +184,7 @@ export interface JobQueueOptions {
   readonly logger?: Logger;
 }
 
+/** Options for a queue worker loop. */
 export interface JobWorkerOptions {
   readonly queue?: JobQueueName;
   readonly names?: JobName[];
@@ -174,16 +194,19 @@ export interface JobWorkerOptions {
   readonly signal?: AbortSignal;
 }
 
+/** Options shared by job store operations. */
 export interface JobStoreOptions {
   readonly queue?: JobQueueName;
 }
 
+/** Options for the in-memory job store. */
 export interface MemoryJobStoreOptions {
   readonly jobs?: JobRecord[];
   readonly cloneValues?: boolean;
   readonly maxJobs?: number;
 }
 
+/** Filters and paging options for listing jobs. */
 export interface JobListOptions {
   readonly queue?: JobQueueName;
   readonly name?: JobName;
@@ -192,6 +215,7 @@ export interface JobListOptions {
   readonly cursor?: string;
 }
 
+/** Paged list response returned by job queues and stores. */
 export interface JobListResult {
   readonly jobs: JobRecord[];
   readonly cursor?: string;
@@ -223,6 +247,270 @@ export interface JobStore {
   clear?(): Promise<void>;
 
   close?(): Promise<void>;
+}
+
+// --- Durable adapter contract (v0.4 design) ---
+
+/** Options for claiming the next job, with an optional visibility lease. */
+export interface JobClaimOptions {
+  readonly queue?: JobQueueName;
+  readonly names?: JobName[];
+  readonly now?: Date | string | number;
+  /** Worker identity recorded as the lease holder (`locked_by`). */
+  readonly workerId?: string;
+  /**
+   * Visibility timeout in milliseconds: how long the claim is held before
+   * {@link DurableJobStore.reclaimExpired} may return the job to `queued`.
+   */
+  readonly leaseMs?: number;
+}
+
+/** Options for reclaiming jobs whose lease has expired. */
+export interface JobReclaimOptions {
+  readonly queue?: JobQueueName;
+  readonly now?: Date | string | number;
+  readonly limit?: number;
+}
+
+/**
+ * A durable {@link JobStore} for multi-worker, multi-process deployments backed
+ * by a transactional database (Postgres or SQLite). It is the contract a durable
+ * adapter implements; it adds the at-least-once primitives the in-memory store
+ * does not need:
+ *
+ * - **Atomic claim with a lease.** `claimNext` must select-and-mark a single
+ *   `queued`, due job in one transaction — Postgres with
+ *   `... FOR UPDATE SKIP LOCKED`, SQLite under its single-writer lock — set it
+ *   to `running`, stamp `locked_by`, and set `lease_expires_at = now + leaseMs`.
+ * - **Lease heartbeats.** A long-running handler calls `heartbeat` to extend
+ *   `lease_expires_at`; it returns `false` if the lease was already lost (the
+ *   job was reclaimed), so the worker can abort.
+ * - **Crash recovery.** `reclaimExpired` returns jobs that are `running` with a
+ *   `lease_expires_at` in the past to `queued` so another worker can pick them
+ *   up — this is what makes delivery at-least-once across crashes.
+ *
+ * Delivery is **at-least-once**: a job can run more than once (e.g. a worker
+ * crashes after the handler succeeds but before it commits). Handlers should be
+ * idempotent; pair with `enqueue({ idempotencyKey })` to dedupe producers.
+ */
+export interface DurableJobStore extends JobStore {
+  claimNext(options?: JobClaimOptions): Promise<JobRecord | undefined>;
+
+  /** Extends a running job's lease; resolves `false` if the lease was lost. */
+  heartbeat(
+    id: JobId,
+    leaseMs: number,
+    now?: Date | string | number,
+  ): Promise<boolean>;
+
+  /** Returns expired-lease `running` jobs to `queued`; resolves the reclaimed jobs. */
+  reclaimExpired(options?: JobReclaimOptions): Promise<JobRecord[]>;
+}
+
+/** Default table name for a durable job store. */
+export const DEFAULT_JOBS_TABLE = "rootware_jobs";
+
+/** Dialects the durable job-table DDL is generated for. */
+export type JobTableDialect = "postgres" | "sqlite";
+
+/** One column of the durable job table, with its per-dialect SQL type. */
+export interface JobColumnSpec {
+  readonly name: string;
+  readonly postgresType: string;
+  readonly sqliteType: string;
+  readonly nullable: boolean;
+  readonly primaryKey?: boolean;
+}
+
+/**
+ * The canonical durable job-table columns. A durable adapter persists a
+ * {@link JobRecord} (plus the `lease_expires_at`/`locked_by` lease columns) into
+ * these. JSON-shaped fields are `jsonb` on Postgres and `text` on SQLite;
+ * timestamps are `timestamptz` / ISO `text`.
+ */
+export const JOB_TABLE_COLUMNS: readonly JobColumnSpec[] = Object.freeze([
+  {
+    name: "id",
+    postgresType: "text",
+    sqliteType: "TEXT",
+    nullable: false,
+    primaryKey: true,
+  },
+  { name: "queue", postgresType: "text", sqliteType: "TEXT", nullable: false },
+  { name: "name", postgresType: "text", sqliteType: "TEXT", nullable: false },
+  { name: "status", postgresType: "text", sqliteType: "TEXT", nullable: false },
+  {
+    name: "priority",
+    postgresType: "text",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  {
+    name: "payload",
+    postgresType: "jsonb",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  { name: "output", postgresType: "jsonb", sqliteType: "TEXT", nullable: true },
+  {
+    name: "metadata",
+    postgresType: "jsonb",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  {
+    name: "attempts",
+    postgresType: "integer",
+    sqliteType: "INTEGER",
+    nullable: false,
+  },
+  {
+    name: "max_attempts",
+    postgresType: "integer",
+    sqliteType: "INTEGER",
+    nullable: false,
+  },
+  {
+    name: "backoff_ms",
+    postgresType: "integer",
+    sqliteType: "INTEGER",
+    nullable: false,
+  },
+  {
+    name: "max_backoff_ms",
+    postgresType: "integer",
+    sqliteType: "INTEGER",
+    nullable: false,
+  },
+  {
+    name: "backoff_strategy",
+    postgresType: "text",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  {
+    name: "created_at",
+    postgresType: "timestamptz",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  {
+    name: "updated_at",
+    postgresType: "timestamptz",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  {
+    name: "run_at",
+    postgresType: "timestamptz",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  {
+    name: "started_at",
+    postgresType: "timestamptz",
+    sqliteType: "TEXT",
+    nullable: true,
+  },
+  {
+    name: "finished_at",
+    postgresType: "timestamptz",
+    sqliteType: "TEXT",
+    nullable: true,
+  },
+  {
+    name: "attempt_history",
+    postgresType: "jsonb",
+    sqliteType: "TEXT",
+    nullable: false,
+  },
+  { name: "error", postgresType: "jsonb", sqliteType: "TEXT", nullable: true },
+  {
+    name: "idempotency_key",
+    postgresType: "text",
+    sqliteType: "TEXT",
+    nullable: true,
+  },
+  {
+    name: "lease_expires_at",
+    postgresType: "timestamptz",
+    sqliteType: "TEXT",
+    nullable: true,
+  },
+  {
+    name: "locked_by",
+    postgresType: "text",
+    sqliteType: "TEXT",
+    nullable: true,
+  },
+]);
+
+/** Options for {@link jobsTableDdl}. */
+export interface JobsTableDdlOptions {
+  readonly dialect: JobTableDialect;
+  readonly tableName?: string;
+}
+
+/** DDL for the durable job table and its supporting indexes. */
+export interface JobsTableDdl {
+  readonly createTable: string;
+  readonly indexes: readonly string[];
+  /** `createTable` followed by every index statement, ready to apply in order. */
+  readonly statements: readonly string[];
+}
+
+/**
+ * Generates the **migration requirements** for a durable job store: the
+ * `CREATE TABLE` and supporting indexes for Postgres or SQLite. The strings are
+ * pure (no driver, no connection), so an application feeds them to
+ * `@rootware/migrate` itself — `@rootware/jobs` never imports `migrate`.
+ *
+ * Indexes: a claim index on `(queue, status, run_at)`, a lease index on
+ * `(status, lease_expires_at)` for reclaim sweeps, and a partial unique index on
+ * `idempotency_key` (ignoring NULLs) so producers can dedupe.
+ */
+export function jobsTableDdl(options: JobsTableDdlOptions): JobsTableDdl {
+  const table = normalizeJobTableName(options.tableName ?? DEFAULT_JOBS_TABLE);
+  const quoted = `"${table}"`;
+  const isPostgres = options.dialect === "postgres";
+
+  const columnLines = JOB_TABLE_COLUMNS.map((column) => {
+    const type = isPostgres ? column.postgresType : column.sqliteType;
+    let line = `  "${column.name}" ${type}`;
+    if (column.primaryKey === true) {
+      line += " primary key";
+    }
+    if (column.nullable === false && column.primaryKey !== true) {
+      line += " not null";
+    }
+    return line;
+  });
+
+  const createTable = `create table if not exists ${quoted} (\n${
+    columnLines.join(",\n")
+  }\n);`;
+
+  const indexes = [
+    `create index if not exists "${table}_claim_idx" on ${quoted} ` +
+    `("queue", "status", "run_at");`,
+    `create index if not exists "${table}_lease_idx" on ${quoted} ` +
+    `("status", "lease_expires_at");`,
+    `create unique index if not exists "${table}_idempotency_idx" on ${quoted} ` +
+    `("idempotency_key") where "idempotency_key" is not null;`,
+  ];
+
+  return { createTable, indexes, statements: [createTable, ...indexes] };
+}
+
+function normalizeJobTableName(name: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new JobError("Invalid job table name", {
+      code: "JOB_INVALID",
+      details: { tableName: name },
+    });
+  }
+
+  return name;
 }
 
 /** Public job queue API. */
@@ -275,6 +563,7 @@ export interface JobQueue {
   close(): Promise<void>;
 }
 
+/** Worker controller returned by {@link JobQueue.worker}. */
 export interface JobWorker {
   readonly running: boolean;
   start(): void;
@@ -282,6 +571,7 @@ export interface JobWorker {
   tick(): Promise<JobRecord[]>;
 }
 
+/** Immutable registry of known job definitions. */
 export interface JobRegistry {
   get(name: JobName): JobDefinition | undefined;
   has(name: JobName): boolean;
@@ -289,10 +579,12 @@ export interface JobRegistry {
   names(): JobName[];
 }
 
+/** Options for generating a job id. */
 export interface CreateJobIdOptions {
   readonly prefix?: string;
 }
 
+/** Options accepted when constructing a {@link JobError}. */
 export interface JobErrorOptions {
   readonly code?: JobErrorCode;
   readonly status?: number;

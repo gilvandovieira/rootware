@@ -10,25 +10,33 @@ const DEFAULT_COOKIE_SAME_SITE: CookieSameSite = "lax";
 const DEFAULT_SESSION_ID_BYTES = 32;
 const DEFAULT_CACHE_PREFIX = "session";
 
+/** Error codes emitted by session lifecycle, cookie, and actor helpers. */
 export type SessionErrorCode =
   | "SESSION_MISSING"
   | "SESSION_EXPIRED"
   | "SESSION_INVALID"
   | "SESSION_ACTOR_REQUIRED"
+  | "SESSION_FORBIDDEN"
+  | "SESSION_CSRF_INVALID"
   | "SESSION_COOKIE_INVALID"
   | "SESSION_CREATE_FAILED"
   | "SESSION_GET_FAILED"
   | "SESSION_SAVE_FAILED"
+  | "SESSION_ROTATE_FAILED"
   | "SESSION_DESTROY_FAILED"
   | "SESSION_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Opaque server-side session identifier. */
 export type SessionId = string;
 
+/** JSON-like server-side data stored with a session. */
 export type SessionData = Record<string, unknown>;
 
+/** Allowed `SameSite` cookie policy values. */
 export type CookieSameSite = "strict" | "lax" | "none";
 
+/** Allowed cookie priority values for clients that support the attribute. */
 export type CookiePriority = "low" | "medium" | "high";
 
 /** Current authenticated or anonymous actor associated with a session. */
@@ -51,6 +59,7 @@ export interface SessionRecord<TData extends SessionData = SessionData> {
   revokedAt?: string;
 }
 
+/** Cookie defaults used by a {@link SessionManager}. */
 export interface SessionCookieOptions {
   readonly name?: string;
   readonly domain?: string;
@@ -62,6 +71,7 @@ export interface SessionCookieOptions {
   readonly priority?: CookiePriority;
 }
 
+/** Options used when serializing a `Set-Cookie` header value. */
 export interface CookieSerializeOptions {
   readonly domain?: string;
   readonly path?: string;
@@ -73,10 +83,12 @@ export interface CookieSerializeOptions {
   readonly priority?: CookiePriority;
 }
 
+/** Options used when parsing a `Cookie` header value. */
 export interface CookieParseOptions {
   readonly decode?: boolean;
 }
 
+/** Options for creating a new server-side session record. */
 export interface SessionCreateOptions<
   TData extends SessionData = SessionData,
 > {
@@ -85,6 +97,7 @@ export interface SessionCreateOptions<
   readonly maxAgeMs?: number;
 }
 
+/** Options for updating an existing server-side session record. */
 export interface SessionUpdateOptions<
   TData extends SessionData = SessionData,
 > {
@@ -93,10 +106,24 @@ export interface SessionUpdateOptions<
   readonly maxAgeMs?: number;
 }
 
+/**
+ * Options for {@link SessionManager.rotate}. Like {@link SessionUpdateOptions}
+ * (so you can attach the authenticated actor while rotating), plus an optional
+ * id prefix for the freshly minted session id.
+ */
+export interface SessionRotateOptions<
+  TData extends SessionData = SessionData,
+> extends SessionUpdateOptions<TData> {
+  /** Prefix for the new session id (see {@link createSessionId}). */
+  readonly idPrefix?: string;
+}
+
+/** Options for fetching a session by cookie or id. */
 export interface SessionGetOptions {
   readonly allowExpired?: boolean;
 }
 
+/** Options for destroying a session by cookie or id. */
 export interface SessionDestroyOptions {
   readonly silent?: boolean;
 }
@@ -150,6 +177,17 @@ export interface SessionManager {
     options: SessionUpdateOptions<TData>,
   ): Promise<SessionRecord<TData>>;
 
+  /**
+   * Issues a new session id for an existing session, persisting it under the new
+   * id and deleting the old one. Call this on login and privilege change to
+   * defend against session fixation. Optionally applies actor/data/maxAge
+   * updates in the same step. Re-`commit` afterwards to set the new cookie.
+   */
+  rotate<TData extends SessionData = SessionData>(
+    session: SessionRecord<TData>,
+    options?: SessionRotateOptions<TData>,
+  ): Promise<SessionRecord<TData>>;
+
   destroy(
     requestOrHeaders: Request | Headers,
     options?: SessionDestroyOptions,
@@ -182,6 +220,7 @@ export interface SessionManager {
   close(): Promise<void>;
 }
 
+/** Options for creating a {@link SessionManager}. */
 export interface SessionManagerOptions {
   readonly store?: SessionStore;
   readonly cookie?: SessionCookieOptions;
@@ -196,16 +235,19 @@ export interface MemorySessionStoreOptions {
   readonly cloneSessions?: boolean;
 }
 
+/** Options for a cache-backed {@link SessionStore}. */
 export interface CacheSessionStoreOptions {
   readonly prefix?: string;
   readonly ttlMs?: number;
 }
 
+/** Options for generating a session id. */
 export interface CreateSessionIdOptions {
   readonly bytes?: number;
   readonly prefix?: string;
 }
 
+/** Options accepted when constructing a {@link SessionError}. */
 export interface SessionErrorOptions {
   readonly code?: SessionErrorCode;
   readonly status?: number;
@@ -753,6 +795,234 @@ export function safeSessionInfo(
   };
 }
 
+/** Reason a {@link verifyCsrf} check failed. */
+export type CsrfFailureReason =
+  | "missing-token"
+  | "token-mismatch"
+  | "origin-mismatch";
+
+/** Result of a CSRF check. */
+export type CsrfResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: CsrfFailureReason };
+
+/** Options for the CSRF double-submit cookie (readable by client JS). */
+export interface CsrfCookieOptions {
+  /** Cookie name; defaults to `"csrf"`. */
+  readonly name?: string;
+  readonly domain?: string;
+  readonly path?: string;
+  /** `Secure` flag; defaults to `true`. */
+  readonly secure?: boolean;
+  /** `SameSite`; defaults to `"lax"`. */
+  readonly sameSite?: CookieSameSite;
+  readonly maxAgeSeconds?: number;
+  readonly priority?: CookiePriority;
+}
+
+/** Options for {@link verifyCsrf} / {@link assertCsrf}. */
+export interface CsrfVerifyOptions {
+  /** Double-submit cookie name; defaults to `"csrf"`. */
+  readonly cookieName?: string;
+  /** Request header carrying the echoed token; defaults to `"x-csrf-token"`. */
+  readonly headerName?: string;
+  /** Methods that skip the check; defaults to `GET`, `HEAD`, `OPTIONS`. */
+  readonly safeMethods?: readonly string[];
+  /** Extra allowed origins; the request's own origin is always allowed. */
+  readonly allowedOrigins?: readonly string[];
+  /** Fail when no `Origin`/`Sec-Fetch-Site` is present. Defaults to `false`. */
+  readonly requireOrigin?: boolean;
+}
+
+/** Creates a URL-safe CSRF token using cryptographically secure randomness. */
+export function createCsrfToken(bytes = 32): string {
+  const size =
+    normalizeOptionalPositiveInteger(bytes, "bytes", "SESSION_INVALID") ??
+      32;
+  const crypto = globalThis.crypto;
+
+  if (crypto === undefined || typeof crypto.getRandomValues !== "function") {
+    throw new SessionError("Secure random generation is not available", {
+      code: "SESSION_CREATE_FAILED",
+      severity: "fatal",
+      details: { reason: "crypto.getRandomValues unavailable" },
+    });
+  }
+
+  const randomBytes = new Uint8Array(size);
+  crypto.getRandomValues(randomBytes);
+  return bytesToHex(randomBytes);
+}
+
+/**
+ * Creates a `Set-Cookie` value for the CSRF double-submit token. The cookie is
+ * intentionally **not** `HttpOnly` so the client can read it and echo it back in
+ * the configured header; pair it with a `SameSite` policy and HTTPS.
+ */
+export function createCsrfCookieHeader(
+  token: string,
+  options: CsrfCookieOptions = {},
+): string {
+  return serializeCookie(options.name ?? "csrf", token, {
+    domain: options.domain,
+    path: options.path ?? DEFAULT_COOKIE_PATH,
+    secure: options.secure ?? true,
+    httpOnly: false,
+    sameSite: options.sameSite ?? "lax",
+    maxAgeSeconds: options.maxAgeSeconds,
+    priority: options.priority,
+  });
+}
+
+/** Returns true when a request's `Origin`/`Sec-Fetch-Site` is same-origin. */
+export function isSameOriginRequest(
+  request: Request,
+  allowedOrigins: readonly string[] = [],
+): boolean {
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  if (secFetchSite === "cross-site") {
+    return false;
+  }
+
+  const origin = request.headers.get("origin");
+  if (origin === null) {
+    // No Origin header: rely on Sec-Fetch-Site (if any) and the token check.
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  try {
+    return origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifies a request against CSRF using origin validation plus a double-submit
+ * cookie token. Safe methods always pass. For unsafe methods, the `Origin`/
+ * `Sec-Fetch-Site` must be same-origin (or allow-listed) and the cookie token
+ * must equal the header token (compared in constant time).
+ */
+export function verifyCsrf(
+  request: Request,
+  options: CsrfVerifyOptions = {},
+): CsrfResult {
+  const safeMethods = options.safeMethods ?? ["GET", "HEAD", "OPTIONS"];
+  if (safeMethods.includes(request.method.toUpperCase())) {
+    return { ok: true };
+  }
+
+  const hasOriginSignal = request.headers.get("origin") !== null ||
+    request.headers.get("sec-fetch-site") !== null;
+  if (options.requireOrigin === true && !hasOriginSignal) {
+    return { ok: false, reason: "origin-mismatch" };
+  }
+
+  if (!isSameOriginRequest(request, options.allowedOrigins ?? [])) {
+    return { ok: false, reason: "origin-mismatch" };
+  }
+
+  const cookieToken = parseCookieHeader(
+    request.headers.get("cookie"),
+  )[options.cookieName ?? "csrf"];
+  const headerToken = request.headers.get(options.headerName ?? "x-csrf-token");
+
+  if (
+    cookieToken === undefined || cookieToken.length === 0 ||
+    headerToken === null || headerToken.length === 0
+  ) {
+    return { ok: false, reason: "missing-token" };
+  }
+
+  if (!timingSafeEqualString(cookieToken, headerToken)) {
+    return { ok: false, reason: "token-mismatch" };
+  }
+
+  return { ok: true };
+}
+
+/** Like {@link verifyCsrf}, but throws a `SESSION_CSRF_INVALID` error on failure. */
+export function assertCsrf(
+  request: Request,
+  options: CsrfVerifyOptions = {},
+): void {
+  const result = verifyCsrf(request, options);
+
+  if (!result.ok) {
+    throw new SessionError("CSRF validation failed", {
+      code: "SESSION_CSRF_INVALID",
+      status: 403,
+      expose: true,
+      severity: "warn",
+      details: { reason: result.reason },
+    });
+  }
+}
+
+/** Returns true when the actor carries `role`. */
+export function actorHasRole(actor: SessionActor, role: string): boolean {
+  return actor.roles?.includes(role) ?? false;
+}
+
+/** Returns true when the actor carries at least one of `roles`. */
+export function actorHasAnyRole(
+  actor: SessionActor,
+  roles: readonly string[],
+): boolean {
+  return roles.some((role) => actorHasRole(actor, role));
+}
+
+/** Returns true when the actor carries `permission`. */
+export function actorHasPermission(
+  actor: SessionActor,
+  permission: string,
+): boolean {
+  return actor.permissions?.includes(permission) ?? false;
+}
+
+/** Returns true when the actor carries every one of `permissions`. */
+export function actorHasAllPermissions(
+  actor: SessionActor,
+  permissions: readonly string[],
+): boolean {
+  return permissions.every((permission) =>
+    actorHasPermission(actor, permission)
+  );
+}
+
+/** Throws `SESSION_FORBIDDEN` unless the actor carries `role`. */
+export function assertActorRole(actor: SessionActor, role: string): void {
+  if (!actorHasRole(actor, role)) {
+    throw new SessionError("Actor is missing a required role", {
+      code: "SESSION_FORBIDDEN",
+      status: 403,
+      expose: true,
+      severity: "warn",
+      details: { required: role, kind: "role" },
+    });
+  }
+}
+
+/** Throws `SESSION_FORBIDDEN` unless the actor carries `permission`. */
+export function assertActorPermission(
+  actor: SessionActor,
+  permission: string,
+): void {
+  if (!actorHasPermission(actor, permission)) {
+    throw new SessionError("Actor is missing a required permission", {
+      code: "SESSION_FORBIDDEN",
+      status: 403,
+      expose: true,
+      severity: "warn",
+      details: { required: permission, kind: "permission" },
+    });
+  }
+}
+
 /** Creates a session manager that never persists sessions. */
 export function noopSessionManager(): SessionManager {
   return {
@@ -787,6 +1057,23 @@ export function noopSessionManager(): SessionManager {
       options: SessionUpdateOptions<TData>,
     ): Promise<SessionRecord<TData>> {
       return Promise.resolve(updateSessionRecord(session, options));
+    },
+
+    rotate<TData extends SessionData = SessionData>(
+      session: SessionRecord<TData>,
+      options: SessionRotateOptions<TData> = {},
+    ): Promise<SessionRecord<TData>> {
+      const hasUpdates = options.actor !== undefined ||
+        options.data !== undefined || options.maxAgeMs !== undefined;
+      const base = hasUpdates
+        ? updateSessionRecord(session, options)
+        : normalizeSessionRecord(session);
+      return Promise.resolve({
+        ...base,
+        id: createSessionId(
+          options.idPrefix === undefined ? {} : { prefix: options.idPrefix },
+        ),
+      });
     },
 
     destroy(
@@ -960,6 +1247,47 @@ class RootwareSessionManager implements SessionManager {
     } catch (error) {
       throw this.#operationError("update", "SESSION_SAVE_FAILED", error, {
         sessionId: truncateSessionId(session.id),
+      });
+    }
+  }
+
+  async rotate<TData extends SessionData = SessionData>(
+    session: SessionRecord<TData>,
+    options: SessionRotateOptions<TData> = {},
+  ): Promise<SessionRecord<TData>> {
+    const previousId = normalizeSessionId(session.id);
+
+    try {
+      const hasUpdates = options.actor !== undefined ||
+        options.data !== undefined || options.maxAgeMs !== undefined;
+      const base = hasUpdates
+        ? updateSessionRecord(session, options)
+        : normalizeSessionRecord(session);
+      const rotated: SessionRecord<TData> = {
+        ...base,
+        id: createSessionId(
+          options.idPrefix === undefined ? {} : { prefix: options.idPrefix },
+        ),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await this.#store.set(rotated);
+
+      if (rotated.id !== previousId) {
+        await this.#store.delete(previousId);
+      }
+
+      this.#debug(
+        {
+          session: safeSessionInfo(rotated),
+          previousId: truncateSessionId(previousId),
+        },
+        "session rotated",
+      );
+      return rotated;
+    } catch (error) {
+      throw this.#operationError("rotate", "SESSION_ROTATE_FAILED", error, {
+        sessionId: truncateSessionId(previousId),
       });
     }
   }
@@ -1441,6 +1769,19 @@ function bytesToHex(bytes: Uint8Array): string {
   }
 
   return output;
+}
+
+/** Compares two strings in time independent of where they first differ. */
+function timingSafeEqualString(a: string, b: string): boolean {
+  // Fold the length comparison into the loop so a mismatched length still does
+  // constant work and does not early-return.
+  let mismatch = a.length ^ b.length;
+
+  for (let index = 0; index < a.length; index += 1) {
+    mismatch |= a.charCodeAt(index) ^ (b.charCodeAt(index) || 0);
+  }
+
+  return mismatch === 0;
 }
 
 function evictOldestSessions(

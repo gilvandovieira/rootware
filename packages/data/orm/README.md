@@ -83,6 +83,8 @@ await db.select().from(users).where(eq(users.columns.id, "u_123")).execute();
   `notInArray`, `isNull`, `isNotNull`, `and`, `or`, `not`
 - `@rootware/orm/postgres` — `createPgDb`, `connect`, `createPgOrmDriver`,
   `createPgExecutor`, `createPgPool`
+- `@rootware/orm/sqlite` — `createSqliteDb`, `connect`, `createSqliteOrmDriver`,
+  `createSqliteExecutor`, `sqliteColumnAffinity`
 
 ## Query expansion (`0.3`)
 
@@ -125,8 +127,31 @@ that automatically, so treat left-joined columns as nullable.
 ### Transactions
 
 `db.transaction(fn)` runs `fn` in a real transaction (`BEGIN`/`COMMIT`, with
-`ROLLBACK` if `fn` throws) when the driver supports it (the Postgres adapter
-does). `connect(options)` is a convenience alias for `createPgDb`.
+`ROLLBACK` if `fn` throws) when the driver supports it (both the Postgres and
+SQLite adapters do). `connect(options)` is a convenience alias for `createPgDb`
+(and for `createSqliteDb` on the `/sqlite` subpath).
+
+### SQLite (`0.4`)
+
+`@rootware/orm/sqlite` runs the same `defineTable`/`columns`/query-builder
+surface against SQLite via the bundled `@db/sqlite` driver — the compiler
+already emits `?` placeholders for the `sqlite` dialect:
+
+```ts
+import { createSqliteDb } from "jsr:@rootware/orm/sqlite";
+
+const db = await createSqliteDb({ path: ":memory:" }); // or a file path
+const open = await db.select().from(notes).where(eq(notes.columns.done, false))
+  .execute();
+```
+
+`createSqliteDb` accepts a `path` (`:memory:` by default), an already-open
+`database`, or an `executor` (for tests). The `@db/sqlite` driver uses FFI, so a
+real open needs `--allow-ffi` (plus `--allow-read`/`--allow-write`/`--allow-net`
+to fetch the native library the first time); the driver is imported lazily, so
+importing the subpath and injecting a fake database needs no permissions.
+`sqliteColumnAffinity(dataType)` exposes the type→storage-class mapping
+(`TEXT`/`INTEGER`/`REAL`).
 
 Postgres-typed columns (`varchar`, `bigint`, `jsonb`, `timestamptz`) carry their
 type — and `varchar` length — through to the `@rootware/schema` snapshot
@@ -143,10 +168,10 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-The root import does not include database drivers. PostgreSQL is available only
-through `@rootware/orm/postgres`; future SQLite support should use its own
-subpath rather than sharing PostgreSQL code. Joins, relations, schema
-introspection, and advanced SQL builders are still outside the current scope.
+The root import does not include database drivers. PostgreSQL is available
+through `@rootware/orm/postgres` and SQLite through `@rootware/orm/sqlite`, each
+with its own driver. Relations, schema introspection, and advanced SQL builders
+are still outside the current scope.
 
 ## Status
 

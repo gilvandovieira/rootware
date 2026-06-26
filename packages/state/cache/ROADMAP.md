@@ -282,10 +282,23 @@ The concrete Redis/KV/SQL drivers stay deferred — they require live services a
 are not CI-testable under the no-network rule — but the contracts and the
 lock-aware `getOrSet` they plug into now ship.
 
-## v0.4.0 — Rate-limit integration
+## v0.4.0 — Rate-limit integration — **done (`0.4.0`)**
 
-- Provide primitives used by `@rootware/rate-limit` or `@rootware/session`.
-- Avoid making rate limit part of cache core too early.
+- **`fixedWindowRateLimiter({ limit, windowMs })`** and
+  **`tokenBucketRateLimiter({ capacity, refillTokens, refillIntervalMs })`** —
+  counter-based limiters over the `CacheStore` contract (default in-memory; pass
+  a distributed store to share state). Each returns a `RateLimiter` with
+  `consume(key, cost?)`, `peek(key)`, and `reset(key)`, and a `RateLimitResult`
+  (`allowed`, `limit`, `remaining`, `resetAt`, `retryAfterMs`) shaped for
+  `RateLimit-*`/`Retry-After` headers. An injectable `now` clock keeps the
+  limiters deterministic in tests.
+- **Correctness** — operations on the same key are serialized in-process (a
+  keyed mutex), so concurrent `consume` calls never over-admit within one
+  isolate; cross-process correctness still requires an atomic backing store
+  (documented). TTL is set so idle keys expire (window end / full-refill time).
+- **Kept out of the core surface** — these are opt-in functions a future
+  `@rootware/rate-limit` or `@rootware/session` layer can consume; they do not
+  change `CacheClient`/`CacheStore` or make rate limiting implicit.
 
 ## v1.0.0 — Stable cache contract
 

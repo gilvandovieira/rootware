@@ -3,16 +3,21 @@ import {
   bufferedSink,
   createLogger,
   createNoopLogger,
+  failoverSink,
+  fanoutSink,
+  filterSink,
   formatLogRecord,
   getLogLevelNumber,
   isLogLevelName,
   levels,
+  levelSink,
   type LogError,
   type LogSink,
   memorySink,
   serializeErrorForLog,
   shouldLog,
   unbufferedSink,
+  writableStreamSink,
 } from "./mod.ts";
 
 Deno.test("@rootware/log - createLogger writes structured records", () => {
@@ -199,4 +204,68 @@ Deno.test("@rootware/log - onWriteError handles sync and async sink failures", a
   assertEquals(captured.length, 2);
   assertEquals(captured[0].code, "LOG_WRITE_FAILED");
   assertEquals(captured[1].code, "LOG_WRITE_FAILED");
+});
+
+Deno.test("@rootware/log - fanoutSink writes to every sink", () => {
+  const a = memorySink();
+  const b = memorySink();
+  const logger = createLogger(
+    { level: "info" },
+    unbufferedSink(fanoutSink(a, b)),
+  );
+  logger.info({ id: 1 }, "to both");
+  assertEquals(a.records()[0].msg, "to both");
+  assertEquals(b.records()[0].msg, "to both");
+});
+
+Deno.test("@rootware/log - filterSink and levelSink drop non-matching records", () => {
+  const filtered = memorySink();
+  const fLogger = createLogger(
+    { level: "trace" },
+    filterSink(filtered, (record) => record.tenant === "keep"),
+  );
+  fLogger.info({ tenant: "keep" }, "kept");
+  fLogger.info({ tenant: "drop" }, "dropped");
+  assertEquals(filtered.records().map((r) => r.msg), ["kept"]);
+
+  const levelled = memorySink();
+  const lLogger = createLogger({ level: "trace" }, levelSink(levelled, "warn"));
+  lLogger.debug("hidden");
+  lLogger.warn("shown");
+  lLogger.error("shown too");
+  assertEquals(levelled.records().map((r) => r.levelName), ["warn", "error"]);
+});
+
+Deno.test("@rootware/log - failoverSink falls back when the primary throws", () => {
+  const fallback = memorySink();
+  const broken: LogSink = {
+    write() {
+      throw new Error("primary down");
+    },
+  };
+  const logger = createLogger(
+    { level: "info" },
+    failoverSink(broken, fallback),
+  );
+  logger.info("rescued");
+  assertEquals(fallback.records()[0].msg, "rescued");
+});
+
+Deno.test("@rootware/log - writableStreamSink writes to a web stream", async () => {
+  const chunks: Uint8Array[] = [];
+  const stream = new WritableStream<Uint8Array>({
+    write(chunk) {
+      chunks.push(chunk);
+    },
+  });
+  const logger = createLogger({ level: "info" }, writableStreamSink(stream));
+  logger.info({ port: 8000 }, "listening");
+  await logger.close();
+
+  const text = new TextDecoder().decode(
+    new Uint8Array(chunks.flatMap((chunk) => [...chunk])),
+  );
+  const record = JSON.parse(text.trim());
+  assertEquals(record.msg, "listening");
+  assertEquals(record.port, 8000);
 });

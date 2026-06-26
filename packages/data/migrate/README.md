@@ -92,8 +92,37 @@ await migrator.migrate({
   `createPgMigrationHistoryStore`, `createPgExecutor`, `createPgPool`, and the
   DDL generators `generatePostgresCreateTable`, `generatePostgresUpStatements`,
   `generatePostgresColumnType`, `quotePgIdent`
+- `@rootware/migrate/sqlite` — `createSqliteMigrator`,
+  `createSqliteMigrationDriver`, `createSqliteMigrationHistoryStore`,
+  `createSqliteExecutor`, and the DDL generators `generateSqliteCreateTable`,
+  `generateSqliteUpStatements`, `generateSqliteColumnType`, `quoteSqliteIdent`
 - `@rootware/migrate/cli` — `parseMigrateCliArgs`, `runMigrateCli`,
   `createPostgresMigrateRunner`, `main`
+
+## SQLite migrations (`0.4`)
+
+`@rootware/migrate/sqlite` mirrors the Postgres subpath for SQLite. The DDL
+generators are pure (snapshot kind → SQLite affinity), and
+`createSqliteMigrator` runs migrations through the bundled `@db/sqlite` driver:
+
+```ts
+import { createSqliteMigrator } from "jsr:@rootware/migrate/sqlite";
+
+const migrator = await createSqliteMigrator({ path: "./app.db" }); // or :memory:
+await migrator.migrate({
+  migrations: [{
+    id: "0001_init",
+    up: ["create table notes (id integer primary key)"],
+  }],
+});
+```
+
+The `@db/sqlite` driver uses FFI, so a real migrator needs `--allow-ffi` (plus
+`--allow-read`/`--allow-write`/`--allow-net`); the driver is imported lazily, so
+the pure DDL generators and an injected `executor`/`database` need no
+permissions. Only additive changes are auto-generated; SQLite cannot drop or
+retype columns in place (those surface as `destructive` for a manual table
+rebuild).
 
 ## Generated migrations (`0.3`)
 
@@ -169,11 +198,10 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-The root import does not include database adapters. PostgreSQL is available only
-through `@rootware/migrate/postgres`; future SQLite support should use its own
-subpath rather than sharing PostgreSQL code. Filesystem migration discovery, CLI
-commands, schema diffing, advisory locks, and checksum repair workflows are
-still planned for later releases.
+The root import does not include database adapters. PostgreSQL is available
+through `@rootware/migrate/postgres` and SQLite through
+`@rootware/migrate/sqlite`, each with its own driver. Advisory locks and
+checksum repair workflows are still planned for later releases.
 
 ## Status
 

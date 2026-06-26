@@ -3,10 +3,13 @@ import {
   defineEnv,
   env,
   EnvError,
+  type EnvFileReader,
   fromRecord,
   generateEnvExample,
   isSecretKey,
+  loadEnvFiles,
   parseBoolean,
+  parseEnvFile,
   parseInteger,
   parseNumber,
   parseUrl,
@@ -282,4 +285,68 @@ Deno.test("@rootware/env - prefix edge cases", () => {
       .PORT,
     2222,
   );
+});
+
+Deno.test("@rootware/env - parseEnvFile handles comments, quotes, export, invalid keys", () => {
+  const parsed = parseEnvFile([
+    "# a comment",
+    "",
+    "export PORT=8000",
+    'NAME="Rootware App"',
+    'MULTILINE="line1\\nline2"',
+    "LITERAL='no \\n expansion'",
+    "EMPTY=",
+    "BARE=hello world",
+    "1INVALID=skip",
+    "no_equals_here",
+  ].join("\n"));
+
+  assertEquals(parsed.PORT, "8000");
+  assertEquals(parsed.NAME, "Rootware App");
+  assertEquals(parsed.MULTILINE, "line1\nline2");
+  assertEquals(parsed.LITERAL, "no \\n expansion");
+  assertEquals(parsed.EMPTY, "");
+  assertEquals(parsed.BARE, "hello world");
+  assertEquals("1INVALID" in parsed, false);
+});
+
+Deno.test("@rootware/env - loadEnvFiles merges conventional files (later wins)", () => {
+  const files = new Map<string, string>([
+    [".env", "A=1\nB=base\nSHARED=env"],
+    [".env.local", "B=local"],
+    [".env.development", "C=dev"],
+    [".env.test", "C=test"],
+  ]);
+  const reader: EnvFileReader = (path) => files.get(path);
+
+  // development: .env -> .env.development -> .env.local -> .env.development.local
+  assertEquals(loadEnvFiles({ reader, mode: "development" }), {
+    A: "1",
+    B: "local",
+    SHARED: "env",
+    C: "dev",
+  });
+
+  // test mode skips *.local files so tests are deterministic.
+  assertEquals(loadEnvFiles({ reader, mode: "test" }), {
+    A: "1",
+    B: "base",
+    SHARED: "env",
+    C: "test",
+  });
+
+  // explicit file list overrides the convention.
+  assertEquals(loadEnvFiles({ reader, files: [".env.local"] }), { B: "local" });
+});
+
+Deno.test("@rootware/env - loadEnvFiles feeds defineEnv as a source", () => {
+  const reader: EnvFileReader = (path) =>
+    path === ".env" ? "PORT=3000\nLOG_LEVEL=warn" : undefined;
+  const values = defineEnv({
+    PORT: env.integer().default(8000),
+    LOG_LEVEL: env.enum(["debug", "info", "warn", "error"]).default("info"),
+  }, { source: loadEnvFiles({ reader }), mode: "development" });
+
+  assertEquals(values.PORT, 3000);
+  assertEquals(values.LOG_LEVEL, "warn");
 });

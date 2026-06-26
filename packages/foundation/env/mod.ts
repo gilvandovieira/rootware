@@ -2,8 +2,10 @@ import { RootwareError } from "@rootware/errors";
 
 const REDACTED_VALUE = "[REDACTED]";
 
+/** Runtime validation mode that controls default and global-env behavior. */
 export type EnvMode = "development" | "test" | "production";
 
+/** Error codes emitted by environment validation and access helpers. */
 export type EnvErrorCode =
   | "ENV_MISSING_VARIABLE"
   | "ENV_INVALID_VARIABLE"
@@ -12,6 +14,7 @@ export type EnvErrorCode =
   | "ENV_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Explicit key/value source used instead of reading `Deno.env` directly. */
 export type EnvSource = Record<string, string | undefined>;
 
 /** Builder-produced definition for one environment variable. */
@@ -46,8 +49,10 @@ export interface EnvVarDefinition<T> {
   secret(): EnvVarDefinition<T>;
 }
 
+/** Object shape mapping environment variable names to validation definitions. */
 export type EnvSchema = Record<string, EnvVarDefinition<unknown>>;
 
+/** Infers resolved environment value types from an {@link EnvSchema}. */
 export type InferEnv<TSchema extends EnvSchema> = {
   readonly [K in keyof TSchema]: TSchema[K] extends EnvVarDefinition<infer T>
     ? T
@@ -655,6 +660,175 @@ function formatEnvValue(value: unknown): string {
   }
 
   return String(value);
+}
+
+// --- .env file loading (v0.4) ---------------------------------------------
+
+/**
+ * Reads a file's text, returning `undefined` when it does not exist. Injected
+ * into {@link loadEnvFiles} so loading is testable without touching disk; the
+ * default ({@link denoEnvFileReader}) uses `Deno.readTextFileSync`.
+ */
+export type EnvFileReader = (path: string) => string | undefined;
+
+/** Options for {@link loadEnvFiles}. */
+export interface LoadEnvFilesOptions {
+  /** Selects the `.env.<mode>` files; also skips `*.local` files in `test`. */
+  readonly mode?: EnvMode;
+  /** Directory the `.env*` files live in. Defaults to `"."`. */
+  readonly dir?: string;
+  /** Explicit ordered file list (later wins), overriding the convention. */
+  readonly files?: readonly string[];
+  /** File reader. Defaults to {@link denoEnvFileReader}. */
+  readonly reader?: EnvFileReader;
+}
+
+/**
+ * Parses `.env`-style text into a record.
+ *
+ * Supports `KEY=VALUE`, blank lines, `#` comments, an optional `export ` prefix,
+ * and single- or double-quoted values (double quotes expand `\n`/`\t`/`\r`/`\\`/
+ * `\"`; single quotes are literal). Unquoted values are trimmed and kept as-is.
+ */
+export function parseEnvFile(text: string): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith("#")) {
+      continue;
+    }
+
+    const withoutExport = line.startsWith("export ")
+      ? line.slice("export ".length)
+      : line;
+    const equals = withoutExport.indexOf("=");
+    if (equals <= 0) {
+      continue;
+    }
+
+    const key = withoutExport.slice(0, equals).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      continue;
+    }
+
+    result[key] = parseEnvValue(withoutExport.slice(equals + 1).trim());
+  }
+
+  return result;
+}
+
+/** Default {@link EnvFileReader} backed by `Deno.readTextFileSync`. */
+export function denoEnvFileReader(): EnvFileReader {
+  const deno = (globalThis as {
+    readonly Deno?: {
+      readTextFileSync(path: string): string;
+      readonly errors: { readonly NotFound: new (...args: never[]) => Error };
+    };
+  }).Deno;
+
+  if (deno === undefined) {
+    throw new EnvError("Deno file APIs are not available", {
+      code: "ENV_ACCESS_DENIED",
+      details: { source: "Deno.readTextFileSync" },
+    });
+  }
+
+  return (path) => {
+    try {
+      return deno.readTextFileSync(path);
+    } catch (cause) {
+      if (cause instanceof deno.errors.NotFound) {
+        return undefined;
+      }
+      throw new EnvError("Unable to read env file", {
+        code: "ENV_ACCESS_DENIED",
+        details: { path },
+        cause,
+      });
+    }
+  };
+}
+
+/**
+ * Loads and merges conventional `.env` files into an {@link EnvSource} suitable
+ * for `defineEnv({ source })`. Files are merged in order (later wins):
+ * `.env` → `.env.<mode>` → `.env.local` → `.env.<mode>.local`. `*.local` files
+ * are skipped in `test` mode so tests never pick up a developer's local
+ * overrides. Pass `files` to load an explicit ordered list instead.
+ *
+ * Do not load `.env` files in production — production should inject real
+ * environment variables. Use this for local development and tests.
+ */
+export function loadEnvFiles(options: LoadEnvFilesOptions = {}): EnvSource {
+  const reader = options.reader ?? denoEnvFileReader();
+  const dir = options.dir ?? ".";
+  const files = options.files ?? conventionalEnvFiles(options.mode);
+  const merged: EnvSource = {};
+
+  for (const file of files) {
+    const text = reader(joinEnvPath(dir, file));
+    if (text === undefined) {
+      continue;
+    }
+    Object.assign(merged, parseEnvFile(text));
+  }
+
+  return merged;
+}
+
+function conventionalEnvFiles(mode: EnvMode | undefined): string[] {
+  const files = [".env"];
+  if (mode !== undefined) {
+    files.push(`.env.${mode}`);
+  }
+  // Local override files are skipped in test so tests stay deterministic.
+  if (mode !== "test") {
+    files.push(".env.local");
+    if (mode !== undefined) {
+      files.push(`.env.${mode}.local`);
+    }
+  }
+  return files;
+}
+
+function parseEnvValue(value: string): string {
+  if (value.length === 0) {
+    return "";
+  }
+
+  const quote = value[0];
+  if (
+    (quote === '"' || quote === "'") && value.endsWith(quote) &&
+    value.length >= 2
+  ) {
+    const inner = value.slice(1, -1);
+    return quote === '"' ? expandDoubleQuoted(inner) : inner;
+  }
+
+  return value;
+}
+
+function expandDoubleQuoted(value: string): string {
+  return value.replace(/\\([ntr"\\])/g, (_match, escaped: string) => {
+    switch (escaped) {
+      case "n":
+        return "\n";
+      case "t":
+        return "\t";
+      case "r":
+        return "\r";
+      default:
+        return escaped;
+    }
+  });
+}
+
+function joinEnvPath(dir: string, file: string): string {
+  if (dir === "." || dir === "") {
+    return file;
+  }
+  return dir.endsWith("/") ? `${dir}${file}` : `${dir}/${file}`;
 }
 
 // Example:

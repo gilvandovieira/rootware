@@ -7,11 +7,13 @@ import {
   resolvePgConnectionSource,
 } from "./pool.ts";
 
+/** Rows and affected-row count returned by a PostgreSQL migration executor. */
 export interface QueryResult<Row = Record<string, unknown>> {
   readonly rows: Row[];
   readonly rowCount: number;
 }
 
+/** Minimal SQL executor used by the PostgreSQL migration adapter. */
 export interface SqlExecutor {
   execute<Row = Record<string, unknown>>(
     sql: string,
@@ -27,6 +29,7 @@ interface AcquiredClient {
   release(): void;
 }
 
+/** Creates a PostgreSQL SQL executor from an existing executor, pool, client, or URL. */
 export function createPgExecutor(
   options: PgConnectionOptions & {
     readonly executor?: SqlExecutor;

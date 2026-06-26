@@ -4,10 +4,12 @@ import { createPgExecutor, type SqlExecutor } from "./executor.ts";
 import { toPgMigrationError } from "./errors.ts";
 import type { PgConnectionOptions } from "./pool.ts";
 
+/** Options for creating a PostgreSQL-backed migration driver. */
 export interface PgMigrationDriverOptions extends PgConnectionOptions {
   readonly executor?: SqlExecutor;
 }
 
+/** Creates a core migration driver backed by PostgreSQL SQL execution. */
 export function createPgMigrationDriver(
   options: PgMigrationDriverOptions,
 ): MigrationDriver {

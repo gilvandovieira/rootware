@@ -34,6 +34,7 @@ const url = storage.publicUrl("avatars/u_123.png");
 - `createStorage`
 - `memoryStorageStore`
 - `localStorageStore`
+- `s3StorageStore` (+ `S3StorageStoreOptions`, `StorageFetch`)
 - `createStorageBucket`
 - `noopStorage`
 - `createStorageObject`
@@ -44,6 +45,35 @@ const url = storage.publicUrl("avatars/u_123.png");
 `localStorageStore({ rootDir })` persists objects to disk using Deno file APIs
 (needs `--allow-read`/`--allow-write` on `rootDir`). Inject a custom
 `StorageFileSystem` to test without touching disk.
+
+## S3-compatible storage (`0.4`)
+
+`s3StorageStore` is an S3-compatible `StorageStore` (AWS S3, Cloudflare R2,
+RustFS). It signs requests with **AWS Signature V4** via Web Crypto and issues
+SigV4 **presigned URLs** — no provider SDK, the only external surface is `fetch`
+(injectable via `StorageFetch`):
+
+```ts
+import { createStorage, s3StorageStore } from "jsr:@rootware/storage";
+
+const storage = createStorage({
+  store: s3StorageStore({
+    bucket: "my-bucket",
+    region: "auto", // R2/RustFS accept "auto"
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+    endpoint: "https://<account>.r2.cloudflarestorage.com", // omit for AWS
+  }),
+});
+
+await storage.put("photos/cat.png", bytes, { contentType: "image/png" });
+const url = await storage.signUrl("photos/cat.png", { expiresInMs: 60_000 });
+```
+
+`forcePathStyle` defaults to path-style when a custom `endpoint` is set (R2 and
+RustFS) and virtual-hosted for the AWS default; `sessionToken` is supported for
+temporary credentials. Object user metadata maps to `x-amz-meta-*` and the
+provider `ETag` surfaces as the object `checksum`.
 
 ## Signed URLs (`0.3`)
 
@@ -82,10 +112,9 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package ships memory, local-filesystem, and noop stores. S3/R2/Supabase
-adapters (and the signing backends behind `signUrl`), multipart uploads, and
-streaming adapters are future work — the `signUrl` **contract** ships now, but
-no bundled store can sign.
+This package ships memory, local-filesystem, S3-compatible (`s3StorageStore`,
+which can sign), and noop stores. Supabase adapters, multipart uploads, and
+streaming adapters are future work.
 
 ## Status
 

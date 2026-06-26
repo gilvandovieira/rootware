@@ -299,12 +299,25 @@ Test put/get/delete/list/key safety.
 The concrete S3/R2/GCS signing adapters stay deferred (they require live
 services); the contract and unsupported behavior they plug into ship now.
 
-## v0.4.0 — S3/R2 adapter
+## v0.4.0 — S3/R2 adapter — **done (`0.4.0`)**
 
-- Add adapter package or subpath.
-- Support S3-compatible storage.
-- Keep provider dependency out of core if possible.
-- Preserve real ETag/checksum behavior for provider adapters.
+- **`s3StorageStore(options)`** — an S3-compatible `StorageStore` for AWS S3,
+  Cloudflare R2, and RustFS. Implements `put`/`get`/`delete`/`exists`/`list`/
+  `signUrl`, mapping user metadata to `x-amz-meta-*` headers and carrying object
+  `ETag` through as the `checksum`.
+- **No provider SDK in core** — requests are signed with **AWS Signature V4**
+  using Web Crypto (HMAC/SHA-256), and `signUrl` produces SigV4 **presigned
+  URLs**. The only external surface is fetch, injected via `StorageFetch`
+  (defaults to global `fetch`), so the adapter is unit-testable without a live
+  bucket and adds zero dependencies.
+- **Path/virtual-hosted styles** — `forcePathStyle` defaults to path-style when
+  a custom `endpoint` is set (R2/RustFS) and virtual-hosted for the AWS default.
+  Supports `sessionToken` for temporary credentials.
+- **Real ETag/checksum behavior** — `get`/`list` surface the provider ETag; the
+  in-core stores' content-hash checksum is unchanged.
+- **RustFS integration test** — the opt-in integration suite exercises the real
+  signed round-trip (put → get → list → signed-GET → delete) against RustFS (an
+  actively maintained S3-compatible server).
 
 ## v0.5.0 — Upload validation
 

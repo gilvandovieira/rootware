@@ -3,6 +3,7 @@ import { RootwareError } from "@rootware/errors";
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+/** String log level names accepted by Rootware loggers. */
 export type LogLevelName =
   | "trace"
   | "debug"
@@ -12,6 +13,7 @@ export type LogLevelName =
   | "fatal"
   | "silent";
 
+/** Numeric severity values emitted in structured log records. */
 export type LogLevelNumber =
   | 10
   | 20
@@ -21,8 +23,10 @@ export type LogLevelNumber =
   | 60
   | (number & Record<never, never>);
 
+/** Any supported log level, by name or numeric severity. */
 export type LogLevel = LogLevelName | LogLevelNumber;
 
+/** Error codes emitted by log level parsing, serialization, and sink writes. */
 export type LogErrorCode =
   | "LOG_INVALID_LEVEL"
   | "LOG_WRITE_FAILED"
@@ -30,6 +34,7 @@ export type LogErrorCode =
   | "LOG_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** JSON-safe value accepted in log bindings and structured records. */
 export type LogValue =
   | string
   | number
@@ -38,10 +43,12 @@ export type LogValue =
   | readonly LogValue[]
   | LogObject;
 
+/** JSON-safe object accepted in log bindings and structured records. */
 export interface LogObject {
   readonly [key: string]: LogValue | undefined;
 }
 
+/** Static fields attached to every record written by a logger. */
 export type LogBindings = LogObject;
 
 /** JSON-safe record emitted by Rootware loggers. */
@@ -55,6 +62,7 @@ export interface LogRecord {
   [key: string]: unknown;
 }
 
+/** Return type accepted from synchronous or asynchronous log sinks. */
 export type LogSinkResult = void | Promise<void>;
 
 /** Destination for encoded JSON Lines log entries. */
@@ -115,6 +123,7 @@ export interface LoggerOptions {
   readonly onWriteError?: LogWriteErrorHandler;
 }
 
+/** Options applied when deriving a child logger from an existing logger. */
 export interface ChildLoggerOptions {
   readonly level?: LogLevelName;
   readonly name?: string;
@@ -135,6 +144,7 @@ export interface BufferedSinkOptions {
   readonly flushOnError?: boolean;
 }
 
+/** Options accepted when constructing a {@link LogError}. */
 export interface LogErrorOptions {
   readonly code?: LogErrorCode;
   readonly status?: number;
@@ -353,6 +363,188 @@ export function bufferedSink(
       return sink.close?.();
     },
   };
+}
+
+/** Wraps a standard `WritableStream<Uint8Array>` as a {@link LogSink}. */
+export function writableStreamSink(
+  stream: WritableStream<Uint8Array>,
+): LogSink {
+  const writer = stream.getWriter();
+
+  return {
+    write(line: Uint8Array): LogSinkResult {
+      return writer.write(line.slice()).then(() => undefined);
+    },
+
+    async close(): Promise<void> {
+      await writer.close();
+    },
+  };
+}
+
+/** Options for {@link fileSink}. */
+export interface FileSinkOptions {
+  /** Append to the file (default) or truncate it on open. */
+  readonly append?: boolean;
+}
+
+/**
+ * Writes encoded log lines to a file using Deno file APIs. Needs
+ * `--allow-write` (and `--allow-read` when the file exists). Deno-native and
+ * permission-minimal; the file is opened once and closed on `close()`.
+ */
+export function fileSink(path: string, options: FileSinkOptions = {}): LogSink {
+  const append = options.append ?? true;
+  const deno = (globalThis as {
+    readonly Deno?: {
+      openSync(
+        path: string,
+        opts: {
+          write: boolean;
+          create: boolean;
+          append: boolean;
+          truncate: boolean;
+        },
+      ): { writeSync(data: Uint8Array): number; close(): void };
+    };
+  }).Deno;
+
+  if (deno?.openSync === undefined) {
+    throw new LogError("Deno file APIs are not available", {
+      code: "LOG_WRITE_FAILED",
+      details: { sink: "file" },
+    });
+  }
+
+  const file = deno.openSync(path, {
+    write: true,
+    create: true,
+    append,
+    truncate: !append,
+  });
+
+  return {
+    write(line: Uint8Array): LogSinkResult {
+      try {
+        file.writeSync(line);
+        return undefined;
+      } catch (cause) {
+        throwWriteError(cause);
+      }
+    },
+
+    close(): void {
+      file.close();
+    },
+  };
+}
+
+/** Writes every line to all of the given sinks. */
+export function fanoutSink(...sinks: readonly LogSink[]): LogSink {
+  return {
+    write(line: Uint8Array): LogSinkResult {
+      const pending: Promise<void>[] = [];
+      for (const sink of sinks) {
+        const result = sink.write(line);
+        if (isPromiseLike(result)) {
+          pending.push(result);
+        }
+      }
+      return pending.length === 0
+        ? undefined
+        : Promise.all(pending).then(() => undefined);
+    },
+
+    flush(): LogSinkResult {
+      return settleAll(sinks.map((sink) => sink.flush?.()));
+    },
+
+    close(): LogSinkResult {
+      return settleAll(sinks.map((sink) => sink.close?.()));
+    },
+  };
+}
+
+/** Predicate over a decoded {@link LogRecord} for {@link filterSink}. */
+export type LogRecordFilter = (record: LogRecord) => boolean;
+
+/**
+ * Forwards a line to `sink` only when `predicate` accepts the decoded record.
+ * A line that cannot be parsed back into JSON is passed through unchanged.
+ */
+export function filterSink(
+  sink: LogSink,
+  predicate: LogRecordFilter,
+): LogSink {
+  return {
+    write(line: Uint8Array): LogSinkResult {
+      const record = decodeLogLine(line);
+      if (record !== undefined && !predicate(record)) {
+        return undefined;
+      }
+      return sink.write(line);
+    },
+
+    flush(): LogSinkResult {
+      return sink.flush?.();
+    },
+
+    close(): LogSinkResult {
+      return sink.close?.();
+    },
+  };
+}
+
+/** Forwards a line to `sink` only when its level is at least `minLevel`. */
+export function levelSink(sink: LogSink, minLevel: LogLevel): LogSink {
+  const min = getLogLevelNumber(minLevel);
+  return filterSink(
+    sink,
+    (record) => typeof record.level !== "number" || record.level >= min,
+  );
+}
+
+/**
+ * Writes to `primary`, falling back to `fallback` if the primary write fails
+ * (synchronously or asynchronously). Flush/close fan out to both.
+ */
+export function failoverSink(primary: LogSink, fallback: LogSink): LogSink {
+  return {
+    write(line: Uint8Array): LogSinkResult {
+      try {
+        const result = primary.write(line);
+        if (isPromiseLike(result)) {
+          return result.catch(() => fallback.write(line));
+        }
+        return result;
+      } catch {
+        return fallback.write(line);
+      }
+    },
+
+    flush(): LogSinkResult {
+      return settleAll([primary.flush?.(), fallback.flush?.()]);
+    },
+
+    close(): LogSinkResult {
+      return settleAll([primary.close?.(), fallback.close?.()]);
+    },
+  };
+}
+
+function decodeLogLine(line: Uint8Array): LogRecord | undefined {
+  try {
+    return JSON.parse(textDecoder.decode(line)) as LogRecord;
+  } catch {
+    return undefined;
+  }
+}
+
+function settleAll(results: readonly LogSinkResult[]): LogSinkResult {
+  const pending = results.filter(isPromiseLike);
+  return pending.length === 0
+    ? undefined
+    : Promise.all(pending).then(() => undefined);
 }
 
 /** Returns true when a value is a supported log level name. */

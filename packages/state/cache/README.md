@@ -36,6 +36,8 @@ const settings = await cache.get<{ theme: string }>("settings");
 - `CacheStore` / `CacheLock` / `CacheLockOptions` (adapter contracts)
 - `RedisLikeClient` / `RedisCacheAdapterOptions`
 - `DenoKvLike` / `DenoKvCacheAdapterOptions`
+- `fixedWindowRateLimiter` / `tokenBucketRateLimiter` → `RateLimiter`,
+  `RateLimitResult`
 
 The memory store keeps raw values. Out-of-process adapters (Redis, KV) use a
 `CacheSerializer` — `jsonCacheSerializer()` is the default — to convert values
@@ -69,6 +71,39 @@ prefix, not isolation. Across processes, `getOrSet`'s in-process dedup does
 double-checks the value, and computes at most once across nodes. `clear()` is
 global for the underlying store — it is not namespace-scoped until adapters
 expose prefix deletes.
+
+## Rate limiting (`0.4`)
+
+Two counter-based limiters build on the `CacheStore` contract (default
+in-memory; pass a shared store for distributed limits):
+
+```ts
+import {
+  fixedWindowRateLimiter,
+  tokenBucketRateLimiter,
+} from "jsr:@rootware/cache";
+
+// 100 requests per minute per key.
+const window = fixedWindowRateLimiter({ limit: 100, windowMs: 60_000 });
+const { allowed, remaining, retryAfterMs } = await window.consume(clientIp);
+
+// Burst up to 20, refilling 5 tokens/second.
+const bucket = tokenBucketRateLimiter({
+  capacity: 20,
+  refillTokens: 5,
+  refillIntervalMs: 1_000,
+});
+if (!(await bucket.consume(userId)).allowed) {
+  // 429 with Retry-After…
+}
+```
+
+Each returns a `RateLimiter` (`consume(key, cost?)`, `peek`, `reset`) and a
+`RateLimitResult` (`allowed`, `limit`, `remaining`, `resetAt`, `retryAfterMs`)
+shaped for `RateLimit-*`/`Retry-After` headers. Same-key operations are
+serialized in-process, so concurrent `consume` calls don't over-admit within one
+isolate; **cross-process** correctness requires an atomic backing store. TTL is
+not a security guarantee.
 
 ## Security
 

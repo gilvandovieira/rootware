@@ -955,10 +955,29 @@ Acceptance:
 
 - A user can copy the example and deploy a tiny app with Neon-backed Postgres.
 
-## v0.4 — SQLite local
+## v0.4 — SQLite local — **done (`0.4.0`)**
 
 Goal: support local-first and embedded Deno apps without corrupting the Postgres
 API.
+
+Shipped in `0.4.0`:
+
+- **`@rootware/orm/sqlite` subpath** — `createSqliteDb({ path | database })`
+  (alias `connect`) mirroring the Postgres facade, plus `createSqliteOrmDriver`/
+  `createSqliteExecutor`. The core SQL compiler already renders `?` placeholders
+  and `"`-quoted identifiers for the `sqlite` dialect, so
+  `defineTable`/`columns` and the query builders work unchanged.
+- **Column affinity** — `sqliteColumnAffinity(dataType)` maps Rootware column
+  types onto SQLite storage classes (`TEXT`/`INTEGER`/`REAL`): dates, JSON, and
+  UUIDs as `TEXT`; booleans and integers as `INTEGER`; numbers as `REAL`.
+- **Lazy driver, permission-free tests** — `@db/sqlite` (FFI) is imported
+  dynamically only when a real database is opened, so importing the subpath and
+  running its fake-backed unit tests needs no permissions and stays in the
+  default `deno task test`. Real execution (`:memory:` or file) runs in the
+  integration suite under `--allow-ffi`/`--allow-net` and is covered by
+  `integration/orm_sqlite_test.ts` (DDL, parameterized CRUD, commit + rollback).
+- **Single-connection transactions** — `BEGIN`/`COMMIT`/`ROLLBACK` over the one
+  SQLite handle; `statementReturnsRows` decides rows vs change-count.
 
 ### Chunk 28 — SQLite dialect boundary audit
 

@@ -2,3 +2,4 @@
 set -eu
 
 deno task fmt:check
+deno task docs:check

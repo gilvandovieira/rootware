@@ -6,6 +6,7 @@ import {
   getErrorChain,
   getErrorMessage,
   isRootwareError,
+  namespacedErrorCode,
   redactErrorKeys,
   registerErrorRedactor,
   RootwareError,
@@ -254,4 +255,21 @@ Deno.test("@rootware/errors - serialization honors maxDepth on deep cause chains
   // Beyond maxDepth the chain is truncated with a generic marker.
   assertEquals(json.cause?.cause?.message, DEFAULT_MESSAGE);
   assertEquals(json.cause?.cause?.code, "ROOTWARE_INTERNAL_ERROR");
+});
+
+Deno.test("@rootware/errors - namespacedErrorCode builds and validates convention codes", () => {
+  assertEquals(namespacedErrorCode("cache", "get_failed"), "CACHE_GET_FAILED");
+  assertEquals(namespacedErrorCode("HTTP", "timeout"), "HTTP_TIMEOUT");
+  assertEquals(
+    namespacedErrorCode("env", "mode violation"),
+    "ENV_MODE_VIOLATION",
+  );
+  assertEquals(
+    namespacedErrorCode("orm", "invalid-query"),
+    "ORM_INVALID_QUERY",
+  );
+  // Numeric segments are allowed (e.g. HTTP_404-style names).
+  assertEquals(namespacedErrorCode("http", "404"), "HTTP_404");
+  assertThrows(() => namespacedErrorCode("", "x"));
+  assertThrows(() => namespacedErrorCode("cache", "bad.name"));
 });

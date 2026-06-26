@@ -8,6 +8,7 @@ import {
   cloneCacheEntry,
   createCache,
   createCacheEntry,
+  fixedWindowRateLimiter,
   isExpired,
   joinCacheKey,
   jsonCacheSerializer,
@@ -15,6 +16,7 @@ import {
   noopCache,
   normalizeCacheKey,
   resolveTtlMs,
+  tokenBucketRateLimiter,
 } from "./mod.ts";
 
 Deno.test("@rootware/cache - jsonCacheSerializer round-trips values and reports failures", () => {
@@ -307,4 +309,97 @@ Deno.test("@rootware/cache - getOrSet without lockTimeoutMs never calls acquireL
   const cache = createCache({ store });
   await cache.getOrSet("k", () => "v");
   assertEquals(acquired, false);
+});
+
+Deno.test("@rootware/cache - fixedWindowRateLimiter counts per window", async () => {
+  let now = 1_000;
+  const limiter = fixedWindowRateLimiter({
+    limit: 3,
+    windowMs: 1_000,
+    now: () => now,
+  });
+
+  const first = await limiter.consume("ip:1.2.3.4");
+  assertEquals(first.allowed, true);
+  assertEquals(first.limit, 3);
+  assertEquals(first.remaining, 2);
+  assertEquals(first.resetAt, 2_000);
+
+  await limiter.consume("ip:1.2.3.4");
+  const third = await limiter.consume("ip:1.2.3.4");
+  assertEquals(third.remaining, 0);
+
+  const blocked = await limiter.consume("ip:1.2.3.4");
+  assertEquals(blocked.allowed, false);
+  assertEquals(blocked.remaining, 0);
+  assertEquals(blocked.retryAfterMs, 1_000);
+
+  // A different key has its own budget.
+  assertEquals((await limiter.consume("ip:9.9.9.9")).allowed, true);
+
+  // The window rolls over.
+  now = 2_500;
+  const rolled = await limiter.consume("ip:1.2.3.4");
+  assertEquals(rolled.allowed, true);
+  assertEquals(rolled.remaining, 2);
+
+  await limiter.reset("ip:1.2.3.4");
+  assertEquals((await limiter.peek("ip:1.2.3.4")).remaining, 3);
+});
+
+Deno.test("@rootware/cache - fixedWindowRateLimiter serializes concurrent consume", async () => {
+  const limiter = fixedWindowRateLimiter({ limit: 5, windowMs: 10_000 });
+
+  const results = await Promise.all(
+    Array.from({ length: 8 }, () => limiter.consume("burst")),
+  );
+  const allowed = results.filter((r) => r.allowed).length;
+
+  // Exactly the limit is granted despite concurrency; no over-admission.
+  assertEquals(allowed, 5);
+});
+
+Deno.test("@rootware/cache - tokenBucketRateLimiter bursts then refills", async () => {
+  let now = 0;
+  const limiter = tokenBucketRateLimiter({
+    capacity: 2,
+    refillTokens: 1,
+    refillIntervalMs: 1_000,
+    now: () => now,
+  });
+
+  // Burst the full capacity.
+  assertEquals((await limiter.consume("user:1")).allowed, true);
+  const drained = await limiter.consume("user:1");
+  assertEquals(drained.allowed, true);
+  assertEquals(drained.remaining, 0);
+
+  // Empty bucket: rejected with a retry hint of one refill interval.
+  const blocked = await limiter.consume("user:1");
+  assertEquals(blocked.allowed, false);
+  assertEquals(blocked.retryAfterMs, 1_000);
+
+  // After one interval, exactly one token is available again.
+  now = 1_000;
+  assertEquals((await limiter.consume("user:1")).allowed, true);
+  assertEquals((await limiter.consume("user:1")).allowed, false);
+
+  await limiter.reset("user:1");
+  assertEquals((await limiter.peek("user:1")).remaining, 2);
+});
+
+Deno.test("@rootware/cache - rate limiters validate options", () => {
+  assertThrows(
+    () => fixedWindowRateLimiter({ limit: 0, windowMs: 1_000 }),
+    CacheError,
+  );
+  assertThrows(
+    () =>
+      tokenBucketRateLimiter({
+        capacity: 5,
+        refillTokens: 1,
+        refillIntervalMs: -1,
+      }),
+    CacheError,
+  );
 });
