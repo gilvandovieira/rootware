@@ -1,5 +1,10 @@
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
+import {
+  assertValidSchemaSnapshot,
+  normalizeSchemaSnapshot,
+  type RootwareSchemaSnapshot,
+} from "@rootware/schema";
 
 const DEFAULT_LOCK_ID = "rootware:migrate";
 
@@ -182,6 +187,16 @@ export interface MigratorOptions {
   readonly logger?: Logger;
   readonly lockId?: string;
   readonly useTransaction?: boolean;
+}
+
+export interface SchemaMigrationPlanInput {
+  readonly from?: RootwareSchemaSnapshot;
+  readonly to: RootwareSchemaSnapshot;
+}
+
+export interface SchemaMigrationPlan {
+  readonly from?: RootwareSchemaSnapshot;
+  readonly to: RootwareSchemaSnapshot;
 }
 
 export interface MemoryMigrationStoreOptions {
@@ -378,6 +393,27 @@ export function createMigrationPlan(
     checksumMismatches,
     hasPending: pending.length > 0,
     hasChecksumMismatches: checksumMismatches.length > 0,
+  };
+}
+
+/** Accepts validated schema snapshots as metadata for future diffing. */
+export function defineSchemaMigrationPlan(
+  input: SchemaMigrationPlanInput,
+): SchemaMigrationPlan {
+  const from = input.from === undefined
+    ? undefined
+    : normalizeSchemaSnapshot(input.from);
+  const to = normalizeSchemaSnapshot(input.to);
+
+  if (from !== undefined) {
+    assertValidSchemaSnapshot(from);
+  }
+
+  assertValidSchemaSnapshot(to);
+
+  return {
+    ...(from === undefined ? {} : { from }),
+    to,
   };
 }
 

@@ -1,0 +1,312 @@
+# @rootware/env Product Plan
+
+## Status
+
+`@rootware/env` exists as part of the Rootware `v0.1` foundation.
+
+This package should become the typed configuration layer for Rootware packages
+and Deno applications.
+
+> **Current `v0.1` surface (reconciled with source).** Most of the "v0.2 typed
+> env spine" below already ships: `defineEnv`, `validateEnv`, the `env` builder,
+> explicit sources (`fromRecord`), `readDenoEnv`, secret redaction (`redactEnv`,
+> `isSecretKey`), `generateEnvExample`, the parser helpers, `EnvError`,
+> `InferEnv`, and prefix lookup through `DefineEnvOptions.prefix`. Treat the
+> v0.2 chunks as verify-and-test; the real forward work is v0.3 DX (messages and
+> actual `mode` semantics) and the optional v0.4 file-loading helpers.
+> `DefineEnvOptions.mode` exists today but is currently inert.
+
+Last reviewed: `2026-06-26`
+
+## Product thesis
+
+`@rootware/env` is a JSR-native, Deno-first environment configuration package.
+
+It exists because Deno apps need a small, typed, testable way to validate
+environment variables without immediately pulling in a general validation
+library or Node-oriented config framework.
+
+The package should provide:
+
+- Typed env schema builder.
+- Explicit env source support for tests.
+- Safe `Deno.env` reading.
+- Defaults.
+- Required/optional fields.
+- Secret handling and redaction.
+- `.env.example` generation.
+- Helpful configuration errors through `@rootware/errors`.
+
+One-line strategy:
+
+> `@rootware/env` lets Deno developers validate runtime configuration once at
+> startup and consume typed values everywhere else.
+
+## Canonical package
+
+```ts
+jsr:@rootware/env
+```
+
+Expected imports:
+
+```ts
+import { defineEnv, env } from "@rootware/env";
+```
+
+Expected usage:
+
+```ts
+export const appEnv = defineEnv({
+  DATABASE_URL: env.url(),
+  LOG_LEVEL: env.enum(["debug", "info", "warn", "error"]).default("info"),
+  PORT: env.integer().default(8000),
+  SESSION_SECRET: env.secret(),
+});
+```
+
+## Rootware workspace fit
+
+This package sits after:
+
+- `@rootware/errors`
+
+Allowed dependencies:
+
+- `@rootware/errors` — typed configuration failures.
+
+Disallowed dependencies:
+
+- `@rootware/log` — config must work before logging exists.
+- `@rootware/testing` — production package must not depend on testing.
+- `@std/dotenv` in the core v0.2 — file loading should come later or through
+  optional helpers.
+
+## Responsibilities
+
+This package owns:
+
+- Env schema definition.
+- Env validation.
+- Env parsing.
+- Secret marking and redaction.
+- Testable env sources.
+- `.env.example` generation.
+
+This package does not own:
+
+- Secrets management systems.
+- Runtime-specific deployment config.
+- Automatic `.env` file loading before v1.
+- Application config beyond environment variables.
+- Validation library integration.
+
+## Architecture
+
+```txt
+schema builder -> explicit source/Deno.env -> parser/validator -> typed frozen object
+```
+
+### 1. Schema builder
+
+Expose `env.string()`, `env.secret()`, `env.number()`, `env.integer()`,
+`env.boolean()`, `env.url()`, and `env.enum()`.
+
+### 2. Source boundary
+
+Support explicit `EnvSource` first. Fall back to `Deno.env` only when no source
+is provided.
+
+### 3. Parser boundary
+
+Keep parsers small and exported for tests.
+
+### 4. Redaction boundary
+
+Secret values must be redacted before logs, error details, or examples can
+expose them.
+
+## Public contracts
+
+### Define options
+
+```ts
+export interface DefineEnvOptions {
+  source?: EnvSource;
+  mode?: EnvMode;
+  prefix?: string;
+  allowEmpty?: boolean;
+}
+```
+
+### Env source
+
+```ts
+export type EnvSource = Record<string, string | undefined>;
+```
+
+### Main API
+
+```ts
+const values = defineEnv({
+  PORT: env.integer().default(8000),
+}, {
+  source: { PORT: "3000" },
+});
+```
+
+## Security and safety model
+
+Rules:
+
+- Never include raw secret values in error details.
+- Treat keys containing `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE_KEY`, `API_KEY`,
+  or `DATABASE_URL` as sensitive.
+- `env.secret()` always marks the variable as sensitive.
+- `redactEnv()` returns a copy.
+- Missing variable errors should include the variable name, not its value.
+
+## Runtime targets
+
+Primary:
+
+- Deno local.
+- Deno Deploy.
+- JSR consumers.
+
+Compatible by design:
+
+- Bun and Node ESM when using explicit sources.
+- Workers when using explicit sources.
+
+## Non-goals before v1
+
+- Automatic `.env` loading.
+- `.env.local` merge logic.
+- CLI file generation.
+- Zod/Valibot integration.
+- Provider presets.
+- Config encryption.
+
+## Release roadmap
+
+## v0.1.x — Foundation cleanup
+
+### Chunk 1 — Audit current package
+
+Confirm exported stubs and current dependency on `@rootware/errors`.
+
+### Chunk 2 — Define public schema types
+
+Stabilize `EnvVarDefinition<T>`, `EnvSchema`, and `InferEnv<TSchema>`.
+
+### Chunk 3 — Add README skeleton
+
+Document the intended quick start.
+
+## v0.2.0 — Typed env spine
+
+### Chunk 4 — Implement schema builder
+
+Implement `env.string`, `env.secret`, `env.number`, `env.integer`,
+`env.boolean`, `env.url`, and `env.enum`.
+
+### Chunk 5 — Implement validation
+
+Implement `defineEnv` and `validateEnv`.
+
+### Chunk 6 — Implement explicit source support
+
+Support `fromRecord()` and avoid `Deno.env` when a source is provided.
+
+### Chunk 7 — Implement Deno.env reader
+
+Implement `readDenoEnv()` with permission-safe `EnvError`.
+
+### Chunk 8 — Implement redaction
+
+Implement `isSecretKey` and `redactEnv`.
+
+### Chunk 9 — Implement `.env.example`
+
+Implement `generateEnvExample`.
+
+### Chunk 10 — Add tests
+
+Test parsers, defaults, required variables, redaction, enum inference, and
+Deno.env failure behavior.
+
+## v0.3.0 — Developer experience
+
+- Better validation messages.
+- Prefix behavior documentation and edge-case tests (the option exists).
+- Define and implement actual `mode` semantics.
+- Example app configuration.
+- Integration examples with `@rootware/log`.
+
+Potential `mode` semantics:
+
+- `development`: allow defaults and ergonomic local configuration.
+- `test`: require explicit test-safe values and avoid accidental production
+  secrets.
+- `production`: stricter required values, no unsafe defaults, and clearer fatal
+  configuration errors.
+
+## v0.4.0 — File loading helpers
+
+- Optional `.env` file loading helper.
+- Optional integration with `@std/dotenv`.
+- `.env`, `.env.local`, `.env.test` conventions.
+- Document when not to load files in production.
+
+## v0.5.0 — Provider presets
+
+Possible presets:
+
+- Neon.
+- Turso.
+- Resend.
+- Clerk.
+- S3/R2.
+
+Presets must not force provider dependencies into the core.
+
+## v1.0.0 — Stable configuration contract
+
+- Freeze builder API.
+- Freeze generated example behavior.
+- Freeze redaction semantics.
+- Keep source-first testing model.
+
+## Cross-package integrations
+
+### @rootware/errors
+
+`EnvError extends RootwareError`.
+
+### @rootware/log
+
+Examples should show logging redacted env values, but `@rootware/env` should not
+import log.
+
+### @rootware/testing
+
+`@rootware/testing` can provide `testEnv()` using this package.
+
+## First 10 implementation chunks
+
+1. Audit `mod.ts`.
+2. Create `EnvError`.
+3. Implement parser helpers.
+4. Implement env variable definition builder.
+5. Implement `defineEnv`.
+6. Implement explicit source validation.
+7. Implement `readDenoEnv`.
+8. Implement secret redaction.
+9. Implement `.env.example`.
+10. Add tests and README.
+
+## Product rule
+
+`@rootware/env` should fail fast, safely, and clearly. It should never make
+runtime configuration mysterious.

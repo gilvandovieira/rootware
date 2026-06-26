@@ -9,6 +9,7 @@ import {
   and,
   columns,
   createDatabase,
+  createSchemaSnapshot,
   defineTable,
   emptySql,
   eq,
@@ -153,6 +154,70 @@ Deno.test("@rootware/orm - builders generate SQL and execute with noop driver", 
     .returning()
     .toSql();
   assert(renderSql(deleteSql).text.includes('delete from "users" where'));
+});
+
+Deno.test("@rootware/orm - update and delete require where by default", () => {
+  const db = createDatabase();
+
+  assertThrows(
+    () => db.update(users).set({ name: "all" }).toSql(),
+    OrmError,
+  );
+  assertThrows(() => db.delete(users).toSql(), OrmError);
+
+  const updateSql = renderSql(
+    db.update(users).set({ name: "all" }).unsafeAllowAllRows().toSql(),
+  );
+  const deleteSql = renderSql(db.delete(users).unsafeAllowAllRows().toSql());
+
+  assertEquals(updateSql.text, 'update "users" set "name" = ?');
+  assertEquals(deleteSql.text, 'delete from "users"');
+});
+
+Deno.test("@rootware/orm - createSchemaSnapshot maps table metadata", () => {
+  const snapshot = createSchemaSnapshot({
+    dialect: "postgres",
+    tables: [users],
+  });
+  const table = snapshot.tables[0];
+
+  assertEquals(snapshot.version, 1);
+  assertEquals(snapshot.dialect, "postgres");
+  assertEquals(table.name, "users");
+  assertEquals(table.primaryKey?.columns, ["id"]);
+  assertEquals(
+    table.uniqueConstraints?.some((constraint) =>
+      constraint.columns[0] === "email"
+    ),
+    true,
+  );
+  assertEquals(
+    table.foreignKeys?.[0],
+    {
+      columns: ["orgId"],
+      references: { table: "organizations", columns: ["id"] },
+    },
+  );
+  assertEquals(
+    table.columns.find((column) => column.name === "active")?.default,
+    { kind: "literal", value: true },
+  );
+  assertEquals(
+    table.columns.find((column) => column.name === "createdAt")?.default,
+    undefined,
+  );
+});
+
+Deno.test("@rootware/orm - createSchemaSnapshot output order is deterministic", () => {
+  const posts = defineTable("posts", {
+    id: columns.text().primaryKey(),
+    userId: columns.text().references("users", "id"),
+  });
+  const snapshot = createSchemaSnapshot({
+    tables: [users, posts],
+  });
+
+  assertEquals(snapshot.tables.map((table) => table.name), ["posts", "users"]);
 });
 
 Deno.test("@rootware/orm - database query transaction and helpers", async () => {

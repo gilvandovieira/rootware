@@ -574,7 +574,7 @@ export function createStorageObject(
     blob,
     ...(contentType === undefined ? {} : { contentType }),
     size,
-    checksum: options.checksum ?? calculateChecksum(body),
+    ...(options.checksum === undefined ? {} : { checksum: options.checksum }),
     metadata: cloneMetadata(options.metadata ?? {}),
     createdAt: now,
     updatedAt: now,
@@ -597,21 +597,35 @@ export function cloneStorageObject(object: StorageObject): StorageObject {
   };
 }
 
-/** Returns a deterministic, non-cryptographic checksum placeholder. */
-export function calculateChecksum(body: StoragePutBody): string {
-  return `size:${getBodySize(body)}`;
+/** Returns a content-derived SHA-256 checksum as lowercase hex. */
+export async function calculateChecksum(body: StoragePutBody): Promise<string> {
+  const crypto = globalThis.crypto;
+
+  if (crypto?.subtle === undefined) {
+    throw new StorageError("Web Crypto digest is not available", {
+      code: "STORAGE_PUT_FAILED",
+      details: { algorithm: "SHA-256" },
+    });
+  }
+
+  const bytes = await bodyToBytes(body);
+  const digestInput = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(digestInput).set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", digestInput);
+  return bytesToHex(new Uint8Array(digest));
 }
 
 /** Creates a storage client that does not persist objects. */
 export function noopStorage(): StorageClient {
   const storage: StorageClient = {
-    put(
+    async put(
       key: StorageKey,
       body: StoragePutBody,
       options?: StoragePutOptions,
     ): Promise<StorageObjectInfo> {
-      return Promise.resolve(
-        toStorageObjectInfo(createStorageObject(key, body, options)),
+      const checksum = options?.checksum ?? await calculateChecksum(body);
+      return toStorageObjectInfo(
+        createStorageObject(key, body, { ...options, checksum }),
       );
     },
 
@@ -697,6 +711,7 @@ class RootwareStorageClient implements StorageClient {
     try {
       const object = createStorageObject(fullKey, body, {
         ...options,
+        checksum: options.checksum ?? await calculateChecksum(body),
         maxSizeBytes: options.maxSizeBytes ?? this.#maxSizeBytes,
       });
 
@@ -1172,6 +1187,35 @@ function throwStorageError(
     code,
     details: { reason: message },
   });
+}
+
+async function bodyToBytes(body: StoragePutBody): Promise<Uint8Array> {
+  if (body instanceof Blob) {
+    return new Uint8Array(await body.arrayBuffer());
+  }
+
+  if (typeof body === "string") {
+    return new TextEncoder().encode(body);
+  }
+
+  if (body instanceof Uint8Array) {
+    return new Uint8Array(body);
+  }
+
+  if (body instanceof ArrayBuffer) {
+    return new Uint8Array(body.slice(0));
+  }
+
+  throw new StorageError("Unsupported storage body", {
+    code: "STORAGE_PUT_FAILED",
+    details: { bodyType: typeof body },
+  });
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 // Examples:

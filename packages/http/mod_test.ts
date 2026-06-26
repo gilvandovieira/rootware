@@ -8,6 +8,9 @@ import {
   HttpError,
   mergeHeaders,
   parseJsonResponse,
+  redactHttpHeaders,
+  redactHttpJson,
+  redactHttpUrl,
   safeParseJsonResponse,
 } from "./mod.ts";
 
@@ -141,4 +144,83 @@ Deno.test("@rootware/http - mock fetch returns 404 when no route matches", async
 
   assertEquals(response.status, 404);
   assert((await response.text()).includes("Not found"));
+});
+
+Deno.test("@rootware/http - redacts sensitive headers", () => {
+  const headers = redactHttpHeaders({
+    authorization: "Bearer secret",
+    cookie: "sid=secret",
+    "set-cookie": "sid=secret",
+    "x-api-key": "secret",
+    "x-safe": "visible",
+  });
+
+  assertEquals(headers.authorization, "[REDACTED]");
+  assertEquals(headers.cookie, "[REDACTED]");
+  assertEquals(headers["set-cookie"], "[REDACTED]");
+  assertEquals(headers["x-api-key"], "[REDACTED]");
+  assertEquals(headers["x-safe"], "visible");
+});
+
+Deno.test("@rootware/http - redacts URL credentials and query parameters", () => {
+  const redacted = redactHttpUrl(
+    "https://user:pass@example.com/path?token=abc&password=pw&secret=s&api_key=k&safe=ok",
+  );
+
+  assert(!redacted.includes("user:pass"));
+  assert(!redacted.includes("token=abc"));
+  assert(!redacted.includes("password=pw"));
+  assert(!redacted.includes("secret=s"));
+  assert(!redacted.includes("api_key=k"));
+  assert(redacted.includes("safe=ok"));
+});
+
+Deno.test("@rootware/http - redacts sensitive JSON body keys", () => {
+  assertEquals(
+    redactHttpJson({
+      password: "pw",
+      token: "token",
+      secret: "secret",
+      authorization: "Bearer token",
+      nested: { api_key: "key", safe: true },
+    }),
+    {
+      password: "[REDACTED]",
+      token: "[REDACTED]",
+      secret: "[REDACTED]",
+      authorization: "[REDACTED]",
+      nested: { api_key: "[REDACTED]", safe: true },
+    },
+  );
+});
+
+Deno.test("@rootware/http - response error details redact URL and body", async () => {
+  const client = createHttpClient({
+    fetch: createMockFetch([
+      {
+        path: "/private",
+        handler: () =>
+          createJsonResponse(
+            { password: "pw", nested: { token: "secret", safe: "ok" } },
+            { status: 400 },
+          ),
+      },
+    ]),
+  });
+
+  const error = await assertRejects(
+    () =>
+      client.getJson(
+        "https://user:pass@example.com/private?token=abc&safe=ok",
+      ),
+    HttpError,
+  );
+
+  assert(error instanceof HttpError);
+  assert(!String(error.details?.url).includes("user"));
+  assert(!String(error.details?.url).includes("abc"));
+  assertEquals(error.details?.body, {
+    password: "[REDACTED]",
+    nested: { token: "[REDACTED]", safe: "ok" },
+  });
 });

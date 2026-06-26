@@ -31,6 +31,10 @@ Deno.test("@rootware/storage - memory store and client put/get/delete", async ()
   assertEquals(info.key, "docs/readme.txt");
   assertEquals(info.size, 5);
   assertEquals(info.contentType, "text/plain");
+  assertEquals(
+    info.checksum,
+    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  );
   assertEquals(await storage.exists("docs/readme.txt"), true);
 
   const object = await storage.get("docs/readme.txt");
@@ -54,7 +58,25 @@ Deno.test("@rootware/storage - body helpers support Blob string bytes and ArrayB
   assertEquals(getBodySize(bytes), 3);
   assertEquals(getBodySize(buffer), 3);
   assertEquals(await bodyToBlob(bytes).arrayBuffer(), buffer);
-  assertEquals(calculateChecksum("abc"), "size:3");
+});
+
+Deno.test("@rootware/storage - calculateChecksum uses SHA-256 content", async () => {
+  assertEquals(
+    await calculateChecksum(new Uint8Array()),
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  );
+  assertEquals(
+    await calculateChecksum("hello"),
+    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  );
+  assertEquals(
+    await calculateChecksum("same"),
+    await calculateChecksum("same"),
+  );
+  assertEquals(
+    (await calculateChecksum("same")) !== await calculateChecksum("different"),
+    true,
+  );
 });
 
 Deno.test("@rootware/storage - list supports prefix limit cursor and buckets", async () => {
