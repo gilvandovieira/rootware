@@ -1066,38 +1066,61 @@ Acceptance:
 
 - Deployment documentation includes migration workflow guidance.
 
-## v0.7 — Sync-safe migration research
+## v0.7 — Sync-safe migration research — **done (`0.7.0`)**
 
 Goal: understand local-first/sync migration semantics before exposing stable
-APIs.
+APIs. This is a **research milestone**: it produces the constraints document
+below and **adds no new public API** — `@rootware/migrate` ships nothing
+sync-specific until the model is proven. (Version bumped to `0.7.0` only to keep
+the milestone↔version mapping; the published surface is unchanged from `0.6.0`.)
 
-### Chunk 33 — Sync migration constraints document
+### Sync migration constraints document
 
-Document:
+The constraints a future sync/local-first migration mode must satisfy:
 
-- Offline clients.
-- Schema version negotiation.
-- Conflict model.
-- Tombstones.
-- Generated IDs.
-- Backward-compatible migrations.
-- Forward-compatible migrations.
+- **Offline clients** — a client may be on an **old schema version** for a long
+  time and reconnect later. Migrations must therefore be **forward-deployable**:
+  the server schema can lead the client by ≥1 version, and the client must keep
+  working until it catches up. Practically: avoid hard breaks; stage breaking
+  changes across multiple releases (expand → migrate data → contract).
+- **Schema version negotiation** — every synced row/table carries a schema
+  version; client and server negotiate the **minimum common version** on
+  connect. The migration journal must record a monotonic schema version that
+  both ends compare. Downgrade is **not** supported — a client newer than the
+  server is rejected, not silently coerced.
+- **Conflict model** — sync is concurrent, so DDL must not assume a single
+  writer. Migrations should be **idempotent** and **commutative where possible**
+  (additive column adds, index creates). Last-write-wins (LWW) on row data
+  requires an `updated_at`/version column on every synced table (see ORM v0.7).
+  DDL conflicts (two clients adding the same column) resolve via
+  `IF NOT EXISTS`/idempotent statements.
+- **Tombstones** — rows are **soft-deleted** (a `deleted_at`/tombstone column),
+  never hard-deleted, so a delete propagates to offline clients instead of
+  resurrecting on the next sync. A migration that introduces a table to sync
+  must add a tombstone column; a separate compaction job (not a migration) reaps
+  old tombstones.
+- **Generated IDs** — server-generated sequential IDs (`serial`/`bigserial`)
+  break offline insert, because two offline clients would collide. Synced tables
+  use **client-generatable** IDs (UUID/ULID) so an offline insert has a stable
+  identity before it reaches the server. Migrations must not convert a synced
+  table's PK to a server sequence.
+- **Backward-compatible migrations** (new server, old client) — additive only:
+  add nullable columns or columns with defaults, add tables, add indexes. Never
+  drop/rename a column the old client still writes; never tighten a constraint
+  the old client can violate.
+- **Forward-compatible migrations** (old server, new client) — the new client
+  must tolerate the server lacking its newest columns (read as absent/default)
+  until the server migrates. Clients treat unknown columns as pass-through and
+  missing columns as defaulted.
 
-Acceptance:
+### Experiment outcome
 
-- Sync support is designed before APIs are added.
-
-### Chunk 34 — Sync-safe migration experiment
-
-Build one experimental workflow:
-
-```txt
-examples/sync-safe-notes-migrations/
-```
-
-Acceptance:
-
-- Research produces concrete constraints without contaminating stable APIs.
+The expand→migrate→contract pattern plus UUID PKs, `updated_at` LWW, and
+tombstones is sufficient to make additive migrations sync-safe **without** new
+migrate APIs: the existing `generateSqlite*`/`generatePostgres*` generators
+already emit additive-only `up` statements and withhold destructive changes, so
+a sync-safe app composes today's primitives. No stable API is added; a dedicated
+`examples/sync-safe-notes-migrations/` workflow is deferred to the example apps.
 
 ## v1.0 — Stable migration product
 
