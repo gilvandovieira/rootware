@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, current package manifest version `@rootware/log@0.8.1`\
+Status: experimental, current package manifest version `@rootware/log@0.9.0`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -1586,29 +1586,46 @@ with **byte-for-byte identical output and no API change**. Redaction keeps the
 sanitize-then-redact path; `formatLogRecord` (arbitrary, possibly non-sanitized
 input) keeps the full sanitizer.
 
-### `0.9.0` — API Freeze Candidate
+### `0.9.0` — API Freeze Candidate — **done (`0.9.0`)**
 
 Goal: prepare for `1.0`.
 
-Scope:
+Shipped — an audit pass, no new runtime surface:
 
-- Audit all exported names.
-- Remove accidental exports.
-- Freeze record shape.
-- Freeze sink contract.
-- Freeze logger interface.
-- Finalize compatibility story, including whether the `/compat/pino` constructor
-  remains subpath-only or graduates to a root default export.
-- Finalize redaction behavior.
-- Finalize error field naming.
-- Finalize subpath exports.
-- Finalize JSDoc.
+- **Exported-name audit** — inventoried the full surface across the root,
+  `/compat/pino`, and `/http`. Conclusion: every export is intentional; there
+  are **no accidental exports** (internal helpers — `sanitizeObject`,
+  `serializePreSanitizedRecord`, the redaction compiler, etc. — stay
+  unexported). The borderline low-level helpers (`formatLogRecord`,
+  `normalizeLogInput`, `serializeErrorForLog`, `defaultTimestamp`) are kept and
+  documented as an "advanced / custom sinks" tier rather than removed, since
+  they have been public since `0.3.0` and removing them would itself be a
+  breaking change.
+- **Frozen contracts (documented in the README)** — the `LogRecord` shape
+  (`time` always emitted; `msg`/`error` keys configurable), the `LogSink`
+  contract (`write` + optional `flush`/`close`), and the `Logger` interface
+  (`level` stays read-only; derive with `child(b, { level })`).
+- **Compatibility story finalized** — `pino` **remains subpath-only**
+  (`@rootware/log/compat/pino`); no root default `pino` export now or at `1.0`,
+  keeping the root module explicit. Resolves the open §6.1/§10.3 question.
+- **Redaction finalized** — `string[] | RedactOptions`, dot-paths with a
+  single-key `*` wildcard, default censor `"[Redacted]"`.
+- **Error field naming finalized** — default `error` (Rootware); `/compat/pino`
+  defaults to `err`; both overridable via `errorKey`.
+- **Subpath exports finalized** — `.`, `/compat/pino`, `/http` (each carries no
+  external dependency; Hono stays in the separate `@rootware/hono` package).
+- **JSDoc** — 100% coverage on all three entrypoints (47/47 root, 6/6
+  `/compat/pino`, 4/4 `/http`), enforced by `deno task docs:check`.
+- **`0.x` → `1.0` migration guide** — added to the README: no changes required
+  from `0.9`; the only historical rename (`serializeError` →
+  `serializeErrorForLog`) predates this milestone (`0.2`).
 
 Acceptance criteria:
 
-- No known breaking changes planned.
-- Compatibility limitations are documented.
-- Migration guide exists from `0.x` to `1.0`.
+- No known breaking changes planned. ✔
+- Compatibility limitations are documented. ✔ (transports/workers/`pino-pretty`
+  out of scope; compat is subpath-only)
+- Migration guide exists from `0.x` to `1.0`. ✔ (README **Stability** section)
 
 ### `1.0.0` — Stable Core
 

@@ -148,7 +148,10 @@ packages that need them.
 
 ## Status
 
-Experimental. API may change before 1.0.
+**Experimental.** The public API was audited and **frozen at `0.9`** to reduce
+churn on the way to `1.0` — but until this package has real-world consumers it
+stays experimental, so breaking changes remain possible **even at `1.0`**. The
+version tracks roadmap progress, not a production-stability guarantee.
 
 ## License
 
