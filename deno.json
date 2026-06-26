@@ -25,14 +25,16 @@
     "@rootware/session": "./packages/session/mod.ts",
     "@rootware/schema": "./packages/schema/mod.ts",
     "@rootware/migrate": "./packages/migrate/mod.ts",
+    "@rootware/migrate/postgres": "./packages/migrate/postgres/mod.ts",
     "@rootware/orm": "./packages/orm/mod.ts",
+    "@rootware/orm/postgres": "./packages/orm/postgres/mod.ts",
     "@rootware/jobs": "./packages/jobs/mod.ts"
   },
   "tasks": {
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno check packages/*/mod.ts",
+    "check": "deno check packages/*/mod.ts packages/orm/postgres/mod.ts packages/migrate/postgres/mod.ts",
     "test": "deno test",
     "graph": "deno run -A scripts/check_graph.ts",
     "test:coverage": "deno test --coverage=coverage",

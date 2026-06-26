@@ -4,9 +4,13 @@ Typed SQL and schema snapshot core for Rootware packages and Deno backends.
 
 Experimental JSR-native package for Rootware.
 
-The v0.2 surface is intentionally the root package core: table metadata, safe
-SQL composition, query builders over injected drivers, and schema snapshots for
-`@rootware/migrate`.
+The root `@rootware/orm` import is database-agnostic. Database-specific
+integrations live behind subpath exports such as `@rootware/orm/postgres`. This
+prevents SQLite users from loading or depending on PostgreSQL code.
+
+v0.3 adds PostgreSQL execution as a subpath integration. It does not create a
+public `@rootware/postgres` package yet. That extraction waits until the data
+core is proven in a real app.
 
 ## Install
 
@@ -19,6 +23,12 @@ import {
   noopOrmDriver,
   sql,
 } from "jsr:@rootware/orm";
+```
+
+PostgreSQL execution is explicit:
+
+```ts
+import { createPgDb } from "jsr:@rootware/orm/postgres";
 ```
 
 ## Example
@@ -38,6 +48,25 @@ await db.select().from(users).where(eq(users.columns.id, "u_123")).execute();
 await db.execute(sql`select * from users where id = ${"u_123"}`);
 ```
 
+## PostgreSQL
+
+```ts
+import { columns, defineTable, eq } from "jsr:@rootware/orm";
+import { createPgDb } from "jsr:@rootware/orm/postgres";
+
+const users = defineTable("users", {
+  id: columns.text().primaryKey(),
+  email: columns.text().notNull().unique(),
+});
+
+const db = await createPgDb({
+  url: Deno.env.get("DATABASE_URL")!,
+});
+
+await db.execute("select 1 as ok");
+await db.select().from(users).where(eq(users.columns.id, "u_123")).execute();
+```
+
 ## API
 
 - `defineTable`
@@ -50,6 +79,8 @@ await db.execute(sql`select * from users where id = ${"u_123"}`);
 - `renderSql`
 - `createDatabase`
 - `noopOrmDriver`
+- `@rootware/orm/postgres` — `createPgDb`, `createPgOrmDriver`,
+  `createPgExecutor`, `createPgPool`
 
 Postgres-typed columns (`varchar`, `bigint`, `jsonb`, `timestamptz`) carry their
 type — and `varchar` length — through to the `@rootware/schema` snapshot
@@ -65,10 +96,10 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 ## Limitations
 
-This package does not implement real database drivers, joins, relations,
-migrations, schema introspection, pooling, or advanced SQL builders yet. Those
-features are planned after v0.2 and are not missing pieces of the v0.2 root
-core.
+The root import does not include database drivers. PostgreSQL is available only
+through `@rootware/orm/postgres`; future SQLite support should use its own
+subpath rather than sharing PostgreSQL code. Joins, relations, schema
+introspection, and advanced SQL builders are still outside the current scope.
 
 ## Status
 

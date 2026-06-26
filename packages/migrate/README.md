@@ -4,8 +4,13 @@ Programmatic migration primitives for Rootware packages and Deno backends.
 
 Experimental JSR-native package for Rootware.
 
-The v0.2 surface is intentionally the migration engine API: define migrations,
-plan them, run them through injected stores/drivers, and validate checksums.
+The root `@rootware/migrate` import contains migration planning and generic
+migration primitives. Database-specific execution lives behind subpath exports
+such as `@rootware/migrate/postgres`.
+
+v0.3 adds PostgreSQL execution as a subpath integration. It does not create a
+public `@rootware/postgres` package yet. That extraction waits until the data
+core is proven in a real app.
 
 ## Install
 
@@ -15,6 +20,12 @@ import {
   defineSqlMigration,
   memoryMigrationStore,
 } from "jsr:@rootware/migrate";
+```
+
+PostgreSQL execution is explicit:
+
+```ts
+import { createPgMigrator } from "jsr:@rootware/migrate/postgres";
 ```
 
 ## Example
@@ -34,6 +45,32 @@ const migrator = createMigrator({
 await migrator.up({ dryRun: true });
 ```
 
+## PostgreSQL
+
+```ts
+import { defineMigration } from "jsr:@rootware/migrate";
+import { createPgMigrator } from "jsr:@rootware/migrate/postgres";
+
+const migrator = await createPgMigrator({
+  url: Deno.env.get("DATABASE_URL")!,
+  logger,
+});
+
+await migrator.migrate({
+  migrations: [
+    defineMigration({
+      id: "0001_create_users",
+      up: [
+        `create table users (
+          id text primary key,
+          name text not null
+        )`,
+      ],
+    }),
+  ],
+});
+```
+
 ## API
 
 - `defineSqlMigration`
@@ -43,6 +80,8 @@ await migrator.up({ dryRun: true });
 - `createMigrationPlan`
 - `noopMigrationDriver`
 - `noopMigrator`
+- `@rootware/migrate/postgres` — `createPgMigrator`, `createPgMigrationDriver`,
+  `createPgMigrationHistoryStore`, `createPgExecutor`, `createPgPool`
 
 ## Security
 
@@ -53,9 +92,11 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 
 ## Limitations
 
-This package does not include database adapters, filesystem migration discovery,
-CLI commands, schema diffing, or advisory locks yet. Those workflow layers are
-planned after v0.2 and are not missing pieces of the v0.2 engine release.
+The root import does not include database adapters. PostgreSQL is available only
+through `@rootware/migrate/postgres`; future SQLite support should use its own
+subpath rather than sharing PostgreSQL code. Filesystem migration discovery, CLI
+commands, schema diffing, advisory locks, and checksum repair workflows are
+still planned for later releases.
 
 ## Status
 
