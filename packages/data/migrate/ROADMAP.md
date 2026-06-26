@@ -8,33 +8,32 @@
 
 `@rootware/migrate` already exists as part of the Rootware package workspace.
 This plan treats it as a real product, not as an implementation detail of
-`@rootware/orm`.
+`@rootware/orm`. Older version sections are historical planning notes; the
+status block below is the current v0.9 source-of-truth summary.
 
 The package should become the migration engine for Rootware database tooling
 while still allowing users to manage plain SQL migrations without adopting every
 part of `@rootware/orm`.
 
-> **Current `v0.1` surface (reconciled with source).** The published package is
-> a programmatic, in-memory migration _engine_, not yet the file + CLI tool
-> described later in this plan. It exports `defineMigration`,
+> **Current v0.9 surface (reconciled with source).** The published package
+> includes the programmatic migration engine, schema-diff helpers, file
+> workflow, and SQL-first CLI subpath. It exports `defineMigration`,
 > `defineSqlMigration`, `createMigrator`, `MigrationStore` /
 > `memoryMigrationStore`, `createMigrationPlan`, `calculateMigrationChecksum` /
-> `assertMigrationChecksum`, and the applied/pending/rollback helpers. Two
-> things differ from the prose below and are intentional, not bugs:
+> `assertMigrationChecksum`, and the applied/pending/rollback helpers. Three
+> things differ from older prose below and are intentional, not bugs:
 >
 > - **Rollback exists.** `MigrationDirection` is `"up" | "down"`, migrations may
 >   declare a `down` step, and `Migrator.down()` / `getRollbackMigrations()` are
 >   shipped. This plan is therefore **not** forward-only; the safety section
 >   below was rewritten to describe how `down` and the destructive-change guard
 >   work together rather than implying rollback is impossible.
-> - **The product has two layers.** The programmatic engine above is the v0.2
->   release boundary. PostgreSQL execution now exists under
->   `@rootware/migrate/postgres` (`createPgMigrator`, PostgreSQL history store,
->   driver, executor, and pool). The `defineConfig` + CLI + SQL-folder workflow
->   is still planned as a thin layer _on top of_ that engine and subpath (config
->   loader, folder reader, and CLI argument parsing), not a rewrite. The
->   `createMigrator` / `MigrationStore` / `MigrationDriver` contracts are the
->   seam the CLI builds on.
+> - **The product has two layers.** The programmatic engine is the root import.
+>   Database execution lives under `@rootware/migrate/postgres`,
+>   `@rootware/migrate/sqlite`, `@rootware/migrate/libsql`, and
+>   `@rootware/migrate/turso`. The `defineConfig` + SQL-folder workflow and the
+>   `@rootware/migrate/cli` subpath now ship as a thin layer on top of those
+>   contracts, not a rewrite.
 > - **Schema snapshots now have a metadata seam.** `defineSchemaMigrationPlan`
 >   accepts prebuilt `RootwareSchemaSnapshot` values and validates/normalizes
 >   them for future diffing. It does not generate SQL and it does not import
@@ -54,7 +53,7 @@ It should provide:
 - Drift checks.
 - CI-friendly validation.
 - Postgres first.
-- SQLite, libSQL, and Turso on the roadmap.
+- PostgreSQL, SQLite, libSQL, and Turso execution subpaths.
 - Clean integration with `@rootware/orm`.
 - Safe handling of destructive changes.
 
@@ -75,7 +74,7 @@ tool from being blocked by ORM type-system work.
 jsr:@rootware/migrate
 ```
 
-Current v0.2 imports:
+Current root imports:
 
 ```ts
 import {
@@ -85,16 +84,16 @@ import {
 } from "@rootware/migrate";
 ```
 
-Current PostgreSQL execution subpath:
+Current execution subpaths include PostgreSQL, SQLite, libSQL, and Turso:
 
 ```ts
 import { createPgMigrator } from "@rootware/migrate/postgres";
+import { createSqliteMigrator } from "@rootware/migrate/sqlite";
+import { createLibsqlMigrator } from "@rootware/migrate/libsql";
+import { createTursoMigrator } from "@rootware/migrate/turso";
 ```
 
-Planned CLI usage (v0.3+):
-
-`@rootware/migrate/cli` is a planned subpath. It is not exported until a real
-CLI file and tests exist.
+Current CLI usage:
 
 ```sh
 deno run -A jsr:@rootware/migrate/cli generate
@@ -597,10 +596,10 @@ A user should be able to:
 define migrations -> plan applied/pending/rollback -> dry-run or execute through injected store/driver -> validate checksums -> accept schema snapshots
 ```
 
-This release intentionally keeps config loading, filesystem discovery, and a CLI
-out of the root import. PostgreSQL execution is isolated in
-`@rootware/migrate/postgres`; the SQL-folder and CLI workflow remains planned
-for v0.3+.
+This historical release intentionally kept config loading, filesystem discovery,
+and a CLI out of the root import. Those layers now ship outside the root import:
+database execution is isolated in the database subpaths, and the SQL-folder
+workflow ships under `@rootware/migrate/cli`.
 
 ### Chunk 5 — Migration definitions
 

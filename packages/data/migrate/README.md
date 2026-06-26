@@ -205,8 +205,8 @@ See [publishing](../../../docs/publishing.md) and
 
 The root import does not include database adapters. PostgreSQL is available
 through `@rootware/migrate/postgres` and SQLite through
-`@rootware/migrate/sqlite`, each with its own driver. Advisory locks and
-checksum repair workflows are still planned for later releases.
+`@rootware/migrate/sqlite`, each with its own driver. Advisory locks are still
+planned for later releases.
 
 ## Status
 

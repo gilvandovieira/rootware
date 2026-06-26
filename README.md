@@ -29,10 +29,25 @@ JSR package names stay flat as `@rootware/<name>`.
 | `@rootware/orm`     | Typed SQL and ORM primitives    | Experimental |
 | `@rootware/jobs`    | Background job queue primitives | Experimental |
 
-Implemented subpath exports currently exist for `@rootware/log/compat/pino`,
-`@rootware/orm/postgres`, `@rootware/migrate/postgres`, and
-`@rootware/migrate/cli`. Planned subpaths stay roadmap-only until their files,
-tests, and export entries exist.
+Implemented subpath exports currently are:
+
+```txt
+@rootware/log/compat/pino
+@rootware/log/http
+@rootware/orm/postgres
+@rootware/orm/sqlite
+@rootware/orm/libsql
+@rootware/orm/turso
+@rootware/migrate/postgres
+@rootware/migrate/sqlite
+@rootware/migrate/libsql
+@rootware/migrate/turso
+@rootware/migrate/cli
+@rootware/jobs/postgres
+```
+
+Planned subpaths stay roadmap-only until their files, tests, and export entries
+exist.
 
 ## Dependency Graph
 

@@ -1,6 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as jobsRoot from "@rootware/jobs";
-import { createJobRecord } from "@rootware/jobs";
+import { createJobRecord, JobError } from "@rootware/jobs";
 import {
   createPostgresJobStore,
   ensureJobsTable,
@@ -127,6 +127,22 @@ Deno.test("@rootware/jobs/postgres - ensureJobsTable applies CREATE TABLE + inde
   assert(sqls.some((sql) => sql.includes("create table if not exists")));
   assert(sqls.some((sql) => sql.includes("_claim_idx")));
   assert(sqls.some((sql) => sql.includes("_idempotency_idx")));
+});
+
+Deno.test("@rootware/jobs/postgres - invalid table identifier is a JobError", () => {
+  const error = assertThrows(
+    () =>
+      createPostgresJobStore({
+        client: new FakePgClient(),
+        tableName: "bad name",
+      }),
+    JobError,
+    "Invalid PostgreSQL job store identifier",
+  ) as JobError;
+
+  assertEquals(error.code, "JOB_INVALID");
+  assertEquals(error.status, 400);
+  assertEquals(error.details, { identifier: "bad name" });
 });
 
 Deno.test("@rootware/jobs - root import does not expose Postgres exports", () => {

@@ -459,8 +459,8 @@ export function cacheSessionStore(
       );
     },
 
-    clear(): Promise<void> {
-      return Promise.resolve();
+    async clear(): Promise<void> {
+      await cache.deleteByPrefix(prefix);
     },
 
     close(): Promise<void> {
@@ -643,6 +643,11 @@ export function serializeCookie(
     });
   }
 
+  if (options.sameSite !== undefined) {
+    validateSameSite(options.sameSite);
+  }
+  validateCookieSecurity(options.sameSite, options.secure);
+
   const parts = [`${name}=${encodeURIComponent(value)}`];
 
   if (options.maxAgeSeconds !== undefined) {
@@ -768,6 +773,7 @@ export function normalizeCookieOptions(
   }
 
   validateSameSite(sameSite);
+  validateCookieSecurity(sameSite, secure);
 
   if (options.priority !== undefined) {
     validatePriority(options.priority);
@@ -1841,6 +1847,18 @@ function validateSameSite(value: CookieSameSite): void {
     throw new SessionError("Cookie sameSite value is invalid", {
       code: "SESSION_COOKIE_INVALID",
       details: { sameSite: value },
+    });
+  }
+}
+
+function validateCookieSecurity(
+  sameSite: CookieSameSite | undefined,
+  secure: boolean | undefined,
+): void {
+  if (sameSite === "none" && secure !== true) {
+    throw new SessionError("SameSite=None cookies must be Secure", {
+      code: "SESSION_COOKIE_INVALID",
+      details: { sameSite, secure },
     });
   }
 }

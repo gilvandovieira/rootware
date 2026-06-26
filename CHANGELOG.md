@@ -1,5 +1,35 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — v0.9.1 — coherence-slice request logging
+
+Repo/example/docs tag (Gate A, partial). **No package API or behavior changed —
+the `0.9` freeze is preserved**; all `@rootware/*` packages stay at `0.9.0` and
+`0.9.1` is a repo/example/docs tag. Edits are limited to `examples/`, docs, and
+this changelog.
+
+- **`examples/todo_api.ts`** now wires the errors+env+log+http coherence slice
+  for real: the hand-rolled, request-id-less logging middleware is gone and the
+  server routes through `withRequestLogging` from `@rootware/log/http`. A single
+  `x-request-id` is injected at the edge and flows **boundary→handler** — the
+  request-logging boundary and a `logger.child({ requestId })` (used by the
+  route handlers and `app.onError`) share one id, which is echoed on the
+  response. The wrapped handler is exposed on `resources.handler` and exercised
+  on both the `Deno.serve` path and the in-process tests.
+- **Regression guard** — the in-process test asserts the response carries an
+  `x-request-id` and that the memory sink holds BOTH a boundary record
+  (`http.request.completed`) and a handler record (`todo.health.checked`) with
+  that same `requestId`.
+- **Docs** — `examples/README.md` documents the slice and what it proves;
+  `FUTURE.md` §6 `@rootware/http` "Current scope" is corrected to the shipped
+  client `fetch` wrapper, with the server-side items moved under an explicit
+  "Future role (planned)" subsection.
+- Used only existing exports; `withRequestLogging` is unchanged; no new package
+  and no request-scoped-context package — context stays example-local.
+
+Still open for Gate A (out of scope here): a real production consumer and the
+"materially better than manual assembly" judgment, closed by the separate
+consumer-integration step.
+
 ## 2026-06-26 — `v0.9` — workspace-wide API freeze
 
 **Every package is now aligned at `0.9.0`** as the API-freeze candidate. This is

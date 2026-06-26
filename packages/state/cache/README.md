@@ -32,6 +32,7 @@ const settings = await cache.get<{ theme: string }>("settings");
 - `createCacheEntry`
 - `normalizeCacheKey`
 - `joinCacheKey`
+- `CacheValue` (`unknown`; adapters may narrow through serializers)
 - `jsonCacheSerializer` / `CacheSerializer`
 - `CacheStore` / `CacheLock` / `CacheLockOptions` (adapter contracts)
 - `RedisLikeClient` / `RedisCacheAdapterOptions`
@@ -69,8 +70,9 @@ prefix, not isolation. Across processes, `getOrSet`'s in-process dedup does
 **not** prevent a cache stampede. A store that can lock implements
 `acquireLock`, and `getOrSet({ lockTimeoutMs })` then takes the lock,
 double-checks the value, and computes at most once across nodes. `clear()` is
-global for the underlying store — it is not namespace-scoped until adapters
-expose prefix deletes.
+namespace-scoped when called on a namespaced client; stores support that either
+through `deleteByPrefix` or by exposing `keys()` so the client can delete the
+matching prefix safely.
 
 ## Rate limiting (`0.4`)
 

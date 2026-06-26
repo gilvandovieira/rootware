@@ -35,10 +35,13 @@ owns the serializable schema-snapshot type so `@rootware/orm` can produce
 snapshots and `@rootware/migrate` can consume prebuilt snapshots without
 importing each other. See `../CHANGELOG.md` for the reconciliation history.
 
-`@rootware/log/compat/pino`, `@rootware/orm/postgres`, and
-`@rootware/migrate/postgres` are implemented subpath exports. Planned subpaths
-such as `@rootware/orm/neon`, `@rootware/http/testing`, and
-`@rootware/migrate/cli` remain roadmap targets only until their files and
+Implemented subpath exports are `@rootware/log/compat/pino`,
+`@rootware/log/http`, `@rootware/orm/postgres`, `@rootware/orm/sqlite`,
+`@rootware/orm/libsql`, `@rootware/orm/turso`, `@rootware/migrate/postgres`,
+`@rootware/migrate/sqlite`, `@rootware/migrate/libsql`,
+`@rootware/migrate/turso`, `@rootware/migrate/cli`, and
+`@rootware/jobs/postgres`. Planned subpaths such as `@rootware/orm/neon` and
+`@rootware/http/testing` remain roadmap targets only until their files and
 exports exist.
 
 The intended dependency ladder remains:

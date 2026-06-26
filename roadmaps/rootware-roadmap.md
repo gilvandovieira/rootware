@@ -4,27 +4,44 @@
 
 Rootware has a working pre-1.0 foundation for the 12 current packages: `errors`,
 `schema`, `env`, `log`, `testing`, `http`, `cache`, `storage`, `session`,
-`migrate`, `orm`, and `jobs`. The data packages now also ship explicit
-PostgreSQL subpaths: `@rootware/orm/postgres` and `@rootware/migrate/postgres`.
-`@rootware/log` also ships `@rootware/log/compat/pino`. Adapter packages and all
-other subpaths are still planned work; the repository does **not** currently
-contain `@rootware/adapters`, `@rootware/orm/neon`, `@rootware/http/testing`, or
-`@rootware/migrate/cli`.
+`migrate`, `orm`, and `jobs`. As of the v0.9 stabilization baseline, the
+implemented subpath exports are:
+
+```txt
+@rootware/log/compat/pino
+@rootware/log/http
+@rootware/orm/postgres
+@rootware/orm/sqlite
+@rootware/orm/libsql
+@rootware/orm/turso
+@rootware/migrate/postgres
+@rootware/migrate/sqlite
+@rootware/migrate/libsql
+@rootware/migrate/turso
+@rootware/migrate/cli
+@rootware/jobs/postgres
+```
+
+Adapter packages and unimplemented subpaths are still planned work; the
+repository does **not** currently contain `@rootware/adapters`,
+`@rootware/orm/neon`, or `@rootware/http/testing`.
 
 This document does not replace the dedicated package plans. It defines the
 sequencing logic for building the workspace as a coherent product.
 
 > Reconciled against source on 2026-06-26. Several packages ship more than a
-> bare foundation: `@rootware/log` already has a Pino compatibility subpath;
-> `@rootware/orm` already has the `sql` tag, the full predicate set,
-> select/insert/update/delete builders with type inference, and a PostgreSQL
-> execution subpath; `@rootware/migrate` already has a programmatic up/**down**
-> migrator with checksums and a PostgreSQL execution subpath;
+> bare foundation: `@rootware/log` already has Pino compatibility and HTTP
+> request logging subpaths; `@rootware/orm` already has the `sql` tag, the full
+> predicate set, select/insert/update/delete builders with type inference, and
+> PostgreSQL, SQLite, libSQL, and Turso execution subpaths; `@rootware/migrate`
+> already has a programmatic up/**down** migrator with checksums, PostgreSQL,
+> SQLite, libSQL, and Turso execution subpaths, and the SQL-first CLI subpath;
+> `@rootware/jobs` already has a PostgreSQL durable-store subpath;
 > `@rootware/session` already has `requireActor`, a cache-backed store, and
 > secure cookie defaults; `@rootware/cache` already has `has()` and `getOrSet()`
 > with single-process in-flight de-duplication for concurrent misses. The
-> dedicated package `ROADMAP.md` files should describe only real gaps (CLI,
-> CSRF, durable adapters, additional subpaths), not re-implementation.
+> dedicated package `ROADMAP.md` files should describe only real gaps, not
+> re-implementation of shipped packages or subpaths.
 
 The next architectural milestone is now:
 
@@ -227,8 +244,12 @@ for package boundary enforcement. CI runs the same task set, including
 Package export policy:
 
 - Every package has a root `mod.ts` export.
-- `@rootware/log/compat/pino`, `@rootware/orm/postgres`, and
-  `@rootware/migrate/postgres` are the current implemented subpath exports.
+- Current implemented subpath exports are `@rootware/log/compat/pino`,
+  `@rootware/log/http`, `@rootware/orm/postgres`, `@rootware/orm/sqlite`,
+  `@rootware/orm/libsql`, `@rootware/orm/turso`, `@rootware/migrate/postgres`,
+  `@rootware/migrate/sqlite`, `@rootware/migrate/libsql`,
+  `@rootware/migrate/turso`, `@rootware/migrate/cli`, and
+  `@rootware/jobs/postgres`.
 - Do not add new subpath exports until the target files exist and have tests.
 - Planned subpaths must remain roadmap/documentation-only until implemented.
 - Roadmap validation should check that docs do not describe missing packages or
@@ -282,8 +303,8 @@ Packages:
 
 - `@rootware/migrate`
 - `@rootware/orm`
-- shipped Postgres subpaths plus future adapters/subpaths for Neon, SQLite,
-  libSQL, and Turso.
+- shipped Postgres, SQLite, libSQL, Turso, and CLI subpaths, plus future
+  adapters/subpaths such as Neon where they meet the subpath policy.
 
 Goal:
 

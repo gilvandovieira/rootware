@@ -2,6 +2,7 @@ import {
   DEFAULT_JOBS_TABLE,
   type DurableJobStore,
   type JobClaimOptions,
+  JobError,
   type JobId,
   type JobListOptions,
   type JobListResult,
@@ -413,7 +414,11 @@ async function withClient<T>(
 function quoteIdent(name: string): string {
   return name.trim().split(".").map((part) => {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(part)) {
-      throw new Error(`Invalid identifier: ${name}`);
+      throw new JobError("Invalid PostgreSQL job store identifier", {
+        code: "JOB_INVALID",
+        status: 400,
+        details: { identifier: name },
+      });
     }
     return `"${part}"`;
   }).join(".");

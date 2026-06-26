@@ -26,16 +26,13 @@ export type CacheErrorCode =
 /** Logical cache key before any client namespace is applied. */
 export type CacheKey = string;
 
-/** Value shape accepted by the cache client and serializers. */
-export type CacheValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | Record<string, unknown>
-  | unknown[]
-  | unknown;
+/**
+ * Value shape accepted by the cache client.
+ *
+ * The core client accepts raw unknown values. Out-of-process adapters can narrow
+ * this through their serializer or backend-specific contract.
+ */
+export type CacheValue = unknown;
 
 /** Stored cache entry with value metadata and optional TTL. */
 export interface CacheEntry<T = unknown> {
@@ -122,6 +119,12 @@ export interface CacheStore {
   clear(): Promise<void>;
 
   keys?(): Promise<CacheKey[]>;
+
+  /**
+   * Optionally deletes every key at `prefix` or below it. Stores that omit this
+   * can still support prefix deletion when they implement {@link CacheStore.keys}.
+   */
+  deleteByPrefix?(prefix: CacheKey): Promise<number>;
 
   /**
    * Optionally acquires a cross-process lock for stampede protection in
@@ -214,6 +217,9 @@ export interface CacheClient {
   ): Promise<boolean>;
 
   clear(): Promise<void>;
+
+  /** Deletes every key at `prefix` or below it in the current namespace. */
+  deleteByPrefix(prefix: CacheKey): Promise<number>;
 
   getOrSet<T = unknown>(
     key: CacheKey,
@@ -362,6 +368,23 @@ export function memoryCacheStore(
       return Promise.resolve();
     },
 
+    deleteByPrefix(prefix: CacheKey): Promise<number> {
+      const normalizedPrefix = normalizeCacheKey(prefix);
+      let deleted = 0;
+
+      for (const key of entries.keys()) {
+        if (!matchesCachePrefix(key, normalizedPrefix)) {
+          continue;
+        }
+
+        if (entries.delete(key)) {
+          deleted += 1;
+        }
+      }
+
+      return Promise.resolve(deleted);
+    },
+
     keys(): Promise<CacheKey[]> {
       const keys: CacheKey[] = [];
 
@@ -422,8 +445,12 @@ export function createNamespacedCache(
       return cache.has(joinCacheKey([normalizedNamespace, key]));
     },
 
-    clear(): Promise<void> {
-      return cache.clear();
+    async clear(): Promise<void> {
+      await cache.deleteByPrefix(normalizedNamespace);
+    },
+
+    deleteByPrefix(prefix: CacheKey): Promise<number> {
+      return cache.deleteByPrefix(joinCacheKey([normalizedNamespace, prefix]));
     },
 
     getOrSet<T = unknown>(
@@ -610,6 +637,10 @@ export function noopCache(): CacheClient {
 
     clear(): Promise<void> {
       return Promise.resolve();
+    },
+
+    deleteByPrefix(_prefix: CacheKey): Promise<number> {
+      return Promise.resolve(0);
     },
 
     async getOrSet<T = unknown>(
@@ -1068,13 +1099,44 @@ class RootwareCacheClient implements CacheClient {
 
   async clear(): Promise<void> {
     try {
-      // Namespace-specific clear can be added once stores expose prefix deletes.
-      await this.#store.clear();
-      this.#debug(undefined, "cache clear");
+      if (this.#namespace === undefined) {
+        await this.#store.clear();
+        this.#debug(undefined, "cache clear");
+        return;
+      }
+
+      const deleted = await this.#deleteByFullPrefix(this.#namespace);
+      this.#debug(
+        { prefix: this.#namespace, namespace: this.#namespace, deleted },
+        "cache clear",
+      );
     } catch (cause) {
       this.#error({ namespace: this.#namespace }, "cache operation failed");
       throwCacheError("Cache clear failed", "CACHE_CLEAR_FAILED", {
         operation: "clear",
+        namespace: this.#namespace,
+      }, cause);
+    }
+  }
+
+  async deleteByPrefix(prefix: CacheKey): Promise<number> {
+    const fullPrefix = this.#key(prefix);
+
+    try {
+      const deleted = await this.#deleteByFullPrefix(fullPrefix);
+      this.#debug(
+        { prefix: fullPrefix, namespace: this.#namespace, deleted },
+        "cache prefix delete",
+      );
+      return deleted;
+    } catch (cause) {
+      this.#error(
+        { prefix: fullPrefix, namespace: this.#namespace },
+        "cache operation failed",
+      );
+      throwCacheError("Cache clear failed", "CACHE_CLEAR_FAILED", {
+        prefix: fullPrefix,
+        operation: "deleteByPrefix",
         namespace: this.#namespace,
       }, cause);
     }
@@ -1127,6 +1189,36 @@ class RootwareCacheClient implements CacheClient {
 
   #key(key: CacheKey): CacheKey {
     return joinCacheKey([this.#namespace, key]);
+  }
+
+  async #deleteByFullPrefix(prefix: CacheKey): Promise<number> {
+    const normalizedPrefix = normalizeCacheKey(prefix);
+
+    if (this.#store.deleteByPrefix !== undefined) {
+      return await this.#store.deleteByPrefix(normalizedPrefix);
+    }
+
+    if (this.#store.keys === undefined) {
+      throw new CacheError("Cache store does not support prefix deletion", {
+        code: "CACHE_CLEAR_FAILED",
+        details: { prefix: normalizedPrefix },
+      });
+    }
+
+    const keys = await this.#store.keys();
+    let deleted = 0;
+
+    for (const key of keys) {
+      if (!matchesCachePrefix(key, normalizedPrefix)) {
+        continue;
+      }
+
+      if (await this.#store.delete(key, { silent: true })) {
+        deleted += 1;
+      }
+    }
+
+    return deleted;
   }
 
   async #computeWithLock<T>(
@@ -1287,6 +1379,10 @@ function evictOldestEntries(
 
     entries.delete(oldestKey);
   }
+}
+
+function matchesCachePrefix(key: CacheKey, prefix: CacheKey): boolean {
+  return key === prefix || key.startsWith(`${prefix}:`);
 }
 
 function omitUndefined(
