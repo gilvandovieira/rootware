@@ -22,8 +22,9 @@ deno task examples:todo-api:serve
 ```
 
 The Todo API example uses a local SQLite database through `@db/sqlite`, so it
-needs Deno env/read/write/FFI permissions. The serve task also needs network
-permission.
+needs Deno env/read/write/FFI permissions. A cold Deno cache may also need
+network access to GitHub release asset hosts for the SQLite native library. The
+serve task also needs network permission.
 
 Coverage by script:
 
