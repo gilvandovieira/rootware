@@ -675,13 +675,12 @@ Security decision:
 
 `@rootware/log` should provide the primitives, not own application policy.
 
-Naming caveat: `@rootware/log` currently exports a `serializeError()` that
-includes `stack` (correct for logs), while `@rootware/errors` exports a
-`serializeError()` that omits `stack` (correct for user-facing payloads). The
-two collide if an app imports both. Before `1.0`, resolve this — rename log's
-variant (`serializeErrorForLog`), or have it delegate to `@rootware/errors`'
-serializer and attach `stack` itself — and document which serializer to reach
-for. See `../errors/ROADMAP.md`, Chunk 9.
+Naming caveat — **resolved in `0.2.0`.** `@rootware/log` previously exported a
+`serializeError()` that includes `stack` (correct for logs), which collided with
+`@rootware/errors`' safe, no-stack `serializeError()`. The log variant is now
+exported as `serializeErrorForLog()` (with stack, all fields, ignores `expose`);
+reach for `@rootware/errors`' `serializeError` for user-facing payloads. See
+`../errors/ROADMAP.md`, Chunk 9.
 
 ---
 

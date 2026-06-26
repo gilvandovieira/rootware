@@ -495,11 +495,27 @@ export function calculateMigrationChecksum(
   const input = [
     migration.id,
     migration.kind,
-    migrationStepToString(migration.up),
-    migration.down === undefined ? "" : migrationStepToString(migration.down),
+    normalizeChecksumText(migrationStepToString(migration.up)),
+    migration.down === undefined
+      ? ""
+      : normalizeChecksumText(migrationStepToString(migration.down)),
   ].join("\n");
 
   return `migr_${hashString(input)}`;
+}
+
+/**
+ * Normalizes migration text before hashing so the same `.sql` file produces the
+ * same checksum across platforms: CRLF/CR become LF, trailing whitespace is
+ * stripped per line, and trailing blank lines are dropped.
+ */
+function normalizeChecksumText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/u, ""))
+    .join("\n")
+    .replace(/\n+$/u, "");
 }
 
 /** Throws when an applied migration checksum differs from the current one. */

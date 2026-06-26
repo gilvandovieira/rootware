@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   CacheError,
   cloneCacheEntry,
@@ -6,11 +6,36 @@ import {
   createCacheEntry,
   isExpired,
   joinCacheKey,
+  jsonCacheSerializer,
   memoryCacheStore,
   noopCache,
   normalizeCacheKey,
   resolveTtlMs,
 } from "./mod.ts";
+
+Deno.test("@rootware/cache - jsonCacheSerializer round-trips values and reports failures", () => {
+  const serializer = jsonCacheSerializer();
+  const wire = serializer.serialize({ id: "u_1", tags: ["a", "b"] });
+
+  assertEquals(typeof wire, "string");
+  assertEquals(serializer.deserialize(wire), { id: "u_1", tags: ["a", "b"] });
+  assertEquals(serializer.serialize(undefined), "null");
+
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  const error = assertThrows(
+    () => serializer.serialize(circular),
+    CacheError,
+  ) as CacheError;
+  assertEquals(error.code, "CACHE_SERIALIZATION_FAILED");
+
+  const parseError = assertThrows(
+    () => serializer.deserialize("{not json"),
+    CacheError,
+  ) as CacheError;
+  assertEquals(parseError.code, "CACHE_SERIALIZATION_FAILED");
+  assert(parseError instanceof CacheError);
+});
 
 Deno.test("@rootware/cache - memory store and client set/get/has/delete/clear", async () => {
   const cache = createCache({ store: memoryCacheStore() });

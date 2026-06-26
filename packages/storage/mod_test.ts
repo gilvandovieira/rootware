@@ -14,12 +14,78 @@ import {
   getBlobSize,
   getBodySize,
   joinStorageKey,
+  localStorageStore,
   memoryStorageStore,
   noopStorage,
   normalizeBucketName,
   normalizeStorageKey,
   StorageError,
+  type StorageFileSystem,
 } from "./mod.ts";
+
+/** In-memory {@link StorageFileSystem} so the local adapter is testable off-disk. */
+function memoryFileSystem(): StorageFileSystem {
+  const files = new Map<string, Uint8Array>();
+
+  return {
+    readFile(path: string): Promise<Uint8Array | undefined> {
+      return Promise.resolve(files.get(path));
+    },
+    writeFile(path: string, data: Uint8Array): Promise<void> {
+      files.set(path, data);
+      return Promise.resolve();
+    },
+    remove(path: string): Promise<void> {
+      files.delete(path);
+      return Promise.resolve();
+    },
+    mkdir(): Promise<void> {
+      return Promise.resolve();
+    },
+    readDir(path: string): Promise<readonly string[]> {
+      const prefix = path.endsWith("/") ? path : `${path}/`;
+      const names = [...files.keys()]
+        .filter((file) => file.startsWith(prefix))
+        .map((file) => file.slice(prefix.length))
+        .filter((name) => !name.includes("/"));
+      return Promise.resolve(names);
+    },
+  };
+}
+
+Deno.test("@rootware/storage - localStorageStore round-trips objects via an injected filesystem", async () => {
+  const storage = createStorage({
+    store: localStorageStore({ rootDir: "/data", fs: memoryFileSystem() }),
+  });
+
+  const info = await storage.put("docs/readme.txt", "hello world", {
+    contentType: "text/plain",
+    metadata: { author: "lucas" },
+  });
+  assertEquals(info.size, 11);
+  assertExists(info.checksum);
+
+  const object = await storage.get("docs/readme.txt");
+  assertExists(object);
+  assertEquals(await object.blob.text(), "hello world");
+  assertEquals(object.contentType, "text/plain");
+  assertEquals(object.metadata.author, "lucas");
+
+  assertEquals(await storage.exists("docs/readme.txt"), true);
+
+  await storage.put("docs/notes.txt", "second");
+  await storage.put("images/logo.bin", "third");
+
+  const listed = await storage.list({ prefix: "docs" });
+  assertEquals(listed.objects.map((entry) => entry.key), [
+    "docs/notes.txt",
+    "docs/readme.txt",
+  ]);
+
+  assertEquals(await storage.delete("docs/readme.txt"), true);
+  assertEquals(await storage.delete("docs/readme.txt"), false);
+  assertEquals(await storage.exists("docs/readme.txt"), false);
+});
 
 Deno.test("@rootware/storage - memory store and client put/get/delete", async () => {
   const storage = createStorage({ store: memoryStorageStore() });

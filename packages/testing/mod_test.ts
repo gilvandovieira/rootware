@@ -14,6 +14,7 @@ import {
   assertThrowsRootwareError,
   captureAsyncError,
   captureError,
+  createCleanupStack,
   createFakeClock,
   createFixture,
   createTestContext,
@@ -23,6 +24,7 @@ import {
   testLogger,
   useFixture,
   wait,
+  withEnvSource,
 } from "./mod.ts";
 
 Deno.test("@rootware/testing - assertions", async () => {
@@ -167,6 +169,44 @@ Deno.test("@rootware/testing - fixtures and context", async () => {
 
   assertEquals(context.name, "case");
   assertEquals(order, ["second", "first"]);
+});
+
+Deno.test("@rootware/testing - createCleanupStack runs LIFO and aggregates the first error", async () => {
+  const order: string[] = [];
+  const stack = createCleanupStack();
+
+  stack.push(() => {
+    order.push("first");
+  });
+  stack.push(() => {
+    throw new Error("boom");
+  });
+  stack.push(() => {
+    order.push("third");
+  });
+
+  assertEquals(stack.size, 3);
+
+  const error = await assertRejects(
+    () => stack.run(),
+    RootwareError,
+  ) as RootwareError;
+  assertEquals(error.code, "TEST_FIXTURE_FAILED");
+  // Every callback still ran, in reverse order, despite the middle failure.
+  assertEquals(order, ["third", "first"]);
+  assertEquals(stack.size, 0);
+});
+
+Deno.test("@rootware/testing - withEnvSource scopes an isolated env source", () => {
+  const original = { PORT: "3000" };
+
+  const port = withEnvSource(original, (source) => {
+    source.PORT = "9999"; // mutating the scoped copy must not leak out
+    return testEnv({ PORT: env.integer() }, source).PORT;
+  });
+
+  assertEquals(port, 9999);
+  assertEquals(original.PORT, "3000");
 });
 
 Deno.test("@rootware/testing - wait and noop", async () => {

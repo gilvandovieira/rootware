@@ -8,6 +8,7 @@ export type CacheErrorCode =
   | "CACHE_DELETE_FAILED"
   | "CACHE_CLEAR_FAILED"
   | "CACHE_GET_OR_SET_FAILED"
+  | "CACHE_SERIALIZATION_FAILED"
   | "CACHE_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
@@ -45,6 +46,18 @@ export interface CacheDeleteOptions {
 
 export interface GetOrSetOptions extends CacheSetOptions {
   readonly forceRefresh?: boolean;
+}
+
+/**
+ * Wire-format serializer contract for cache adapters.
+ *
+ * The in-memory store keeps raw values, so it never needs a serializer.
+ * Out-of-process adapters (Redis, KV, etc.) use one to convert values to and
+ * from their transport representation (`TWire`, usually a string).
+ */
+export interface CacheSerializer<TWire = string> {
+  serialize(value: unknown): TWire;
+  deserialize<T = unknown>(wire: TWire): T;
 }
 
 /** Async-first adapter interface for cache backends. */
@@ -429,6 +442,37 @@ export function cloneCacheEntry<T>(entry: CacheEntry<T>): CacheEntry<T> {
     createdAt: entry.createdAt,
     ...(entry.expiresAt === undefined ? {} : { expiresAt: entry.expiresAt }),
     ...(entry.ttlMs === undefined ? {} : { ttlMs: entry.ttlMs }),
+  };
+}
+
+/**
+ * Default JSON {@link CacheSerializer}. Out-of-process adapters can pass it (or
+ * a custom serializer) to convert values to and from a string wire format.
+ * Serialization or parsing failures surface as a `CacheError`.
+ */
+export function jsonCacheSerializer(): CacheSerializer<string> {
+  return {
+    serialize(value: unknown): string {
+      try {
+        return JSON.stringify(value ?? null);
+      } catch (cause) {
+        throw new CacheError("Failed to serialize cache value", {
+          code: "CACHE_SERIALIZATION_FAILED",
+          cause,
+        });
+      }
+    },
+
+    deserialize<T = unknown>(wire: string): T {
+      try {
+        return JSON.parse(wire) as T;
+      } catch (cause) {
+        throw new CacheError("Failed to deserialize cache value", {
+          code: "CACHE_SERIALIZATION_FAILED",
+          cause,
+        });
+      }
+    },
   };
 }
 

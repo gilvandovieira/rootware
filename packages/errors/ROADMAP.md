@@ -264,21 +264,19 @@ Implement `createErrorFactory(defaults)`.
 
 Implement `defineErrorCode(code)`.
 
-### Chunk 9 — Serialization rules
+### Chunk 9 — Serialization rules — **done (`0.2.0`)**
 
-The user-safe path already exists: `toJSON()` / `serializeError()` emit
+The user-safe path already existed: `toJSON()` / `serializeError()` emit
 `RootwareErrorJson`, which respects `expose` and **never includes `stack`**,
-with a cycle-guarded recursive `cause`. So the work here is not "add a safe
-serializer" — it is to decide where the **with-stack, internal** serialization
-lives.
+with a cycle-guarded recursive `cause`. The work here was to decide where the
+**with-stack, internal** serialization lives.
 
-Today `@rootware/log` ships its own `serializeError()` that _does_ include
-`stack` for logs. That means two functions named `serializeError` are exported
-from the workspace (one from `@rootware/errors`, safe; one from `@rootware/log`,
-with stack), which collide if an app imports both. Resolve this: either rename
-log's variant (`serializeErrorForLog`) or have log call `@rootware/errors`'
-serializer and attach `stack` itself. Keep the safe/no-stack default in
-`@rootware/errors`.
+`@rootware/log` previously shipped its own `serializeError()` that _does_
+include `stack`, so two functions named `serializeError` were exported from the
+workspace and collided if an app imported both. **Resolved by renaming log's
+variant to `serializeErrorForLog`** (with stack, all fields, ignores `expose`),
+keeping the safe/no-stack `serializeError` here as the user-facing default. The
+two now have distinct names and an app can import both.
 
 ### Chunk 10 — Package-specific examples
 

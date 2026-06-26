@@ -32,6 +32,11 @@ const settings = await cache.get<{ theme: string }>("settings");
 - `createCacheEntry`
 - `normalizeCacheKey`
 - `joinCacheKey`
+- `jsonCacheSerializer` / `CacheSerializer`
+
+The memory store keeps raw values. Out-of-process adapters (Redis, KV) use a
+`CacheSerializer` — `jsonCacheSerializer()` is the default — to convert values
+to and from a string wire format.
 
 ## Security
 

@@ -7,8 +7,10 @@ import {
   getLogLevelNumber,
   isLogLevelName,
   levels,
+  type LogError,
+  type LogSink,
   memorySink,
-  serializeError,
+  serializeErrorForLog,
   shouldLog,
   unbufferedSink,
 } from "./mod.ts";
@@ -98,7 +100,7 @@ Deno.test("@rootware/log - noop logger and helpers", () => {
   const logger = createNoopLogger();
   logger.info("ignored");
 
-  const serialized = serializeError(new Error("boom"));
+  const serialized = serializeErrorForLog(new Error("boom"));
   const line = formatLogRecord({
     level: 30,
     levelName: "info",
@@ -108,4 +110,93 @@ Deno.test("@rootware/log - noop logger and helpers", () => {
 
   assertEquals(serialized.message, "boom");
   assert(line.endsWith("\n"));
+});
+
+Deno.test("@rootware/log - redaction censors top-level and nested fields", () => {
+  const sink = memorySink();
+  const logger = createLogger({
+    level: "info",
+    timestamp: () => "2026-01-01T00:00:00.000Z",
+    redact: ["password", "req.headers.authorization", "*.token"],
+  }, unbufferedSink(sink));
+
+  logger.info({
+    password: "hunter2",
+    req: { headers: { authorization: "Bearer secret" } },
+    user: { token: "t_abc", id: "u_1" },
+  }, "auth");
+
+  const record = sink.records()[0];
+  assertEquals(record.password, "[Redacted]");
+  assertEquals(
+    (record.req as { headers: { authorization: string } }).headers
+      .authorization,
+    "[Redacted]",
+  );
+  assertEquals(
+    (record.user as { token: string; id: string }).token,
+    "[Redacted]",
+  );
+  assertEquals((record.user as { id: string }).id, "u_1");
+});
+
+Deno.test("@rootware/log - configurable messageKey and errorKey", () => {
+  const sink = memorySink();
+  const logger = createLogger({
+    level: "info",
+    messageKey: "message",
+    errorKey: "err",
+    timestamp: () => "2026-01-01T00:00:00.000Z",
+  }, unbufferedSink(sink));
+
+  logger.error(new Error("boom"), "request failed");
+
+  const record = sink.records()[0];
+  assertEquals(record.message, "request failed");
+  assertExists(record.err);
+  assertEquals(record.msg, undefined);
+  assertEquals(record.error, undefined);
+});
+
+Deno.test("@rootware/log - isLevelEnabled reflects level and enabled flag", () => {
+  const logger = createLogger({ level: "warn" }, unbufferedSink(memorySink()));
+  assertEquals(logger.isLevelEnabled("error"), true);
+  assertEquals(logger.isLevelEnabled("info"), false);
+  assertEquals(createNoopLogger().isLevelEnabled("fatal"), false);
+
+  // child inherits redaction/keys but can raise its own level
+  const quiet = logger.child({}, { level: "error" });
+  assertEquals(quiet.isLevelEnabled("warn"), false);
+});
+
+Deno.test("@rootware/log - onWriteError handles sync and async sink failures", async () => {
+  const captured: LogError[] = [];
+
+  const failingSyncSink: LogSink = {
+    write() {
+      throw new Error("disk full");
+    },
+  };
+  const syncLogger = createLogger({
+    level: "info",
+    onWriteError: (error) => captured.push(error),
+  }, failingSyncSink);
+  syncLogger.info("never reaches disk");
+
+  const failingAsyncSink: LogSink = {
+    write() {
+      return Promise.reject(new Error("network down"));
+    },
+  };
+  const asyncLogger = createLogger({
+    level: "info",
+    onWriteError: (error) => captured.push(error),
+  }, failingAsyncSink);
+  asyncLogger.info("dropped");
+  // let the rejected promise settle
+  await Promise.resolve();
+
+  assertEquals(captured.length, 2);
+  assertEquals(captured[0].code, "LOG_WRITE_FAILED");
+  assertEquals(captured[1].code, "LOG_WRITE_FAILED");
 });

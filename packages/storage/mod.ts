@@ -200,6 +200,28 @@ export interface MemoryStorageStoreOptions {
   readonly cloneObjects?: boolean;
 }
 
+/**
+ * Minimal filesystem surface used by {@link localStorageStore}. The default
+ * implementation uses Deno file APIs (and so needs `--allow-read`/`--allow-write`
+ * on the storage directory); tests inject an in-memory implementation instead.
+ */
+export interface StorageFileSystem {
+  /** Reads a file, returning `undefined` when it does not exist. */
+  readFile(path: string): Promise<Uint8Array | undefined>;
+  writeFile(path: string, data: Uint8Array): Promise<void>;
+  remove(path: string): Promise<void>;
+  /** Creates a directory recursively; a no-op when it already exists. */
+  mkdir(path: string): Promise<void>;
+  /** Lists file names directly under a directory; `[]` when it does not exist. */
+  readDir(path: string): Promise<readonly string[]>;
+}
+
+/** Options for the local filesystem storage store. */
+export interface LocalStorageStoreOptions {
+  readonly rootDir: string;
+  readonly fs?: StorageFileSystem;
+}
+
 export interface StorageErrorOptions {
   readonly code?: StorageErrorCode;
   readonly status?: number;
@@ -338,6 +360,138 @@ export function memoryStorageStore(
     close(): Promise<void> {
       objects.clear();
       return Promise.resolve();
+    },
+  };
+}
+
+/**
+ * Creates a {@link StorageStore} backed by the local filesystem. Each object is
+ * persisted as one JSON file (metadata plus a base64 body) named after its key.
+ * Pass a custom {@link StorageFileSystem} to test without touching disk.
+ */
+export function localStorageStore(
+  options: LocalStorageStoreOptions,
+): StorageStore {
+  const fs = options.fs ?? denoStorageFileSystem();
+  const rootDir = options.rootDir;
+  let rootEnsured = false;
+
+  const ensureRoot = async (): Promise<void> => {
+    if (!rootEnsured) {
+      await fs.mkdir(rootDir);
+      rootEnsured = true;
+    }
+  };
+
+  const pathFor = (key: StorageKey): string =>
+    joinStoragePath(rootDir, `${encodeURIComponent(key)}.json`);
+
+  const readRecord = async (
+    key: StorageKey,
+  ): Promise<LocalStorageRecord | undefined> => {
+    const bytes = await fs.readFile(pathFor(key));
+
+    if (bytes === undefined) {
+      return undefined;
+    }
+
+    try {
+      return JSON.parse(new TextDecoder().decode(bytes)) as LocalStorageRecord;
+    } catch (cause) {
+      throw new StorageError("Failed to read stored object", {
+        code: "STORAGE_GET_FAILED",
+        details: { key },
+        cause,
+      });
+    }
+  };
+
+  return {
+    async put(
+      key: StorageKey,
+      object: StorageObject,
+      _options: StoragePutOptions = {},
+    ): Promise<void> {
+      await ensureRoot();
+      const normalizedKey = normalizeStorageKey(key);
+      const bytes = new Uint8Array(await object.blob.arrayBuffer());
+      const record: LocalStorageRecord = {
+        key: normalizedKey,
+        contentType: object.contentType,
+        size: object.size,
+        checksum: object.checksum,
+        metadata: object.metadata,
+        createdAt: object.createdAt,
+        updatedAt: object.updatedAt,
+        body: encodeBase64(bytes),
+      };
+
+      await fs.writeFile(
+        pathFor(normalizedKey),
+        new TextEncoder().encode(JSON.stringify(record)),
+      );
+    },
+
+    async get(
+      key: StorageKey,
+      _options: StorageGetOptions = {},
+    ): Promise<StorageObject | undefined> {
+      const record = await readRecord(normalizeStorageKey(key));
+      return record === undefined ? undefined : recordToStorageObject(record);
+    },
+
+    async delete(
+      key: StorageKey,
+      _options: StorageDeleteOptions = {},
+    ): Promise<boolean> {
+      const normalizedKey = normalizeStorageKey(key);
+
+      if (await readRecord(normalizedKey) === undefined) {
+        return false;
+      }
+
+      await fs.remove(pathFor(normalizedKey));
+      return true;
+    },
+
+    async exists(key: StorageKey): Promise<boolean> {
+      return await readRecord(normalizeStorageKey(key)) !== undefined;
+    },
+
+    async list(options: StorageListOptions = {}): Promise<StorageListResult> {
+      const prefix = normalizeOptionalStorageKey(options.prefix);
+      const cursor = normalizeOptionalStorageKey(options.cursor);
+      const limit = normalizeListLimit(options.limit);
+      const keys = (await listStorageKeys(fs, rootDir))
+        .filter((key) => matchesPrefix(key, prefix))
+        .sort();
+
+      const startIndex = getCursorStartIndex(keys, cursor);
+      const availableKeys = keys.slice(startIndex);
+      const selectedKeys = limit === undefined
+        ? availableKeys
+        : availableKeys.slice(0, limit);
+      const nextKey = limit === undefined ? undefined : availableKeys[limit];
+
+      const objects: StorageObjectInfo[] = [];
+      for (const key of selectedKeys) {
+        const record = await readRecord(key);
+        if (record !== undefined) {
+          objects.push(recordToStorageObjectInfo(record));
+        }
+      }
+
+      return {
+        objects,
+        ...(nextKey === undefined ? {} : { cursor: nextKey }),
+        hasMore: nextKey !== undefined,
+      };
+    },
+
+    async clear(): Promise<void> {
+      for (const key of await listStorageKeys(fs, rootDir)) {
+        await fs.remove(pathFor(key));
+      }
     },
   };
 }
@@ -1134,6 +1288,162 @@ function matchesPrefix(key: string, prefix: string | undefined): boolean {
   }
 
   return key === prefix || key.startsWith(`${prefix}/`);
+}
+
+/** Serialized form of a stored object on the local filesystem. */
+interface LocalStorageRecord {
+  readonly key: StorageKey;
+  readonly contentType?: string;
+  readonly size: number;
+  readonly checksum?: string;
+  readonly metadata: StorageMetadata;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly body: string;
+}
+
+function recordToStorageObject(record: LocalStorageRecord): StorageObject {
+  const bytes = decodeBase64(record.body);
+
+  return {
+    key: record.key,
+    blob: new Blob([bytes], {
+      ...(record.contentType === undefined ? {} : { type: record.contentType }),
+    }),
+    ...(record.contentType === undefined
+      ? {}
+      : { contentType: record.contentType }),
+    size: record.size,
+    ...(record.checksum === undefined ? {} : { checksum: record.checksum }),
+    metadata: record.metadata,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function recordToStorageObjectInfo(
+  record: LocalStorageRecord,
+): StorageObjectInfo {
+  return {
+    key: record.key,
+    ...(record.contentType === undefined
+      ? {}
+      : { contentType: record.contentType }),
+    size: record.size,
+    ...(record.checksum === undefined ? {} : { checksum: record.checksum }),
+    metadata: record.metadata,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+async function listStorageKeys(
+  fs: StorageFileSystem,
+  rootDir: string,
+): Promise<StorageKey[]> {
+  const names = await fs.readDir(rootDir);
+  const keys: StorageKey[] = [];
+
+  for (const name of names) {
+    if (name.endsWith(".json")) {
+      keys.push(decodeURIComponent(name.slice(0, -".json".length)));
+    }
+  }
+
+  return keys;
+}
+
+function joinStoragePath(dir: string, name: string): string {
+  return dir.endsWith("/") ? `${dir}${name}` : `${dir}/${name}`;
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function decodeBase64(text: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(text);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+/** Deno-backed {@link StorageFileSystem} used by {@link localStorageStore}. */
+function denoStorageFileSystem(): StorageFileSystem {
+  return {
+    async readFile(path: string): Promise<Uint8Array | undefined> {
+      try {
+        return await Deno.readFile(path);
+      } catch (cause) {
+        if (cause instanceof Deno.errors.NotFound) {
+          return undefined;
+        }
+        throw new StorageError("Failed to read storage file", {
+          code: "STORAGE_GET_FAILED",
+          details: { path },
+          cause,
+        });
+      }
+    },
+
+    async writeFile(path: string, data: Uint8Array): Promise<void> {
+      try {
+        await Deno.writeFile(path, data);
+      } catch (cause) {
+        throw new StorageError("Failed to write storage file", {
+          code: "STORAGE_PUT_FAILED",
+          details: { path },
+          cause,
+        });
+      }
+    },
+
+    async remove(path: string): Promise<void> {
+      try {
+        await Deno.remove(path);
+      } catch (cause) {
+        if (cause instanceof Deno.errors.NotFound) {
+          return;
+        }
+        throw new StorageError("Failed to delete storage file", {
+          code: "STORAGE_DELETE_FAILED",
+          details: { path },
+          cause,
+        });
+      }
+    },
+
+    async mkdir(path: string): Promise<void> {
+      await Deno.mkdir(path, { recursive: true });
+    },
+
+    async readDir(path: string): Promise<readonly string[]> {
+      const names: string[] = [];
+      try {
+        for await (const entry of Deno.readDir(path)) {
+          if (entry.isFile) {
+            names.push(entry.name);
+          }
+        }
+      } catch (cause) {
+        if (cause instanceof Deno.errors.NotFound) {
+          return [];
+        }
+        throw new StorageError("Failed to list storage directory", {
+          code: "STORAGE_LIST_FAILED",
+          details: { path },
+          cause,
+        });
+      }
+      return names;
+    },
+  };
 }
 
 function evictOldestObjects(

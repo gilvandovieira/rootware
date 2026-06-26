@@ -124,6 +124,51 @@ Deno.test("@rootware/session - cookie helpers are safe", () => {
   assertThrows(() => serializeCookie("bad name", "x"), SessionError);
 });
 
+Deno.test("@rootware/session - set-cookie uses secure defaults", () => {
+  const session = createSessionRecord({
+    id: "flag_1",
+    maxAgeMs: 1_000,
+    now: 0,
+  });
+  const header = createSetCookieHeader(session, { name: "sid" });
+
+  assert(header.includes("HttpOnly"));
+  assert(header.includes("Secure"));
+  assert(header.includes("SameSite=Lax"));
+  assert(header.includes("Path=/"));
+});
+
+Deno.test("@rootware/session - expired and missing sessions resolve to undefined", async () => {
+  const store = memorySessionStore();
+  // expiresAt is at the epoch, so it is expired against the real clock.
+  await store.set(
+    createSessionRecord({ id: "expired_1", maxAgeMs: 1_000, now: 0 }),
+  );
+
+  const manager = createSessionManager({ store, maxAgeMs: 60_000 });
+  const cookieName = manager.cookieName();
+
+  const expiredRequest = new Request("https://example.com", {
+    headers: { cookie: `${cookieName}=expired_1` },
+  });
+  assertEquals(await manager.get(expiredRequest), undefined);
+  await assertRejects(
+    () => manager.requireSession(expiredRequest),
+    SessionError,
+  );
+
+  const unknownRequest = new Request("https://example.com", {
+    headers: { cookie: `${cookieName}=does_not_exist` },
+  });
+  assertEquals(await manager.get(unknownRequest), undefined);
+
+  // No cookie at all.
+  assertEquals(
+    await manager.get(new Request("https://example.com")),
+    undefined,
+  );
+});
+
 Deno.test("@rootware/session - safe info and noop manager", async () => {
   const session = createSessionRecord({
     id: "abcdef1234567890",

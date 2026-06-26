@@ -61,6 +61,31 @@ Deno.test("@rootware/errors - serializeError is safe by default", () => {
   assertEquals(serialized.code, "ROOTWARE_CONFIGURATION_ERROR");
 });
 
+Deno.test("@rootware/errors - serialization never leaks stack and recurses exposed cause", () => {
+  const exposed = new RootwareError("outer", {
+    code: "ROOTWARE_VALIDATION_ERROR",
+    expose: true,
+    cause: new RootwareError("inner", {
+      code: "ROOTWARE_INVALID_ARGUMENT",
+      expose: true,
+    }),
+  });
+
+  const json = exposed.toJSON();
+  assert(!Object.hasOwn(json, "stack"));
+  assertEquals(json.cause?.message, "inner");
+  assert(json.cause !== undefined && !Object.hasOwn(json.cause, "stack"));
+
+  // A non-exposed error hides its message and drops the cause entirely.
+  const hidden = new RootwareError("secret", {
+    expose: false,
+    cause: new Error("hidden cause"),
+  });
+  const hiddenJson = hidden.toJSON();
+  assertEquals(hiddenJson.message, "An unexpected error occurred");
+  assertEquals(hiddenJson.cause, undefined);
+});
+
 Deno.test("@rootware/errors - factory and immutable modifiers", () => {
   const configurationError = createErrorFactory({
     code: "ROOTWARE_CONFIGURATION_ERROR",

@@ -33,11 +33,16 @@ const url = storage.publicUrl("avatars/u_123.png");
 
 - `createStorage`
 - `memoryStorageStore`
+- `localStorageStore`
 - `createStorageBucket`
 - `noopStorage`
 - `createStorageObject`
 - `normalizeStorageKey`
 - `normalizeBucketName`
+
+`localStorageStore({ rootDir })` persists objects to disk using Deno file APIs
+(needs `--allow-read`/`--allow-write` on `rootDir`). Inject a custom
+`StorageFileSystem` to test without touching disk.
 
 ## Security
 

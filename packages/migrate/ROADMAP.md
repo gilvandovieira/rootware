@@ -23,12 +23,13 @@ part of `@rootware/orm`.
 >   shipped. This plan is therefore **not** forward-only; the safety section
 >   below was rewritten to describe how `down` and the destructive-change guard
 >   work together rather than implying rollback is impossible.
-> - **The product has two layers.** The programmatic engine above is the core.
->   The `defineConfig` + CLI + SQL-folder + Postgres-store workflow in the v0.2
->   roadmap is a thin layer _on top of_ that engine (config loader, folder
->   reader, a Postgres `MigrationStore`/`MigrationDriver`, and CLI argument
->   parsing), not a rewrite. The `createMigrator` / `MigrationStore` /
->   `MigrationDriver` contracts are the seam the CLI builds on.
+> - **The product has two layers.** The programmatic engine above is the v0.2
+>   release boundary. The `defineConfig` + CLI + SQL-folder + Postgres-store
+>   workflow is planned for v0.3+ as a thin layer _on top of_ that engine
+>   (config loader, folder reader, a Postgres `MigrationStore` /
+>   `MigrationDriver`, and CLI argument parsing), not a rewrite. The
+>   `createMigrator` / `MigrationStore` / `MigrationDriver` contracts are the
+>   seam the CLI builds on.
 > - **Schema snapshots now have a metadata seam.** `defineSchemaMigrationPlan`
 >   accepts prebuilt `RootwareSchemaSnapshot` values and validates/normalizes
 >   them for future diffing. It does not generate SQL and it does not import
@@ -69,13 +70,17 @@ tool from being blocked by ORM type-system work.
 jsr:@rootware/migrate
 ```
 
-Expected imports:
+Current v0.2 imports:
 
 ```ts
-import { defineConfig } from "@rootware/migrate";
+import {
+  createMigrator,
+  defineSqlMigration,
+  memoryMigrationStore,
+} from "@rootware/migrate";
 ```
 
-Expected CLI usage:
+Planned CLI usage (v0.3+):
 
 `@rootware/migrate/cli` is a planned subpath. It is not exported until a real
 CLI file and tests exist.
@@ -145,8 +150,8 @@ importantly, it must not import `@rootware/orm` at all. The current
 the integration point: it calls `orm.createSchemaSnapshot(schema)` and passes
 the resulting plain snapshot object into the migrate config.
 
-Example config (snapshot is prebuilt by the app, so migrate never imports the
-ORM):
+Planned v0.3+ config (snapshot is prebuilt by the app, so migrate never imports
+the ORM):
 
 ```ts
 // rootware.migrate.ts
@@ -571,227 +576,132 @@ Acceptance:
 
 - Every major product area has a documentation placeholder.
 
-## v0.2 — SQL-first Postgres migration spine
+## v0.2 — Programmatic migration engine
 
-Goal: create the first complete SQL-first migration workflow for Postgres.
+Goal: ship the dependency-clean migration engine that exists today.
 
 A user should be able to:
 
 ```txt
-load config -> read migration folder -> create journal -> detect pending SQL files -> run migrations -> view status
+define migrations -> plan applied/pending/rollback -> dry-run or execute through injected store/driver -> validate checksums -> accept schema snapshots
 ```
 
-This release should not depend on `@rootware/orm` being complete.
+This release intentionally does not include config loading, filesystem
+discovery, a CLI, or real database adapters. Those are layers on top of the
+programmatic engine and are planned for v0.3+.
 
-### Chunk 5 — Config loader
+### Chunk 5 — Migration definitions
 
-Goal: support `rootware.migrate.ts`.
+Verify and document:
 
-Tasks:
-
-- Define `defineConfig`.
-- Load config file.
-- Validate config shape.
-- Support `dialect`.
-- Support `out`.
-- Support `driver`.
-- Allow `snapshot` to be optional. SQL-first mode omits `snapshot` entirely;
-  ORM-integrated mode receives a prebuilt `RootwareSchemaSnapshot` (imported
-  from `@rootware/schema`). `defineConfig` must never accept raw ORM `schema`
-  objects — doing so would force a `migrate -> orm` import.
+- `defineMigration`.
+- `defineSqlMigration`.
+- SQL and programmatic migration shapes.
+- `MigrationDirection` with both `"up"` and `"down"`.
+- `MigrationDriver` and `MigrationStore` as injectable contracts.
 
 Acceptance:
 
-- CLI can load config from project root.
+- Applications can define ordered migrations without a config file or CLI.
 
-### Chunk 6 — CLI skeleton
+### Chunk 6 — Migrator engine
 
-Commands:
+Verify and document:
 
-```txt
-generate
-migrate
-status
-check
-baseline
-repair
-```
-
-Tasks:
-
-- Parse command.
-- Load config.
-- Print useful errors.
-- Exit with correct status codes.
-- Make unimplemented commands fail explicitly instead of silently doing nothing.
+- `createMigrator`.
+- `memoryMigrationStore`.
+- `noopMigrationDriver`.
+- `noopMigrator`.
+- dry-run behavior.
+- dirty-check behavior.
+- rollback support through `Migrator.down()`.
 
 Acceptance:
 
-- Each command runs and fails gracefully when config is missing.
+- The same migration list can be planned, dry-run, applied, and rolled back
+  through injected store/driver implementations.
 
-### Chunk 7 — Migration folder reader
+### Chunk 7 — Planning and state helpers
 
-Goal: discover manual SQL migrations.
+Verify and document:
 
-Tasks:
-
-- Read the configured migration folder.
-- Ignore `meta/` files for SQL execution.
-- Sort migration files deterministically.
-- Validate migration file naming.
-- Reject duplicate ids.
-- Reject unsupported file extensions.
+- `createMigrationPlan`.
+- applied/pending/rollback helpers.
+- duplicate id rejection.
+- deterministic sorting.
+- applied migration metadata creation.
 
 Acceptance:
 
-- A folder of plain `.sql` migration files produces a deterministic migration
-  list.
+- A caller can inspect migration state before executing any migration body.
 
-### Chunk 8 — Postgres migration journal table
+### Chunk 8 — Checksums and safety
 
-Goal: track applied migrations.
+Verify and document:
 
-Tasks:
-
-- Create journal table if missing.
-- Store migration id.
-- Store migration name.
-- Store checksum.
-- Store applied timestamp.
-- Store optional tool version.
-- Store optional execution duration.
+- `calculateMigrationChecksum`.
+- `assertMigrationChecksum`.
+- normalization of line endings (CRLF/LF).
+- normalization of trailing whitespace.
+- checksum mismatch failures by default.
 
 Acceptance:
 
-- Journal table exists after the first migration run.
+- Equivalent migration text checked out on Windows and Linux produces the same
+  checksum, while materially edited applied migrations fail loudly.
 
-### Chunk 9 — Pending migration detection
+### Chunk 9 — Schema snapshot metadata seam
 
-Goal: compare local migration files with the database journal.
+Verify and document:
 
-Tasks:
-
-- Read migration files.
-- Read applied migration rows.
-- Detect pending migrations.
-- Detect unknown applied migrations.
-- Detect checksum mismatch.
-- Return structured status data.
+- `defineSchemaMigrationPlan`.
+- acceptance of prebuilt `RootwareSchemaSnapshot` values from
+  `@rootware/schema`.
+- validation/normalization through `@rootware/schema`.
+- no import from `@rootware/orm`.
 
 Acceptance:
 
-- The migrator knows exactly which SQL files need to run before executing
-  anything.
+- `@rootware/migrate` can consume serializable schema snapshots without knowing
+  how an application produced them.
 
-### Chunk 10 — Postgres SQL migration runner
+### Chunk 10 — Tests and docs
 
-Goal: apply pending SQL migrations.
+Verify the package tests cover:
 
-Tasks:
-
-- Execute pending SQL files in order.
-- Insert journal row after successful execution.
-- Skip applied migrations.
-- Stop on first failure.
-- Preserve useful error context.
-
-Acceptance:
-
-- Running `migrate` twice is safe.
-
-### Chunk 11 — Status command
-
-Goal: show migration state.
-
-Output should show:
-
-- Applied migrations.
-- Pending migrations.
-- Checksum mismatches.
-- Unknown applied migrations.
-- Current database target.
+- migration definition validation.
+- migration planning.
+- dry-runs.
+- rollback selection.
+- checksum normalization.
+- memory store behavior.
+- schema snapshot ingestion.
 
 Acceptance:
 
-- User can understand database migration state without reading the DB manually.
+- `deno task ci` and `deno task publish:dry:migrate` pass.
 
-### Chunk 12 — Checksum validation
+## v0.3 — SQL-first workflow, generated migrations, and hardening
 
-Tasks:
+Goal: add config/file/CLI/Postgres workflow and generated migrations on top of
+the v0.2 programmatic engine.
 
-- Hash migration files.
-- Decide and document the normalization before hashing: the engine's
-  `calculateMigrationChecksum` is a deterministic **non-cryptographic** hash
-  (fine for detecting accidental edits, not a tamper-proof signature). For
-  file-based migrations, normalize line endings (CRLF/LF) and trailing
-  whitespace before hashing, or a Windows contributor will trip `check` on every
-  applied `.sql` for a pure line-ending difference.
-- Compare with journal checksums.
-- Fail on modified applied migrations.
-- Print the migration id and file path that failed validation.
+This milestone absorbs the heavier workflow work that used to be listed under
+v0.2:
 
-Acceptance:
-
-- Edited applied migration fails loudly.
-- The same `.sql` file checked out on Windows and Linux produces the same
-  checksum.
-
-### Chunk 13 — Dry-run mode
-
-Command:
-
-```sh
-deno task db:migrate --dry-run
-```
-
-Tasks:
-
-- Print pending migrations.
-- Print SQL files that would run.
-- Do not modify database.
-- Do not write journal rows.
-
-Acceptance:
-
-- Users can preview migration execution safely.
-
-### Chunk 14 — Baseline command
-
-Goal: adopt an existing database without replaying migrations.
-
-Tasks:
-
-- Create journal table if missing.
-- Record a baseline migration id.
-- Store checksum and tool version metadata.
-- Support SQL-first baseline without ORM schema snapshots.
-- Optionally attach current ORM snapshot when schema metadata is available.
-
-Acceptance:
-
-- Existing projects can start using `@rootware/migrate` without dropping or
-  recreating schema objects.
-
-### Chunk 15 — Repair command
-
-Goal: provide an explicit recovery path for intentional checksum reconciliation.
-
-Tasks:
-
-- Require a target migration id.
-- Print old checksum and new checksum.
-- Require explicit confirmation or force flag.
-- Update only the requested journal row.
-- Record repair metadata where possible.
-
-Acceptance:
-
-- Checksum recovery is possible, explicit, auditable, and never silent.
-
-## v0.3 — ORM-generated migrations and hardening
-
-Goal: add generated migrations and production-grade safety on top of the
-SQL-first runner.
+- `defineConfig`.
+- config loading from `rootware.migrate.ts`.
+- CLI skeleton and command parsing.
+- filesystem SQL migration discovery.
+- migration folder reader.
+- Postgres migration journal table.
+- Postgres SQL migration runner.
+- status command.
+- checksum checking for file-backed migrations.
+- dry-run output for SQL files.
+- baseline command.
+- repair command.
+- real database adapters.
 
 A user should be able to:
 
@@ -1155,23 +1065,23 @@ Possible events:
 
 ## First 10 implementation chunks
 
-Do these first:
+Do these first for the v0.2 engine release:
 
 1. Audit published `v0.1`.
-2. Define public package exports.
-3. Add README product warning.
+2. Verify root-only public package exports.
+3. Add README product warning and v0.2 scope note.
 4. Create docs skeleton.
-5. Implement `defineConfig` with an optional prebuilt `snapshot` for
-   ORM-integrated mode. SQL-first mode omits `snapshot` entirely. `defineConfig`
-   must not accept raw ORM `schema` objects.
-6. Implement CLI skeleton.
-7. Implement migration folder reader.
-8. Implement Postgres migration journal table.
-9. Implement pending migration detection.
-10. Implement Postgres SQL migration runner.
+5. Verify `defineMigration` and `defineSqlMigration`.
+6. Verify `createMigrator`, `MigrationStore`, and `MigrationDriver`.
+7. Verify planning helpers for applied, pending, and rollback migrations.
+8. Verify dry-run, dirty-check, and checksum behavior.
+9. Verify `defineSchemaMigrationPlan` accepts prebuilt snapshots without
+   importing `@rootware/orm`.
+10. Run `deno task ci` and `deno task publish:dry:migrate`.
 
-After these are done, add status, checksum validation, dry-run, baseline,
-repair, and only then ORM snapshot generation.
+After v0.2, implement `defineConfig`, the CLI skeleton, migration folder reader,
+Postgres migration journal table, pending SQL-file detection, and Postgres SQL
+runner.
 
 ## Product rule
 

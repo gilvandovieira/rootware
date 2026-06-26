@@ -20,6 +20,34 @@ import {
   validateMigrations,
 } from "./mod.ts";
 
+Deno.test("@rootware/migrate - checksum ignores line-ending and trailing-whitespace differences", () => {
+  const unix = defineSqlMigration({
+    id: "001_init",
+    up: "create table t (id int);\ncreate index ti on t (id);\n",
+  });
+  const windows = defineSqlMigration({
+    id: "001_init",
+    up: "create table t (id int);  \r\ncreate index ti on t (id);\r\n",
+  });
+
+  // Same SQL with CRLF + trailing spaces hashes identically across platforms.
+  assertEquals(
+    calculateMigrationChecksum(unix),
+    calculateMigrationChecksum(windows),
+  );
+
+  // Genuinely different SQL still produces a different checksum.
+  const other = defineSqlMigration({
+    id: "001_init",
+    up: "create table other (id int);",
+  });
+  assertThrows(() =>
+    assertMigrationChecksum(
+      createAppliedMigration(unix),
+      other,
+    ), MigrationError);
+});
+
 Deno.test("@rootware/migrate - define validate sort and checksums", () => {
   const second = defineSqlMigration({
     id: "002_posts",

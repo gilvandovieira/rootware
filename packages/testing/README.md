@@ -23,12 +23,14 @@ assertLog(sink).hasMessage("user created");
 ## API
 
 - `assert`, `assertEquals`, `assertThrows`, `assertRejects`
-- `testEnv`
+- `assertRootwareError`, `assertErrorCode`, `assertThrowsRootwareError`
+- `testEnv`, `withEnvSource`
 - `testLogger`
 - `assertLog`
 - `createFakeClock`
 - `createFixture`
 - `createTestContext`
+- `createCleanupStack`
 
 ## Security
 
