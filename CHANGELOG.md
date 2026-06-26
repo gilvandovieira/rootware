@@ -2,10 +2,9 @@
 
 ## 2026-06-26 — v0.9.1 — coherence-slice request logging
 
-Repo/example/docs tag (Gate A, partial). **No package API or behavior changed —
-the `0.9` freeze is preserved**; all `@rootware/*` packages stay at `0.9.0` and
-`0.9.1` is a repo/example/docs tag. Edits are limited to `examples/`, docs, and
-this changelog.
+Workspace patch release (Gate A, partial). **The `0.9` API freeze is
+preserved**; all `@rootware/*` packages are aligned at `0.9.1` for the
+stabilization patch.
 
 - **`examples/todo_api.ts`** now wires the errors+env+log+http coherence slice
   for real: the hand-rolled, request-id-less logging middleware is gone and the
