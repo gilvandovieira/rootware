@@ -83,8 +83,8 @@ This package sits after:
 
 Durable persistence and cache coordination are **adapter** concerns (see below),
 so `@rootware/cache` and `@rootware/orm` are deliberately _not_ jobs-core
-dependencies. In `v0.1`, `packages/jobs/mod.ts` imports only `@rootware/errors`
-and `@rootware/log`.
+dependencies. In `v0.1`, `packages/async/jobs/mod.ts` imports only
+`@rootware/errors` and `@rootware/log`.
 
 ### Runtime imports
 

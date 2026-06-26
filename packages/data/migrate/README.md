@@ -88,7 +88,8 @@ await migrator.migrate({
 Dry-runs do not execute SQL or programmatic migration functions. Checksum
 mismatches fail by default unless explicitly allowed.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -106,4 +107,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

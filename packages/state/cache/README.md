@@ -43,7 +43,8 @@ to and from a string wire format.
 Cache operations log keys and operations only. Values are not included in logs
 or error details.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -58,4 +59,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

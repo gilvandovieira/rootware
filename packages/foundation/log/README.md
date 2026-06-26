@@ -64,7 +64,8 @@ and all fields for diagnostics. It was renamed from `serializeError` in `0.2` so
 it no longer collides with the safe, `expose`-respecting `serializeError` from
 `@rootware/errors` — reach for that one for user-facing payloads.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -79,4 +80,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

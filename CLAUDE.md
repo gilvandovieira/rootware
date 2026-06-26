@@ -17,7 +17,7 @@ be useful on its own.
 deno task ci          # fmt:check + lint + check + graph + test — run before any PR
 deno task fmt         # format (fmt:check only verifies)
 deno task lint
-deno task check       # type-checks every packages/*/mod.ts
+deno task check       # type-checks every grouped package entrypoint
 deno task graph       # enforces the package dependency graph (see below)
 deno task test
 ```
@@ -25,8 +25,8 @@ deno task test
 Run a single package's tests, a single file, or filter by test name:
 
 ```sh
-deno test packages/errors/             # one package
-deno test packages/errors/mod_test.ts  # one file
+deno test packages/foundation/errors/             # one package
+deno test packages/foundation/errors/mod_test.ts  # one file
 deno test --filter "serializeError"    # by test name across the workspace
 ```
 
@@ -83,10 +83,11 @@ should make the next easier to build, not that imports flow along it.
 
 ## Conventions
 
-- **Package layout:** each `packages/<name>/` has `mod.ts` (sole public
+- **Package layout:** each `packages/<group>/<name>/` has `mod.ts` (sole public
   entrypoint / JSR `exports`), `mod_test.ts` (tests live beside code),
-  `deno.json` (JSR metadata + independent `version`), `README.md`, and
-  `ROADMAP.md`.
+  `deno.json` (flat JSR package name + independent `version`), `README.md`, and
+  `ROADMAP.md`. Filesystem groups are `foundation`, `data`, `web`, `state`, and
+  `async`; public package names remain flat `@rootware/<name>`.
 - **Errors:** throw `RootwareError` (from `@rootware/errors`) with a `code`,
   `status`, `severity`, and `expose` flag. `toJSON()`/`serializeError()` only
   reveal message/details/cause when `expose` is true — keep internal errors
@@ -104,12 +105,12 @@ should make the next easier to build, not that imports flow along it.
 ## Adding a package
 
 Follow the checklist in `CONTRIBUTING.md`: create
-`packages/<name>/{mod.ts,mod_test.ts,deno.json,README.md,ROADMAP.md}`, then
-register the package in **all** of: root `deno.json` `workspace` + `imports`,
-`scripts/check_graph.ts` (`ALLOWED_RUNTIME_DEPS`), the README and
+`packages/<group>/<name>/{mod.ts,mod_test.ts,deno.json,README.md,ROADMAP.md}`,
+then register the package in **all** of: root `deno.json` `workspace` +
+`imports`, `scripts/check_graph.ts` (`ALLOWED_RUNTIME_DEPS`), the README and
 `docs/packages.md` graphs, the `publish:dry:<name>` task, and the publish
 workflow. Skipping `check_graph.ts` will fail `deno task graph` because every
-`packages/*` directory must appear in the policy map.
+public `@rootware/*` package must appear in the policy map.
 
 ## Publishing
 

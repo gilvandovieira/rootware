@@ -2,6 +2,9 @@
 
 Rootware is a workspace of independently published JSR packages.
 
+Filesystem paths are lightly grouped by current package area. Public JSR names
+remain flat `@rootware/<name>`.
+
 ## Runtime Dependency Graph
 
 `scripts/check_graph.ts` is the implementation source of truth for runtime
@@ -36,20 +39,20 @@ errors/schema -> env -> log -> testing -> http/cache/storage -> session -> migra
 
 ## Package Matrix
 
-| Package             | Folder             | Description                           | Allowed Runtime Dependencies                            | Status       |
-| ------------------- | ------------------ | ------------------------------------- | ------------------------------------------------------- | ------------ |
-| `@rootware/errors`  | `packages/errors`  | Application error primitives          | none                                                    | Experimental |
-| `@rootware/schema`  | `packages/schema`  | Serializable schema snapshot contract | none                                                    | Experimental |
-| `@rootware/env`     | `packages/env`     | Typed environment configuration       | `@rootware/errors`                                      | Experimental |
-| `@rootware/log`     | `packages/log`     | Structured JSON logging               | `@rootware/errors`                                      | Experimental |
-| `@rootware/testing` | `packages/testing` | Deterministic test utilities          | `@rootware/errors`, `@rootware/env`, `@rootware/log`    | Experimental |
-| `@rootware/http`    | `packages/http`    | Fetch wrapper with timeout/retry      | `@rootware/errors`, `@rootware/log`                     | Experimental |
-| `@rootware/cache`   | `packages/cache`   | Async-first cache abstraction         | `@rootware/errors`, `@rootware/log`                     | Experimental |
-| `@rootware/storage` | `packages/storage` | Object storage abstraction            | `@rootware/errors`, `@rootware/log`                     | Experimental |
-| `@rootware/session` | `packages/session` | Session and actor boundary helpers    | `@rootware/errors`, `@rootware/log`, `@rootware/cache`  | Experimental |
-| `@rootware/migrate` | `packages/migrate` | Migration planning and execution      | `@rootware/errors`, `@rootware/log`, `@rootware/schema` | Experimental |
-| `@rootware/orm`     | `packages/orm`     | Small typed SQL and ORM primitives    | `@rootware/errors`, `@rootware/log`, `@rootware/schema` | Experimental |
-| `@rootware/jobs`    | `packages/jobs`    | Background job queue primitives       | `@rootware/errors`, `@rootware/log`                     | Experimental |
+| Package             | Folder                        | Description                           | Allowed Runtime Dependencies                            | Status       |
+| ------------------- | ----------------------------- | ------------------------------------- | ------------------------------------------------------- | ------------ |
+| `@rootware/errors`  | `packages/foundation/errors`  | Application error primitives          | none                                                    | Experimental |
+| `@rootware/schema`  | `packages/data/schema`        | Serializable schema snapshot contract | none                                                    | Experimental |
+| `@rootware/env`     | `packages/foundation/env`     | Typed environment configuration       | `@rootware/errors`                                      | Experimental |
+| `@rootware/log`     | `packages/foundation/log`     | Structured JSON logging               | `@rootware/errors`                                      | Experimental |
+| `@rootware/testing` | `packages/foundation/testing` | Deterministic test utilities          | `@rootware/errors`, `@rootware/env`, `@rootware/log`    | Experimental |
+| `@rootware/http`    | `packages/web/http`           | Fetch wrapper with timeout/retry      | `@rootware/errors`, `@rootware/log`                     | Experimental |
+| `@rootware/cache`   | `packages/state/cache`        | Async-first cache abstraction         | `@rootware/errors`, `@rootware/log`                     | Experimental |
+| `@rootware/storage` | `packages/state/storage`      | Object storage abstraction            | `@rootware/errors`, `@rootware/log`                     | Experimental |
+| `@rootware/session` | `packages/state/session`      | Session and actor boundary helpers    | `@rootware/errors`, `@rootware/log`, `@rootware/cache`  | Experimental |
+| `@rootware/migrate` | `packages/data/migrate`       | Migration planning and execution      | `@rootware/errors`, `@rootware/log`, `@rootware/schema` | Experimental |
+| `@rootware/orm`     | `packages/data/orm`           | Small typed SQL and ORM primitives    | `@rootware/errors`, `@rootware/log`, `@rootware/schema` | Experimental |
+| `@rootware/jobs`    | `packages/async/jobs`         | Background job queue primitives       | `@rootware/errors`, `@rootware/log`                     | Experimental |
 
 ## No Circular Dependencies
 

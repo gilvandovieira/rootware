@@ -145,7 +145,7 @@ should consume that metadata through a stable snapshot contract.
 
 The migration package should not reach into private ORM internals — and, just as
 importantly, it must not import `@rootware/orm` at all. The current
-`packages/migrate/mod.ts` imports `@rootware/errors`, `@rootware/log`, and
+`packages/data/migrate/mod.ts` imports `@rootware/errors`, `@rootware/log`, and
 `@rootware/schema`; that sibling boundary must be preserved. The application is
 the integration point: it calls `orm.createSchemaSnapshot(schema)` and passes
 the resulting plain snapshot object into the migrate config.

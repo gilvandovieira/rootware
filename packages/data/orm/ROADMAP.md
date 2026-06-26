@@ -127,7 +127,7 @@ primary.
 belongs to `@rootware/migrate`.
 
 Ownership of the snapshot is split three ways (decided — see
-`../../roadmaps/rootware-roadmap.md`, "Schema snapshot handoff"):
+`../../../roadmaps/rootware-roadmap.md`, "Schema snapshot handoff"):
 
 - **`@rootware/schema`** owns the snapshot _type_ (`RootwareSchemaSnapshot` and
   its members). A dependency-free leaf package, so neither orm nor migrate

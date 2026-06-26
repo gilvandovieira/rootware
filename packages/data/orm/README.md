@@ -92,7 +92,8 @@ consumed by `@rootware/migrate`. `bigint` is typed as `string` to preserve
 The `sql` template keeps interpolated values as driver parameters. Use `raw`
 only with trusted SQL literals.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -109,4 +110,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

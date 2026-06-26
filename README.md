@@ -10,6 +10,10 @@ projects while staying close to the Web platform.
 
 ## Packages
 
+Package source is grouped by current area under `packages/foundation`,
+`packages/data`, `packages/web`, `packages/state`, and `packages/async`. Public
+JSR package names stay flat as `@rootware/<name>`.
+
 | Package             | Purpose                         | Status       |
 | ------------------- | ------------------------------- | ------------ |
 | `@rootware/errors`  | Application error primitives    | Experimental |

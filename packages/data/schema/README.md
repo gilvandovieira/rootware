@@ -70,7 +70,8 @@ deliberately rather than silently mis-reading an incompatible snapshot.
 Schema snapshots are plain data. Validation reports structural issues without
 executing SQL, functions, or driver code.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -87,4 +88,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

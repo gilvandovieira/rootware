@@ -46,7 +46,8 @@ await queue.processNext();
 Jobs never log payloads, outputs, or full metadata by default. Memory storage is
 only for tests and local development.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -61,4 +62,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

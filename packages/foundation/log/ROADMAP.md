@@ -2,7 +2,7 @@
 
 Status: experimental, published as `@rootware/log@0.1.0`\
 Repository: `gilvandovieira/rootware`\
-Package path: `packages/log`\
+Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
 Last updated: 2026-06-26
 
@@ -108,7 +108,7 @@ The package metadata defines:
 The current implementation is a single-file package entrypoint at:
 
 ```txt
-packages/log/mod.ts
+packages/foundation/log/mod.ts
 ```
 
 The current package README describes the package as an experimental JSR-native
@@ -374,8 +374,9 @@ logger.info({ port: 8000 }, "server started");
 ```
 
 This is a planned subpath, not the current package surface. The current
-`packages/log/deno.json` exports only `"./mod.ts"`; do not add `/compat/pino` to
-the exports map until the file, tests, and compatibility fixtures exist.
+`packages/foundation/log/deno.json` exports only `"./mod.ts"`; do not add
+`/compat/pino` to the exports map until the file, tests, and compatibility
+fixtures exist.
 
 A future root default export can be reconsidered only after compatibility
 fixtures exist and the project can clearly explain what is and is not compatible
@@ -1212,9 +1213,9 @@ Each Rootware package is independently published to JSR.
 
 For `@rootware/log`, the release process should be:
 
-1. Update `packages/log/deno.json` version.
-2. Update `packages/log/README.md`.
-3. Update public JSDoc in `packages/log/mod.ts`.
+1. Update `packages/foundation/log/deno.json` version.
+2. Update `packages/foundation/log/README.md`.
+3. Update public JSDoc in `packages/foundation/log/mod.ts`.
 4. Run formatting.
 5. Run linting.
 6. Run type checking.
@@ -1381,7 +1382,7 @@ Deno.serve(withRequestLogging(handler, { logger }));
 ```
 
 Hono option (lives in the dedicated `@rootware/hono` package, **not** a
-`@rootware/log/hono` subpath — see `../../roadmaps/adapters.md`):
+`@rootware/log/hono` subpath — see `../../../roadmaps/adapters.md`):
 
 ```ts
 import { loggerMiddleware } from "jsr:@rootware/hono";
@@ -1558,7 +1559,7 @@ Minimum requirements:
 
 ### Documentation
 
-- [ ] Expand `packages/log/README.md` into proper sections.
+- [ ] Expand `packages/foundation/log/README.md` into proper sections.
 - [ ] Add Pino-shaped migration notes.
 - [ ] Add buffered vs unbuffered explanation.
 - [ ] Add security/redaction warning.
@@ -1616,7 +1617,7 @@ Minimum requirements:
 
 The next useful development sequence is:
 
-1. Clean up and expand `packages/log/README.md`.
+1. Clean up and expand `packages/foundation/log/README.md`.
 2. Add full JSDoc to all public APIs.
 3. Add missing edge-case tests.
 4. Create `docs/log.md` or use this file as the canonical roadmap.

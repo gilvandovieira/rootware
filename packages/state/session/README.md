@@ -50,7 +50,8 @@ sessions.commit(headers, session);
 Cookies store only the session id. Actor and session data stay server-side.
 Cookies are `HttpOnly`, `Secure`, and `SameSite=Lax` by default.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -65,4 +66,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

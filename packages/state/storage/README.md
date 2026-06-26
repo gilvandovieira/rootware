@@ -49,7 +49,8 @@ const url = storage.publicUrl("avatars/u_123.png");
 Storage logs include keys, sizes, and content types only. File contents,
 metadata values, and blobs are not logged by default.
 
-See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+See [publishing](../../../docs/publishing.md) and
+[testing](../../../docs/testing.md).
 
 ## Limitations
 
@@ -64,4 +65,4 @@ Experimental. API may change before 1.0.
 
 MIT
 
-[Back to Rootware](../../README.md)
+[Back to Rootware](../../../README.md)

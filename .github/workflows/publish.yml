@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: Package directory name to publish.
+        description: Rootware package name to publish, without the @rootware/ scope.
         required: true
         type: string
       dry_run:
@@ -51,7 +51,24 @@ jobs:
           # Before publishing via GitHub Actions, the JSR package must be
           # created or prepared in JSR and linked to gilvandovieira/rootware
           # in the package settings. This workflow uses OIDC, not JSR_TOKEN.
-          cd "packages/${{ inputs.package }}"
+          case "${{ inputs.package }}" in
+            errors|env|log|testing)
+              package_path="packages/foundation/${{ inputs.package }}"
+              ;;
+            schema|migrate|orm)
+              package_path="packages/data/${{ inputs.package }}"
+              ;;
+            http)
+              package_path="packages/web/http"
+              ;;
+            cache|storage|session)
+              package_path="packages/state/${{ inputs.package }}"
+              ;;
+            jobs)
+              package_path="packages/async/jobs"
+              ;;
+          esac
+          cd "$package_path"
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             deno publish --dry-run
           else
