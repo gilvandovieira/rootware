@@ -7,23 +7,7 @@
     "packages/async/*"
   ],
   "imports": {
-    "@std/assert": "jsr:@std/assert@^1",
-    "@rootware/errors": "./packages/foundation/errors/mod.ts",
-    "@rootware/env": "./packages/foundation/env/mod.ts",
-    "@rootware/log": "./packages/foundation/log/mod.ts",
-    "@rootware/log/compat/pino": "./packages/foundation/log/compat/pino/mod.ts",
-    "@rootware/testing": "./packages/foundation/testing/mod.ts",
-    "@rootware/http": "./packages/web/http/mod.ts",
-    "@rootware/cache": "./packages/state/cache/mod.ts",
-    "@rootware/storage": "./packages/state/storage/mod.ts",
-    "@rootware/session": "./packages/state/session/mod.ts",
-    "@rootware/schema": "./packages/data/schema/mod.ts",
-    "@rootware/migrate": "./packages/data/migrate/mod.ts",
-    "@rootware/migrate/postgres": "./packages/data/migrate/postgres/mod.ts",
-    "@rootware/migrate/cli": "./packages/data/migrate/cli/mod.ts",
-    "@rootware/orm": "./packages/data/orm/mod.ts",
-    "@rootware/orm/postgres": "./packages/data/orm/postgres/mod.ts",
-    "@rootware/jobs": "./packages/async/jobs/mod.ts"
+    "@std/assert": "jsr:@std/assert@^1"
   },
   "tasks": {
     "fmt": "deno fmt",
