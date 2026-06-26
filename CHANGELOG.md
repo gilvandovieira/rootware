@@ -1,5 +1,59 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `log` `0.8.1` — logger hot-path performance
+
+A follow-up to the `v0.8` benchmark milestone: the benchmark exposed a redundant
+second serialization pass on the write path, now removed. **No API or output
+change** — output is byte-for-byte identical.
+
+- **log** (`0.8.1`) — ~30% faster structured writes (~2.7 µs → ~1.85 µs, ~367k →
+  ~541k op/s) and a faster `memorySink` (~3.37 µs → ~2.31 µs), closing the gap
+  to `npm:pino` from 3.2× to 2.2×. Diverse strategies, all output-preserving:
+  - **Skip the redundant re-sanitize.** Records built by the logger are already
+    JSON-safe (bindings sanitized once at construction, the per-call object
+    sanitized in `normalizeLogInput`, errors pre-serialized via
+    `serializeErrorForLog`), so a direct `JSON.stringify` is byte-identical to
+    the old `JSON.stringify(sanitizeObject(record))` — without the second pass
+    or its intermediate allocation. A guarded fallback covers type-violating
+    fields; the redaction path keeps sanitize-then-redact; `formatLogRecord`
+    (arbitrary input) keeps the full sanitizer.
+  - **Precompute the static `base + bindings` prefix** once per logger
+    (pino-style chindings, kept as an object to avoid duplicate-key hazards on
+    per-call overrides).
+  - **Fewer per-call allocations** — drop the throwaway conditional-spread
+    temporaries in record assembly and the spread-built return in
+    `normalizeLogInput`.
+
+  Verified against the full suite (266 tests) and the `log` benchmark
+  (`deno task bench`); key order and emitted/omitted fields are unchanged.
+
+## 2026-06-26 — `v0.8` milestones completed
+
+The lightest round — **only `log` has a `v0.8` milestone** (Benchmarks and
+Performance Work); every other package goes straight to `v1.0`, so versions are
+unchanged. No new public API: this milestone adds measurement, not surface.
+
+- **log** (`0.8.0`) — benchmarks: `benchmark/cases/log.bench.ts` joins the
+  workspace harness with three groups — `log.write.json` (`rootware:unbuffered`
+  baseline vs `rootware:buffered`, a hand-rolled `platform:json-line`,
+  `npm:pino`, and `std:log` with a JSON formatter for a fair comparison),
+  `log.disabled` (below-level call overhead), and `log.memory` (`memorySink`
+  throughput). Reproduce with `deno task bench`; `deno task benchmark` writes a
+  machine-tagged, PII-redacted JSON envelope to `benchmark/results/`. The README
+  gains a **Benchmarks (`0.8`)** section with the measured numbers (12th Gen
+  Intel i7-12700H, Deno 2.8.3, V8 14.9, `x86_64-linux`) and caveats. Findings:
+  the unbuffered write path is ~2.7 µs/op (~367k op/s) — ~2× a raw
+  `JSON.stringify`, ~3.2×/7.4× the cost of `pino`/`std:log`, the price of
+  redaction + safe error serialization + child bindings + conventions; buffering
+  against a synchronous no-op discard is _slower_ (it only amortizes I/O); and
+  disabled logging is effectively free (~30 ns).
+
+The `log` bump carries a new benchmark and README section but **no public API
+change** from `0.7.0`. The benchmark harness now grants
+`--allow-env --allow-read --allow-sys` to `deno bench`/the `benchmark` runner so
+`npm:pino`'s module load works; `deno task ci` and `deno task test` stay
+permission-free.
+
 ## 2026-06-26 — `v0.7` milestones completed
 
 A light, mostly conventions/research round — only three packages had a `v0.7`

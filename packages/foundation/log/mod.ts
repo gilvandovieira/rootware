@@ -745,11 +745,21 @@ export function normalizeLogInput(args: unknown[]): {
     }
   }
 
-  return {
-    ...(object !== undefined ? { object } : {}),
-    ...(message !== undefined ? { message } : {}),
-    ...(error !== undefined ? { error } : {}),
-  };
+  const result: {
+    object?: LogObject;
+    message?: string;
+    error?: Record<string, unknown>;
+  } = {};
+  if (object !== undefined) {
+    result.object = object;
+  }
+  if (message !== undefined) {
+    result.message = message;
+  }
+  if (error !== undefined) {
+    result.error = error;
+  }
+  return result;
 }
 
 /** Formats a log record as one JSON line. */
@@ -843,6 +853,28 @@ function formatRecordLine(
   }
 }
 
+/**
+ * Serializes a record that is **already JSON-safe** — the fast path for records
+ * assembled by {@link RootwareLogger}, whose base/bindings pass through
+ * {@link toLogObject} at construction, whose per-call object passes through it
+ * in {@link normalizeLogInput}, and whose error is pre-serialized by
+ * {@link serializeErrorForLog}. Because every value is JSON-safe, a direct
+ * `JSON.stringify` is byte-for-byte identical to
+ * `JSON.stringify(sanitizeObject(record))` but skips the redundant second
+ * sanitize pass and its intermediate allocation.
+ *
+ * Not for arbitrary records: a raw `Error`/`bigint`/`Date` would not be
+ * normalized. The `catch` only guards against a type-violating field (e.g. a
+ * timestamp that returns a bigint), routing it through the robust formatter.
+ */
+function serializePreSanitizedRecord(record: LogRecord): string {
+  try {
+    return `${JSON.stringify(record)}\n`;
+  } catch {
+    return formatRecordLine(record, undefined);
+  }
+}
+
 /** Returns the default ISO timestamp used by loggers. */
 export function defaultTimestamp(): string {
   return new Date().toISOString();
@@ -855,6 +887,13 @@ class RootwareLogger implements Logger {
   readonly #sink: LogSink;
   readonly #name?: string;
   readonly #base: LogBindings | null;
+  /**
+   * Precomputed `{ ...base, ...bindings }` merge. These fields are static for
+   * the lifetime of the logger, so merging them once at construction lets the
+   * hot path spread a single object (plus the per-call object) instead of
+   * re-merging base and bindings on every record.
+   */
+  readonly #staticPrefix: LogBindings;
   readonly #timestamp: () => string;
   readonly #enabled: boolean;
   readonly #messageKey: string;
@@ -880,6 +919,9 @@ class RootwareLogger implements Logger {
     this.#base = options.base === null
       ? null
       : freezeLogObject(options.base ?? {});
+    this.#staticPrefix = this.#base === null
+      ? this.bindings
+      : Object.freeze({ ...this.#base, ...this.bindings });
     this.#timestamp = options.timestamp ?? defaultTimestamp;
     this.#enabled = options.enabled ?? true;
     this.#messageKey = options.messageKey ?? "msg";
@@ -961,21 +1003,35 @@ class RootwareLogger implements Logger {
     }
 
     const input = normalizeLogInput(args);
-    const record: LogRecord = {
-      ...(this.#base ?? {}),
-      ...this.bindings,
-      ...(input.object ?? {}),
-      ...(this.#name !== undefined ? { name: this.#name } : {}),
-      level: levels[levelName],
-      levelName,
-      time: this.#timestamp(),
-      ...(input.message !== undefined
-        ? { [this.#messageKey]: input.message }
-        : {}),
-      ...(input.error !== undefined ? { [this.#errorKey]: input.error } : {}),
-    };
 
-    const line = textEncoder.encode(formatRecordLine(record, this.#redaction));
+    // Assemble the record in one object literal (the precomputed static
+    // base+bindings prefix and the per-call object), then attach the remaining
+    // fields by direct assignment. This preserves the historical key order
+    // (base, bindings, object, name, level, levelName, time, msg, error) while
+    // avoiding the throwaway `{ [key]: value }` temporaries the previous
+    // conditional spreads allocated on every call.
+    const record: LogRecord = {
+      ...this.#staticPrefix,
+      ...(input.object ?? {}),
+    } as LogRecord;
+    if (this.#name !== undefined) {
+      record.name = this.#name;
+    }
+    record.level = levels[levelName];
+    record.levelName = levelName;
+    record.time = this.#timestamp();
+    if (input.message !== undefined) {
+      record[this.#messageKey] = input.message;
+    }
+    if (input.error !== undefined) {
+      record[this.#errorKey] = input.error;
+    }
+
+    const line = textEncoder.encode(
+      this.#redaction === undefined
+        ? serializePreSanitizedRecord(record)
+        : formatRecordLine(record, this.#redaction),
+    );
 
     try {
       const result = this.#sink.write(line);

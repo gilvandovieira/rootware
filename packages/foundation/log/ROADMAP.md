@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, current package manifest version `@rootware/log@0.7.0`\
+Status: experimental, current package manifest version `@rootware/log@0.8.1`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -1534,26 +1534,57 @@ Acceptance criteria:
 - Higher-level package specs can reference this document.
 - Event naming is stable enough for downstream parsing.
 
-### `0.8.0` — Benchmarks and Performance Work
+### `0.8.0` — Benchmarks and Performance Work — **done (`0.8.0`)**
 
 Goal: prove the package is fast enough and Deno-native enough.
 
-Scope:
+Shipped — `benchmark/cases/log.bench.ts` in the workspace benchmark harness
+(`deno task bench` runs it; `deno task benchmark` writes a machine-tagged,
+PII-redacted JSON envelope to `benchmark/results/`):
 
-- Add benchmark harness.
-- Compare buffered and unbuffered sinks.
-- Compare disabled log overhead.
-- Compare memory sink throughput.
-- Compare npm Pino under Deno.
-- Compare `@std/log` where appropriate.
-- Measure Deno `--watch` memory behavior.
+- **`log.write.json`** — emits one ~12-field structured info record to a
+  discarding sink, comparing `rootware:unbuffered` (baseline) against
+  `rootware:buffered`, a hand-rolled `platform:json-line`, `npm:pino` (with a
+  synchronous in-process destination), and `std:log` (with a JSON formatter so
+  it serializes a comparable object).
+- **`log.disabled`** — overhead of a call below the active level
+  (`rootware`/`npm:pino`/`std:log`), confirming disabled logging is near-free
+  (~30 ns).
+- **`log.memory`** — `memorySink` throughput, the deterministic test sink.
+- The README **Benchmarks (`0.8`)** section reports the measured numbers with
+  machine/runtime details (12th Gen Intel i7-12700H, Deno 2.8.3, V8 14.9,
+  `x86_64-linux`) and the `deno task bench` reproduction command, plus the
+  caveats that buffering only wins for I/O-bound sinks and that `pino`/`std:log`
+  are faster on the hot write path.
+
+Findings (one run, relative not absolute): the unbuffered write path is ~2.7 µs
+(~367k op/s) — about 2× a hand-rolled `JSON.stringify` and 3.2×/7.4× the cost of
+`pino`/`std:log` respectively, which is the price of redaction, safe error
+serialization, child bindings, and the timestamp/level/event conventions.
+Buffering against a synchronous no-op discard is _slower_ than unbuffered (it
+only amortizes I/O), and disabled logging is effectively free. Deno `--watch`
+reload memory behavior was deemed out of scope for an automated bench (it is an
+interactive, environment-specific signal) and is documented rather than
+measured.
 
 Acceptance criteria:
 
-- Benchmarks are reproducible.
-- Results include machine/runtime details.
-- README claims are based on actual benchmark data.
-- No unsubstantiated performance claims.
+- Benchmarks are reproducible. ✔ (`deno task bench` / `deno task benchmark`)
+- Results include machine/runtime details. ✔ (envelope + README)
+- README claims are based on actual benchmark data. ✔
+- No unsubstantiated performance claims. ✔
+
+**Performance follow-up (`0.8.1`):** the benchmark surfaced a redundant second
+serialization pass. Records assembled internally are already JSON-safe (bindings
+sanitized once at construction, the per-call object sanitized in
+`normalizeLogInput`, errors pre-serialized), so `0.8.1` serializes them with a
+single direct `JSON.stringify` instead of `JSON.stringify(sanitizeObject(...))`,
+precomputes the static `base + bindings` prefix per logger, and removes the
+throwaway per-call spread temporaries. Result: ~30% faster writes (~2.7 µs →
+~1.85 µs, ~367k → ~541k op/s) and a faster `memorySink` (~3.37 µs → ~2.31 µs),
+with **byte-for-byte identical output and no API change**. Redaction keeps the
+sanitize-then-redact path; `formatLogRecord` (arbitrary, possibly non-sanitized
+input) keeps the full sanitizer.
 
 ### `0.9.0` — API Freeze Candidate
 

@@ -198,6 +198,68 @@ on. `@rootware/testing` ships `captureLogs()` — a logger with inline assertion
 (`assertEvent`, `assertContains`, `assertCount`) and snapshot-friendly
 `normalized()` — composed over this package's `memorySink()` + `createLogger`.
 
+## Benchmarks (`0.8`)
+
+Reproduce locally with `deno task bench` (runs `benchmark/cases/log.bench.ts`
+plus the rest of `benchmark/cases/`), or `deno task benchmark` to write a
+machine-tagged JSON envelope under `benchmark/results/`. The numbers below come
+from a single run on a 12th Gen Intel i7-12700H, Deno 2.8.3 (V8 14.9,
+`x86_64-linux`) — treat them as **relative**, not absolute.
+
+**Emitting one structured info record** (`log.write.json`) — each case
+serializes the same ~12-field object to a discarding sink:
+
+| logger                           | time/op |     throughput | vs `rootware:unbuffered` |
+| -------------------------------- | ------- | -------------: | ------------------------ |
+| `rootware:unbuffered` (baseline) | 1.85 µs |   541,000 op/s | —                        |
+| `rootware:buffered`              | 3.30 µs |   303,400 op/s | 1.78× slower             |
+| `platform:json-line`             | 1.29 µs |   775,200 op/s | 1.43× faster             |
+| `npm:pino`                       | 849 ns  | 1,178,000 op/s | 2.18× faster             |
+| `std:log`                        | 364 ns  | 2,748,000 op/s | 5.08× faster             |
+
+**A call below the active level** (`log.disabled`, should be near-free):
+
+| logger     | time/op | throughput      |
+| ---------- | ------- | --------------- |
+| `rootware` | 30.4 ns | 32,900,000 op/s |
+| `npm:pino` | 5.3 ns  | —               |
+| `std:log`  | 11.0 ns | —               |
+
+**`memorySink` throughput** (`log.memory`, the test sink): `rootware:memorySink`
+2.31 µs/op (433,800 op/s).
+
+What the numbers say:
+
+- The write path runs at ~1.85 µs and is ~1.4× a hand-rolled `JSON.stringify`.
+  That overhead is the cost of redaction, safe error serialization, child
+  bindings, and the timestamp/level/event conventions — skip the logger only if
+  you need none of those. (`0.8.1` removed a redundant second serialization
+  pass; see below.)
+- **`buffered` is slower than `unbuffered` here, not faster.** The benchmark
+  sink is a synchronous in-memory discard, so buffering only adds a copy and
+  bookkeeping. Buffering pays off when the underlying sink is I/O-bound (a file
+  or socket where batching amortizes syscalls), not against a no-op.
+- `npm:pino` and `std:log` are faster on the hot write path. The `std:log` case
+  uses a JSON formatter so it serializes a comparable object (its default text
+  formatter would not); `pino` runs with a synchronous in-process destination
+  (no worker transport), its fastest configuration.
+- Disabled logging is ~30 ns and effectively free — reach for `isLevelEnabled`
+  only when **building** the payload (not the log call) is itself expensive.
+
+### Hot-path optimizations (`0.8.1`)
+
+The write path was ~2.7 µs in `0.8.0`. Records built internally are already
+JSON-safe — bindings pass through the sanitizer once at construction, the
+per-call object passes through it in `normalizeLogInput`, and errors are
+pre-serialized — so the old code paid for a **second** full sanitize pass (and
+its intermediate allocation) before `JSON.stringify`. `0.8.1` serializes those
+records with a single direct `JSON.stringify` (byte-for-byte identical output,
+with a guarded fallback for type-violating fields), precomputes the static
+`base + bindings` prefix once per logger, and drops the throwaway per-call
+spread temporaries. Net effect: ~30% faster writes (~2.7 µs → ~1.85 µs) and a
+faster `memorySink` (~3.37 µs → ~2.31 µs), with **no API or output change**.
+Redaction keeps the original sanitize-then-redact path.
+
 ## Security
 
 The logger serializes errors safely and does not require logging request bodies
