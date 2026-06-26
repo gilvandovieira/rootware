@@ -49,6 +49,33 @@ sessions.commit(headers, session);
   `isSameOriginRequest`
 - Authorization: `actorHasRole`, `actorHasAnyRole`, `actorHasPermission`,
   `actorHasAllPermissions`, `assertActorRole`, `assertActorPermission`
+- Provider adapters (`0.5`): `SessionProvider`, `bearerTokenProvider`,
+  `cookieTokenProvider`, `requireProviderActor`
+
+## External identity providers (`0.5`)
+
+`SessionProvider` is the SDK-free seam a Clerk/Supabase/Auth0/custom-JWT adapter
+implements to resolve an actor from a request. The core ships two reference
+providers that delegate to an injected verifier (the adapter package supplies
+the SDK):
+
+```ts
+import {
+  bearerTokenProvider,
+  requireProviderActor,
+} from "jsr:@rootware/session";
+
+const provider = bearerTokenProvider({
+  verify: (token) => verifyWithYourProvider(token), // returns SessionActor | undefined
+});
+
+const actor = await requireProviderActor(provider, request); // 401 if unauthenticated
+assertActorPermission(actor, "invoice:write");
+```
+
+`cookieTokenProvider({ cookieName, verify })` does the same for providers that
+set their own session cookie. Concrete provider adapters live in separate
+packages so this one stays SDK-free.
 
 ## Rotation, CSRF, and authorization (`0.4`)
 

@@ -19,7 +19,9 @@ import {
   assertActorPermission,
   assertActorRole,
   assertCsrf,
+  bearerTokenProvider,
   cacheSessionStore,
+  cookieTokenProvider,
   createClearCookieHeader,
   createCsrfCookieHeader,
   createCsrfToken,
@@ -35,9 +37,11 @@ import {
   normalizeCookieOptions,
   parseCookieHeader,
   refreshSession,
+  requireProviderActor,
   safeSessionInfo,
   serializeCookie,
   SessionError,
+  type SessionProvider,
   verifyCsrf,
 } from "./mod.ts";
 
@@ -379,4 +383,59 @@ Deno.test("@rootware/session - actor role and permission helpers", () => {
     SessionError,
   ) as SessionError;
   assertEquals(forbidden.status, 403);
+});
+
+Deno.test("@rootware/session - bearerTokenProvider resolves an actor via an injected verifier", async () => {
+  // Stand-in for a Clerk/Auth0/JWT verifier the adapter package would supply.
+  const verify = (token: string) =>
+    token === "good-token" ? { id: "u_1", roles: ["member"] } : undefined;
+  const provider = bearerTokenProvider({ verify });
+
+  const authed = await provider.resolveActor(
+    new Request("https://app.example.com/me", {
+      headers: { authorization: "Bearer good-token" },
+    }),
+  );
+  assertEquals(authed?.id, "u_1");
+
+  // Wrong scheme, missing header, and bad token all resolve to undefined.
+  assertEquals(
+    await provider.resolveActor(
+      new Request("https://app.example.com/me", {
+        headers: { authorization: "Basic good-token" },
+      }),
+    ),
+    undefined,
+  );
+  assertEquals(
+    await provider.resolveActor(new Request("https://app.example.com/me")),
+    undefined,
+  );
+  assertEquals(
+    await provider.resolveActor(
+      new Headers({ authorization: "Bearer bad" }),
+    ),
+    undefined,
+  );
+});
+
+Deno.test("@rootware/session - cookieTokenProvider and requireProviderActor", async () => {
+  const provider: SessionProvider = cookieTokenProvider({
+    cookieName: "sb-token",
+    verify: (token) => token === "valid" ? { id: "u_2" } : undefined,
+  });
+
+  const request = new Request("https://app.example.com/", {
+    headers: { cookie: "sb-token=valid" },
+  });
+  assertEquals((await requireProviderActor(provider, request)).id, "u_2");
+
+  // Unauthenticated requests raise SESSION_ACTOR_REQUIRED (401).
+  const anon = new Request("https://app.example.com/");
+  const error = await assertRejects(
+    () => requireProviderActor(provider, anon),
+    SessionError,
+  ) as SessionError;
+  assertEquals(error.status, 401);
+  assertEquals(error.code, "SESSION_ACTOR_REQUIRED");
 });

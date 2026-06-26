@@ -2,6 +2,8 @@
  * Public entrypoint for @rootware/errors.
  *
  * This package defines the base error contract shared by Rootware packages.
+ *
+ * @module
  */
 
 const DEFAULT_ERROR_CODE: RootwareErrorCode = "ROOTWARE_UNKNOWN_ERROR";

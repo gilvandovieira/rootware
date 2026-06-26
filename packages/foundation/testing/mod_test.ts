@@ -19,8 +19,12 @@ import {
   createFakeClock,
   createFixture,
   createTestContext,
+  type Equal,
+  type Expect,
   fail,
   noop,
+  rollbackFixture,
+  type RollbackHandle,
   type ServeHandler,
   testEnv,
   testLogger,
@@ -28,6 +32,7 @@ import {
   useFixture,
   wait,
   withEnvSource,
+  withRollback,
 } from "./mod.ts";
 
 Deno.test("@rootware/testing - assertions", async () => {
@@ -336,4 +341,64 @@ Deno.test("@rootware/testing - callHandler passes remoteAddr and reports throws"
   await assertThrowsRootwareError(() => callHandler(boom, "/boom"), {
     code: "TEST_HANDLER_FAILED",
   });
+});
+
+Deno.test("@rootware/testing - withRollback always rolls back, even on failure", async () => {
+  const events: string[] = [];
+  const begin = (): RollbackHandle<{ id: string }> => {
+    events.push("begin");
+    return {
+      value: { id: "conn_1" },
+      rollback() {
+        events.push("rollback");
+      },
+    };
+  };
+
+  await withRollback(begin, (conn) => {
+    events.push(`use:${conn.id}`);
+  });
+  rootAssertEquals(events, ["begin", "use:conn_1", "rollback"]);
+
+  // A failing test still rolls back, then re-throws the original error.
+  events.length = 0;
+  await rootAssertRejects(() =>
+    withRollback(begin, () => {
+      events.push("use");
+      throw new Error("test boom");
+    })
+  );
+  rootAssertEquals(events, ["begin", "use", "rollback"]);
+});
+
+Deno.test("@rootware/testing - rollbackFixture composes with the cleanup stack", async () => {
+  const events: string[] = [];
+  const fixture = rollbackFixture("db", () => {
+    events.push("begin");
+    return {
+      value: { id: "tx_1" },
+      rollback() {
+        events.push("rollback");
+      },
+    };
+  });
+
+  const ctx = createTestContext();
+  const conn = await ctx.use(fixture);
+  rootAssertEquals(conn.id, "tx_1");
+  rootAssertEquals(events, ["begin"]);
+
+  // Rollback runs when the context cleans up, not before.
+  await ctx.runCleanup();
+  rootAssertEquals(events, ["begin", "rollback"]);
+});
+
+Deno.test("@rootware/testing - Equal/Expect type utilities (compile-time)", () => {
+  // These assertions are checked by `deno check`; the runtime body is trivial.
+  type _Same = Expect<Equal<{ a: number }, { a: number }>>;
+  type _Diff = Equal<{ a: number }, { a: string }>;
+  const same: _Same = true;
+  const diff: _Diff = false;
+  rootAssertEquals(same, true);
+  rootAssertEquals(diff, false);
 });

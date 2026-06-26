@@ -30,9 +30,31 @@ const config = defineEnv({
 - `defineEnv`
 - `validateEnv`
 - `env`
+- `presets` (`0.5`) — `neon`, `turso`, `resend`, `clerk`, `s3`
 - `redactEnv`
 - `generateEnvExample`
 - `readDenoEnv`
+
+## Provider presets (`0.5`)
+
+`presets` are ready-made schema fragments for common providers — just the
+conventional variable names, types, and secret-marking, with **no** provider
+dependency. Spread one into `defineEnv` and override keys as needed:
+
+```ts
+import { defineEnv, env, presets } from "jsr:@rootware/env";
+
+export const config = defineEnv({
+  ...presets.neon(), // DATABASE_URL (secret url)
+  ...presets.s3(), // S3_REGION, S3_*_KEY (secrets), S3_BUCKET, S3_ENDPOINT?
+  ...presets.resend(), // RESEND_API_KEY (secret)
+  PORT: env.integer().default(8000),
+});
+```
+
+Available: `presets.neon()`, `presets.turso()`, `presets.resend()`,
+`presets.clerk()`, `presets.s3()`. Preset secrets are redacted by `redactEnv`
+and elided from `generateEnvExample` like any other secret.
 
 ## Example app configuration
 

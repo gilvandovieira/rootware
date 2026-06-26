@@ -221,7 +221,7 @@ function checkPostgresImportBoundary(
       file,
       specifier,
       message:
-        "PostgreSQL driver imports are only allowed inside orm/postgres and migrate/postgres",
+        "PostgreSQL driver imports are only allowed inside orm/postgres, migrate/postgres, and jobs/postgres",
     });
   }
 
@@ -244,7 +244,8 @@ function isPostgresAdapterFile(
   packagePath: string,
   file: string,
 ): boolean {
-  return (packageName === "orm" || packageName === "migrate") &&
+  return (packageName === "orm" || packageName === "migrate" ||
+    packageName === "jobs") &&
     file.startsWith(`${packagePath}/postgres/`);
 }
 

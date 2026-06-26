@@ -1,3 +1,12 @@
+/**
+ * PostgreSQL adapter for `@rootware/migrate`.
+ *
+ * Provides PostgreSQL migration drivers, history stores, advisory-lock-backed
+ * migrators, connection pooling, and additive DDL generation helpers.
+ *
+ * @module
+ */
+
 export type {
   PgMigrateOptions,
   PgMigrationDefinition,

@@ -1045,9 +1045,29 @@ Acceptance:
 
 - A local SQLite app works without Postgres.
 
-## v0.5 — libSQL
+## v0.5 — libSQL — **done (`0.5.0`)**
 
 Goal: support SQLite-compatible edge/serverless workflows.
+
+Shipped in `0.5.0` — the `@rootware/orm/libsql` subpath:
+
+- **`createLibsqlDb({ url, authToken })`** (alias `connect`) over the bundled
+  `@libsql/client`, plus `createLibsqlOrmDriver`/`createLibsqlExecutor` and an
+  injectable structural `LibsqlLikeClient` for tests. libSQL is
+  SQLite-compatible, so the dialect is `sqlite` (the compiler emits `?`
+  placeholders) and `defineTable`/`columns`/the query builders work unchanged;
+  `sqliteColumnAffinity` is re-exported for DDL.
+- **Remote URL + auth token** — `url` accepts `libsql://`/`https://`/`file:`;
+  `authToken` is forwarded for hosted (Turso) databases.
+- **Interactive transactions** — because libSQL over HTTP is autocommit per
+  request, `db.transaction(...)` uses the client's interactive
+  `transaction("write")` handle (commit on success, rollback on throw) rather
+  than separate `BEGIN`/`COMMIT` statements.
+- **Lazy driver, permission-free tests** — `@libsql/client` is imported
+  dynamically only on a real connect, so importing the subpath and running its
+  fake-backed unit tests needs no npm dependency or permissions. Real execution
+  runs in the integration suite (`integration/orm_libsql_test.ts`) against a
+  local libSQL server under `--allow-net`.
 
 ### Chunk 32 — libSQL adapter
 

@@ -101,6 +101,30 @@ override the synthetic `ServeHandlerInfo`. A handler that throws surfaces as a
 - `createFixture`, `useFixture`
 - `createTestContext` (`use`, `cleanup`, `runCleanup`)
 - `createCleanupStack`
+- Data testing (`0.5`) — `rollbackFixture`, `withRollback`, `RollbackHandle`,
+  `TestDatabaseContract`, and the `Equal`/`Expect` type-test utilities
+
+## Data testing foundation (`0.5`)
+
+Shared scaffolding for the database fixtures that live in
+`@rootware/orm/testing` (this core never imports a database). A test runs inside
+a rollback scope so it leaves nothing behind — the higher package injects
+`begin`:
+
+```ts
+import { rollbackFixture, withRollback } from "jsr:@rootware/testing";
+
+// One-off: always rolls back, even if the body throws.
+await withRollback(begin, async (db) => {
+  await db.insert(users).values(row).execute();
+});
+
+// As a fixture composed onto a context's cleanup stack:
+const db = await ctx.use(rollbackFixture("db", begin));
+```
+
+`Equal<A, B>` + `Expect<T>` give compile-time type assertions for ORM/schema
+type tests: `type _ = Expect<Equal<InferSelect<typeof users>, Row>>;`.
 
 ## Security
 

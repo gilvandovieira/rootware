@@ -1,3 +1,13 @@
+/**
+ * Typed environment configuration for Rootware packages and Deno backends.
+ *
+ * Provides explicit environment sources, typed variable builders, validation
+ * modes, redaction helpers, and `.env` file parsing without ambient reads by
+ * default.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 
 const REDACTED_VALUE = "[REDACTED]";
@@ -565,6 +575,89 @@ export const env: {
         throwParserError(`one of: ${values.join(", ")}`);
       },
     });
+  },
+};
+
+/**
+ * Provider presets (`0.5`): ready-made {@link EnvSchema} fragments for common
+ * providers, built from the `env.*` builders. They add **no** provider
+ * dependency — they only declare the conventional variable names, types,
+ * secret-marking, and `.describe()`/`.example()` metadata. Spread one into
+ * `defineEnv` and override individual keys as needed:
+ *
+ * ```ts
+ * const config = defineEnv({
+ *   ...presets.neon(),
+ *   ...presets.s3(),
+ *   PORT: env.integer().default(8000),
+ * });
+ * ```
+ */
+export const presets: {
+  neon(): { DATABASE_URL: EnvVarDefinition<string> };
+  turso(): {
+    TURSO_DATABASE_URL: EnvVarDefinition<string>;
+    TURSO_AUTH_TOKEN: EnvVarDefinition<string>;
+  };
+  resend(): { RESEND_API_KEY: EnvVarDefinition<string> };
+  clerk(): {
+    CLERK_PUBLISHABLE_KEY: EnvVarDefinition<string>;
+    CLERK_SECRET_KEY: EnvVarDefinition<string>;
+  };
+  s3(): {
+    S3_REGION: EnvVarDefinition<string>;
+    S3_ACCESS_KEY_ID: EnvVarDefinition<string>;
+    S3_SECRET_ACCESS_KEY: EnvVarDefinition<string>;
+    S3_BUCKET: EnvVarDefinition<string>;
+    S3_ENDPOINT: EnvVarDefinition<string | undefined>;
+  };
+} = {
+  neon() {
+    return {
+      DATABASE_URL: env.url().secret().describe(
+        "Neon Postgres connection string",
+      ).example("postgres://user:password@ep-xyz.region.neon.tech/dbname"),
+    };
+  },
+
+  turso() {
+    return {
+      TURSO_DATABASE_URL: env.string().describe(
+        "Turso/libSQL database URL",
+      ).example("libsql://db-name-org.turso.io"),
+      TURSO_AUTH_TOKEN: env.secret().describe("Turso database auth token"),
+    };
+  },
+
+  resend() {
+    return {
+      RESEND_API_KEY: env.secret().describe("Resend API key").example(
+        "re_xxxxxxxx",
+      ),
+    };
+  },
+
+  clerk() {
+    return {
+      CLERK_PUBLISHABLE_KEY: env.string().describe(
+        "Clerk publishable key (safe to expose to the client)",
+      ).example("pk_test_xxxxxxxx"),
+      CLERK_SECRET_KEY: env.secret().describe("Clerk backend secret key")
+        .example("sk_test_xxxxxxxx"),
+    };
+  },
+
+  s3() {
+    return {
+      S3_REGION: env.string().describe("S3/R2 region").example("us-east-1"),
+      S3_ACCESS_KEY_ID: env.secret().describe("S3/R2 access key id"),
+      S3_SECRET_ACCESS_KEY: env.secret().describe("S3/R2 secret access key"),
+      S3_BUCKET: env.string().describe("S3/R2 bucket name"),
+      // Optional: omit for AWS (regional default); set for R2/MinIO/RustFS.
+      S3_ENDPOINT: env.url().optional().describe(
+        "S3-compatible endpoint (omit for AWS)",
+      ),
+    };
   },
 };
 

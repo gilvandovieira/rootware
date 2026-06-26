@@ -3,6 +3,8 @@
  *
  * This package defines the serializable schema snapshot contract shared by Rootware
  * database tooling. It intentionally has no Rootware dependencies.
+ *
+ * @module
  */
 
 export const SCHEMA_SNAPSHOT_VERSION = 1 as const;

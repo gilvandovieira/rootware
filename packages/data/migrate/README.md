@@ -96,6 +96,9 @@ await migrator.migrate({
   `createSqliteMigrationDriver`, `createSqliteMigrationHistoryStore`,
   `createSqliteExecutor`, and the DDL generators `generateSqliteCreateTable`,
   `generateSqliteUpStatements`, `generateSqliteColumnType`, `quoteSqliteIdent`
+- `@rootware/migrate/libsql` — `createLibsqlMigrator`,
+  `createLibsqlMigrationDriver`, `createLibsqlExecutor` (libSQL/Turso over
+  `@libsql/client`; re-exports the SQLite DDL generators)
 - `@rootware/migrate/cli` — `parseMigrateCliArgs`, `runMigrateCli`,
   `createPostgresMigrateRunner`, `main`
 

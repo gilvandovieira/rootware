@@ -1,5 +1,36 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `v0.5` milestones completed
+
+Advanced every package with a `v0.5` roadmap milestone to `0.5.0` (unpublished).
+`errors`, `http`, `cache`, and `schema` have no `v0.5` (their roadmaps go
+straight to `v1.0`), so they stay at their current versions. Live-DB work stays
+in the opt-in integration suite; `deno task test` remains permission-free.
+
+- **env** — `presets` (`neon`/`turso`/`resend`/`clerk`/`s3`): ready-made
+  `EnvSchema` fragments with no provider dependency.
+- **log** — `@rootware/log/http`: `withRequestLogging` for `Deno.serve` handlers
+  (request id, duration, status-escalating level, no bodies, allow-listed
+  headers).
+- **testing** — data-testing foundation: `rollbackFixture`/`withRollback`/
+  `RollbackHandle`/`TestDatabaseContract` scaffolding and the `Equal`/`Expect`
+  type-test utilities.
+- **storage** — `createUploadValidator` (size, content-type incl. `type/*`,
+  extension, metadata) plus `matchesContentType`/`extensionOf`.
+- **session** — provider adapter contract: `SessionProvider`,
+  `bearerTokenProvider`/`cookieTokenProvider` (SDK-free, injected verifier),
+  `requireProviderActor`.
+- **orm** — `@rootware/orm/libsql`: `createLibsqlDb` over `@libsql/client`
+  (lazy), interactive transactions, SQLite dialect.
+- **migrate** — `@rootware/migrate/libsql`: libSQL migrator + history store
+  reusing the SQLite DDL generators.
+- **jobs** — `@rootware/jobs/postgres`: the concrete `DurableJobStore` over
+  PostgreSQL — atomic `FOR UPDATE SKIP LOCKED` claim with a visibility lease,
+  `heartbeat`, and `reclaimExpired` (at-least-once).
+- **Integration suite** — added a libSQL server (sqld) to `compose.yaml` and
+  integration tests for `orm`/`migrate` libSQL and the `jobs` Postgres durable
+  queue; `check_graph.ts` now allows `@db/postgres` inside `jobs/postgres`.
+
 ## 2026-06-26 — `v0.4` milestones completed across all packages
 
 Every package advanced its `v0.4` roadmap milestone, bumping each to `0.4.0`

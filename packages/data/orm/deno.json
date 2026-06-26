@@ -1,10 +1,11 @@
 {
   "name": "@rootware/orm",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "exports": {
     ".": "./mod.ts",
     "./postgres": "./postgres/mod.ts",
-    "./sqlite": "./sqlite/mod.ts"
+    "./sqlite": "./sqlite/mod.ts",
+    "./libsql": "./libsql/mod.ts"
   },
   "license": "MIT",
   "repository": {
@@ -29,6 +30,7 @@
       "core/**/*.ts",
       "postgres/**/*.ts",
       "sqlite/**/*.ts",
+      "libsql/**/*.ts",
       "deno.json"
     ],
     "exclude": [

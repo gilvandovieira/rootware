@@ -1,3 +1,12 @@
+/**
+ * Object storage abstraction for Rootware packages and Deno backends.
+ *
+ * Provides storage clients, memory/local/S3-compatible stores, key validation,
+ * body normalization, checksum helpers, listing, and signed URL support.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 
@@ -11,6 +20,8 @@ export type StorageErrorCode =
   | "STORAGE_LIST_FAILED"
   | "STORAGE_OBJECT_NOT_FOUND"
   | "STORAGE_INVALID_CONTENT_TYPE"
+  | "STORAGE_INVALID_EXTENSION"
+  | "STORAGE_INVALID_METADATA"
   | "STORAGE_MAX_SIZE_EXCEEDED"
   | "STORAGE_SIGNING_UNSUPPORTED"
   | "STORAGE_SIGN_FAILED"
@@ -1044,6 +1055,189 @@ export async function calculateChecksum(body: StoragePutBody): Promise<string> {
   new Uint8Array(digestInput).set(bytes);
   const digest = await crypto.subtle.digest("SHA-256", digestInput);
   return bytesToHex(new Uint8Array(digest));
+}
+
+// --- Upload validation (v0.5) ---
+
+/** A prospective upload to validate before calling `put`. */
+export interface UploadCandidate {
+  readonly key: StorageKey;
+  /** Body size in bytes (use {@link getBodySize} to compute it). */
+  readonly size: number;
+  readonly contentType?: string;
+  readonly metadata?: StorageMetadata;
+}
+
+/** Rules enforced by {@link createUploadValidator}. */
+export interface UploadValidationOptions {
+  /** Reject uploads larger than this many bytes. */
+  readonly maxSizeBytes?: number;
+  /**
+   * Allowed content types. Exact (`image/png`) or wildcard (`image/*`). When set,
+   * an upload with no content type is rejected.
+   */
+  readonly allowedContentTypes?: readonly string[];
+  /**
+   * Allowed file extensions (case-insensitive, with or without a leading dot).
+   * When set, a key with no extension is rejected.
+   */
+  readonly allowedExtensions?: readonly string[];
+  /** Metadata keys that must be present and non-empty. */
+  readonly requiredMetadata?: readonly string[];
+  /** Maximum number of metadata entries. */
+  readonly maxMetadataKeys?: number;
+  /** Maximum length of any metadata value. */
+  readonly maxMetadataValueLength?: number;
+}
+
+/** Validates prospective uploads against {@link UploadValidationOptions}. */
+export interface UploadValidator {
+  /** Throws a {@link StorageError} when `candidate` violates a rule. */
+  validate(candidate: UploadCandidate): void;
+}
+
+/**
+ * Creates a reusable upload validator for app-level upload endpoints: enforce a
+ * size cap, a content-type allow-list (with `type/*` wildcards), a file
+ * extension allow-list, and metadata constraints before persisting. Validation
+ * is pure and throws a typed {@link StorageError} on the first violation.
+ */
+export function createUploadValidator(
+  options: UploadValidationOptions = {},
+): UploadValidator {
+  const maxSizeBytes = normalizeMaxSizeBytes(options.maxSizeBytes);
+  const allowedContentTypes = options.allowedContentTypes?.map((type) =>
+    type.trim().toLowerCase()
+  );
+  const allowedExtensions = options.allowedExtensions?.map(normalizeExtension);
+  const requiredMetadata = options.requiredMetadata ?? [];
+
+  return {
+    validate(candidate: UploadCandidate): void {
+      const key = normalizeStorageKey(candidate.key);
+
+      validateMaxSize(candidate.size, maxSizeBytes, key);
+
+      if (allowedContentTypes !== undefined) {
+        const contentType = candidate.contentType?.trim().toLowerCase();
+        if (
+          contentType === undefined ||
+          !matchesContentType(contentType, allowedContentTypes)
+        ) {
+          throw new StorageError("Upload content type is not allowed", {
+            code: "STORAGE_INVALID_CONTENT_TYPE",
+            status: 415,
+            expose: true,
+            details: {
+              key,
+              contentType: candidate.contentType,
+              allowed: allowedContentTypes,
+            },
+          });
+        }
+      }
+
+      if (allowedExtensions !== undefined) {
+        const extension = extensionOf(key);
+        if (extension === undefined || !allowedExtensions.includes(extension)) {
+          throw new StorageError("Upload file extension is not allowed", {
+            code: "STORAGE_INVALID_EXTENSION",
+            status: 415,
+            expose: true,
+            details: { key, extension, allowed: allowedExtensions },
+          });
+        }
+      }
+
+      validateUploadMetadata(candidate.metadata ?? {}, key, {
+        requiredMetadata,
+        maxMetadataKeys: options.maxMetadataKeys,
+        maxMetadataValueLength: options.maxMetadataValueLength,
+      });
+    },
+  };
+}
+
+/** Returns true when `contentType` matches one of the (lowercased) patterns. */
+export function matchesContentType(
+  contentType: string,
+  patterns: readonly string[],
+): boolean {
+  const normalized = contentType.trim().toLowerCase();
+  const [type] = normalized.split("/", 1);
+
+  return patterns.some((pattern) => {
+    if (pattern === "*" || pattern === "*/*") {
+      return true;
+    }
+    if (pattern.endsWith("/*")) {
+      return type === pattern.slice(0, -2);
+    }
+    return pattern === normalized;
+  });
+}
+
+/** Returns the lowercase file extension of a key (without the dot), or undefined. */
+export function extensionOf(key: StorageKey): string | undefined {
+  const base = key.slice(key.lastIndexOf("/") + 1);
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) {
+    return undefined;
+  }
+  return base.slice(dot + 1).toLowerCase();
+}
+
+function normalizeExtension(extension: string): string {
+  return extension.trim().replace(/^\./, "").toLowerCase();
+}
+
+function validateUploadMetadata(
+  metadata: StorageMetadata,
+  key: StorageKey,
+  rules: {
+    readonly requiredMetadata: readonly string[];
+    readonly maxMetadataKeys?: number;
+    readonly maxMetadataValueLength?: number;
+  },
+): void {
+  const fail = (message: string, details: Record<string, unknown>): never => {
+    throw new StorageError(message, {
+      code: "STORAGE_INVALID_METADATA",
+      status: 422,
+      expose: true,
+      details: { key, ...details },
+    });
+  };
+
+  for (const required of rules.requiredMetadata) {
+    const value = metadata[required];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      fail("Upload is missing required metadata", { metadataKey: required });
+    }
+  }
+
+  const entries = Object.entries(metadata);
+
+  if (
+    rules.maxMetadataKeys !== undefined &&
+    entries.length > rules.maxMetadataKeys
+  ) {
+    fail("Upload has too many metadata entries", {
+      count: entries.length,
+      max: rules.maxMetadataKeys,
+    });
+  }
+
+  if (rules.maxMetadataValueLength !== undefined) {
+    for (const [metadataKey, value] of entries) {
+      if (value.length > rules.maxMetadataValueLength) {
+        fail("Upload metadata value is too long", {
+          metadataKey,
+          max: rules.maxMetadataValueLength,
+        });
+      }
+    }
+  }
 }
 
 /** Creates a storage client that does not persist objects. */

@@ -305,17 +305,24 @@ subpaths build on. The HTTP/cache/storage fixtures themselves ship from
 - **Doomscrollr reference app testing utilities** — app-specific; they live with
   the reference app, composed from these primitives rather than shipped here.
 
-## v0.5.0 — Data testing foundation
+## v0.5.0 — Data testing foundation — **done (`0.5.0`)**
 
 The test database and migration fakes live in `@rootware/orm/testing` and
 `@rootware/migrate/testing`. This milestone provides only the shared pieces they
 depend on:
 
-- The transaction-rollback and cleanup scaffolding those fixtures compose.
-- Shared guidance for ORM type tests (the assertions live in core; the schema
-  fixtures live in `@rootware/orm/testing`).
-- A documented pattern for a test database contract, owned and implemented by
-  `@rootware/orm/testing`, not here.
+- **Transaction-rollback scaffolding** — `RollbackHandle<T>`, `rollbackFixture`
+  (a `TestFixture` that begins a rollback scope in setup and always rolls back
+  on teardown — composes with `context.use`), and `withRollback(begin, fn)`
+  (runs `fn` and always rolls back, re-throwing the original failure). The
+  `begin` function is injected by the higher package, so this core never imports
+  a database.
+- **Test-database contract** — `TestDatabaseContract<TConnection>`: the
+  `connect()` → rollback-scoped connection shape an `@rootware/orm/testing`
+  fixture implements, documented here without depending on the ORM.
+- **ORM type-test utilities** — `Equal<A, B>` and `Expect<T>` for compile-time
+  type assertions (the assertions live in core; the schema fixtures live in
+  `@rootware/orm/testing`).
 
 ## v1.0.0 — Stable test support
 

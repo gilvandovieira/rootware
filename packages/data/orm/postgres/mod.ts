@@ -1,3 +1,12 @@
+/**
+ * PostgreSQL adapter for `@rootware/orm`.
+ *
+ * Provides PostgreSQL query execution, connection pooling, dialect wiring, and
+ * a database facade backed by `@db/postgres`-compatible clients.
+ *
+ * @module
+ */
+
 import type { Logger } from "@rootware/log";
 
 import {

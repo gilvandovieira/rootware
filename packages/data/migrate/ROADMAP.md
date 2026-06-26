@@ -970,9 +970,31 @@ Acceptance:
 - Users understand that SQLite migrations are not identical to Postgres
   migrations.
 
-## v0.5 — libSQL migrations
+## v0.5 — libSQL migrations — **done (`0.5.0`)**
 
 Goal: support SQLite-compatible remote/serverless databases.
+
+Shipped in `0.5.0` — the `@rootware/migrate/libsql` subpath:
+
+- **`createLibsqlMigrator({ url, authToken })`** over the bundled
+  `@libsql/client` (lazy import), plus `createLibsqlMigrationDriver`/
+  `createLibsqlExecutor` and an injectable structural `LibsqlLikeClient` for
+  tests. Connects by URL with an auth token (Turso); executes migration SQL and
+  reads/writes the migration journal.
+- **SQLite SQL reuse** — libSQL is SQLite-compatible, so the migrator reuses the
+  SQLite history store and the package re-exports the SQLite DDL generators
+  (`generateSqliteCreateTable`, …) from `/libsql`.
+- **Interactive transactions** — migrations run through the client's interactive
+  `transaction("write")` handle (libSQL over HTTP is autocommit per request).
+- **Lazy driver, permission-free tests** — fake-backed unit tests need no npm
+  dependency; real execution runs in the integration suite
+  (`integration/migrate_libsql_test.ts`) against a local libSQL server under
+  `--allow-net` (apply → record → no-op → rollback).
+
+Compatibility caveats (documented): libSQL behavior matches local SQLite for the
+DDL/CRUD the migrator emits; remote execution adds network latency and the
+autocommit-per-request model that the interactive transaction handle works
+around.
 
 ### Chunk 29 — libSQL driver support
 

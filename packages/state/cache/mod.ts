@@ -1,3 +1,12 @@
+/**
+ * Async-first cache abstraction for Rootware packages and Deno backends.
+ *
+ * Provides cache clients, memory and no-op stores, serialization, namespaces,
+ * stampede protection hooks, and fixed-window/token-bucket rate limiters.
+ *
+ * @module
+ */
+
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 

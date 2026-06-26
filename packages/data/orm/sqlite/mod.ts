@@ -1,3 +1,12 @@
+/**
+ * SQLite adapter for `@rootware/orm`.
+ *
+ * Provides SQLite query execution, lazy `@db/sqlite` database opening, dialect
+ * wiring, column affinity helpers, and a database facade.
+ *
+ * @module
+ */
+
 import type { Logger } from "@rootware/log";
 
 import {
