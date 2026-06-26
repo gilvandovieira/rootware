@@ -46,6 +46,7 @@ for await (const packageEntry of Deno.readDir(PACKAGE_ROOT)) {
     for (const specifier of findImportSpecifiers(source)) {
       checkRootwareImport(packageName, file, specifier);
       checkRelativeImportBoundary(packagePath, file, specifier);
+      checkPostgresImportBoundary(packageName, packagePath, file, specifier);
     }
   }
 }
@@ -150,4 +151,76 @@ function checkRelativeImportBoundary(
       message: "Relative import escapes the package boundary",
     });
   }
+}
+
+function checkPostgresImportBoundary(
+  packageName: string,
+  packagePath: string,
+  file: string,
+  specifier: string,
+): void {
+  if (
+    isPostgresDriverSpecifier(specifier) &&
+    !file.startsWith("packages/orm/postgres/") &&
+    !file.startsWith("packages/migrate/postgres/")
+  ) {
+    violations.push({
+      file,
+      specifier,
+      message:
+        "PostgreSQL driver imports are only allowed inside orm/postgres and migrate/postgres",
+    });
+  }
+
+  if (!isPostgresProtectedFile(packageName, packagePath, file)) {
+    return;
+  }
+
+  if (referencesPostgresSubpath(file, specifier)) {
+    violations.push({
+      file,
+      specifier,
+      message:
+        "Root, core, and schema modules must not import PostgreSQL adapter code",
+    });
+  }
+}
+
+function isPostgresDriverSpecifier(specifier: string): boolean {
+  return specifier === "jsr:@db/postgres" ||
+    specifier.startsWith("jsr:@db/postgres@") ||
+    specifier === "@db/postgres";
+}
+
+function isPostgresProtectedFile(
+  packageName: string,
+  packagePath: string,
+  file: string,
+): boolean {
+  if (packageName === "schema") {
+    return file.startsWith(`${packagePath}/`) && file.endsWith(".ts");
+  }
+
+  if (packageName !== "orm" && packageName !== "migrate") {
+    return false;
+  }
+
+  return file === `${packagePath}/mod.ts` ||
+    file.startsWith(`${packagePath}/core/`);
+}
+
+function referencesPostgresSubpath(file: string, specifier: string): boolean {
+  if (specifier.includes("/postgres")) {
+    return true;
+  }
+
+  if (!specifier.startsWith(".")) {
+    return false;
+  }
+
+  const base = file.slice(0, file.lastIndexOf("/") + 1);
+  const resolved = new URL(specifier, `file://${Deno.cwd()}/${base}`).pathname;
+  const relative = resolved.slice(`${Deno.cwd()}/`.length);
+
+  return relative.includes("/postgres/");
 }

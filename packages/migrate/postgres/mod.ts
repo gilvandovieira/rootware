@@ -1,0 +1,24 @@
+export type {
+  PgMigrateOptions,
+  PgMigrationDefinition,
+  PgMigrationInput,
+  PgMigrationPlanOptions,
+  PgMigrator,
+  PgRollbackOptions,
+} from "./migrator.ts";
+export { createPgMigrator } from "./migrator.ts";
+
+export type { QueryResult, SqlExecutor } from "./executor.ts";
+export { createPgExecutor } from "./executor.ts";
+
+export { createPgMigrationDriver } from "./driver.ts";
+export type { PgMigrationDriverOptions } from "./driver.ts";
+
+export {
+  createPgMigrationHistoryStore,
+  DEFAULT_PG_MIGRATION_TABLE,
+} from "./history.ts";
+export type { PgMigrationHistoryStoreOptions } from "./history.ts";
+
+export type { PgClient, PgConnectionOptions, PgPool } from "./pool.ts";
+export { createPgPool } from "./pool.ts";

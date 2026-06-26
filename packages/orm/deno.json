@@ -1,7 +1,10 @@
 {
   "name": "@rootware/orm",
   "version": "0.2.0",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./postgres": "./postgres/mod.ts"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -22,6 +25,8 @@
     "include": [
       "README.md",
       "mod.ts",
+      "core/**/*.ts",
+      "postgres/**/*.ts",
       "deno.json"
     ],
     "exclude": [
