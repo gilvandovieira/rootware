@@ -70,6 +70,16 @@ export interface TestContext {
   runCleanup(): Promise<void>;
 }
 
+/** LIFO stack of teardown callbacks for deterministic test cleanup. */
+export interface CleanupStack {
+  /** Registers a teardown callback. Callbacks run in reverse registration order. */
+  push(fn: () => void | Promise<void>): void;
+  /** Runs every registered callback (LIFO), clears the stack, then rethrows the first failure. */
+  run(): Promise<void>;
+  /** Number of callbacks still registered. */
+  readonly size: number;
+}
+
 export interface FakeClockOptions {
   readonly now?: Date | string | number;
 }
@@ -319,7 +329,7 @@ export function fail(message = "Test failed"): never {
 export function createTestContext(
   options: TestContextOptions = {},
 ): TestContext {
-  const cleanups: Array<() => void | Promise<void>> = [];
+  const stack = createCleanupStack();
   const clock = options.clock ?? createFakeClock();
   const logs = memorySink();
 
@@ -329,10 +339,29 @@ export function createTestContext(
     logs,
 
     cleanup(fn: () => void | Promise<void>): void {
+      stack.push(fn);
+    },
+
+    runCleanup(): Promise<void> {
+      return stack.run();
+    },
+  };
+}
+
+/** Creates a standalone LIFO cleanup stack with first-error aggregation. */
+export function createCleanupStack(): CleanupStack {
+  const cleanups: Array<() => void | Promise<void>> = [];
+
+  return {
+    get size(): number {
+      return cleanups.length;
+    },
+
+    push(fn: () => void | Promise<void>): void {
       cleanups.push(fn);
     },
 
-    async runCleanup(): Promise<void> {
+    async run(): Promise<void> {
       let firstError: unknown;
 
       for (let index = cleanups.length - 1; index >= 0; index -= 1) {
@@ -412,6 +441,20 @@ export function testEnv<TSchema extends EnvSchema>(
     prefix: options.prefix,
     allowEmpty: options.allowEmpty,
   });
+}
+
+/**
+ * Runs `fn` with an isolated copy of an explicit environment source.
+ *
+ * Keeps the source-first testing model: the caller's object is never mutated,
+ * no global `Deno.env` is touched, and no env permission is required. Compose it
+ * with {@link testEnv} to validate code paths under a scoped environment.
+ */
+export function withEnvSource<T>(
+  source: EnvSource,
+  fn: (source: EnvSource) => T,
+): T {
+  return fn({ ...source });
 }
 
 /** Creates a debug logger backed by an in-memory sink. */

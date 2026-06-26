@@ -47,6 +47,23 @@ assertValidSchemaSnapshot(snapshot);
 - `validateSchemaSnapshot`
 - `assertValidSchemaSnapshot`
 - `normalizeSchemaSnapshot`
+- `serializeSchemaSnapshot` / `deserializeSchemaSnapshot`
+- `equalSchemaSnapshots`
+
+## Serialization and compatibility
+
+`serializeSchemaSnapshot` emits **canonical JSON**: the snapshot is normalized
+first (tables and constraints sorted, declaration order of columns preserved),
+so two snapshots that differ only in ordering serialize to identical strings —
+safe for storage, migration journals, and checksums. `deserializeSchemaSnapshot`
+parses, normalizes, and validates, so a successful round-trip always yields a
+valid snapshot. `equalSchemaSnapshots` compares two snapshots by their canonical
+form.
+
+The shape is versioned by `SCHEMA_SNAPSHOT_VERSION` (currently `1`). A future
+breaking change to the snapshot shape bumps this constant;
+`validateSchemaSnapshot` rejects unknown versions so consumers can migrate
+deliberately rather than silently mis-reading an incompatible snapshot.
 
 ## Security
 

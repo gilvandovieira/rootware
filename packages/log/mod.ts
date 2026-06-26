@@ -76,9 +76,25 @@ export interface Logger {
   error(...args: unknown[]): void;
   fatal(...args: unknown[]): void;
 
+  /** Returns true when a record at `level` would be written by this logger. */
+  isLevelEnabled(level: LogLevel): boolean;
+
   child(bindings: LogBindings, options?: ChildLoggerOptions): Logger;
   flush(): LogSinkResult;
   close(): LogSinkResult;
+}
+
+/** Handler invoked when a sink write fails. Receives the JSON line that failed. */
+export type LogWriteErrorHandler = (error: LogError, line: string) => void;
+
+/**
+ * Redaction configuration. Each path is a dot-separated key sequence where `*`
+ * matches any single key (e.g. `"password"`, `"*.authorization"`,
+ * `"req.headers.cookie"`). Matched leaves are replaced with `censor`.
+ */
+export interface RedactOptions {
+  readonly paths: readonly string[];
+  readonly censor?: string;
 }
 
 /** Options for creating a logger. */
@@ -89,6 +105,14 @@ export interface LoggerOptions {
   readonly timestamp?: () => string;
   readonly base?: LogBindings | null;
   readonly enabled?: boolean;
+  /** Key used for the log message. Defaults to `"msg"`. */
+  readonly messageKey?: string;
+  /** Key used for the serialized error. Defaults to `"error"`. */
+  readonly errorKey?: string;
+  /** Field paths to redact, or full {@link RedactOptions}. */
+  readonly redact?: readonly string[] | RedactOptions;
+  /** Invoked on sink write failure instead of throwing. */
+  readonly onWriteError?: LogWriteErrorHandler;
 }
 
 export interface ChildLoggerOptions {
@@ -375,8 +399,17 @@ export function shouldLog(
     messageLevelNumber >= currentLevelNumber;
 }
 
-/** Serializes unknown error values into JSON-safe log fields. */
-export function serializeError(error: unknown): Record<string, unknown> {
+/**
+ * Serializes unknown error values into JSON-safe log fields, **including the
+ * stack** and all Rootware error fields (regardless of `expose`).
+ *
+ * This is the internal/diagnostic serializer. For user-facing payloads use the
+ * `expose`-respecting, no-stack `serializeError` from `@rootware/errors`. The
+ * two are deliberately named differently so an app can import both.
+ */
+export function serializeErrorForLog(
+  error: unknown,
+): Record<string, unknown> {
   try {
     return serializeErrorValue(error, new WeakSet<object>());
   } catch {
@@ -403,7 +436,7 @@ export function normalizeLogInput(args: unknown[]): {
     }
 
     if (error === undefined && arg instanceof Error) {
-      error = serializeError(arg);
+      error = serializeErrorForLog(arg);
       continue;
     }
 
@@ -426,8 +459,87 @@ export function normalizeLogInput(args: unknown[]): {
 
 /** Formats a log record as one JSON line. */
 export function formatLogRecord(record: LogRecord): string {
+  return formatRecordLine(record, undefined);
+}
+
+const DEFAULT_REDACT_CENSOR = "[Redacted]";
+
+interface CompiledRedaction {
+  readonly paths: readonly (readonly string[])[];
+  readonly censor: string;
+}
+
+function compileRedaction(
+  input: readonly string[] | RedactOptions | undefined,
+): CompiledRedaction | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+
+  const isArray = Array.isArray(input);
+  const rawPaths: readonly string[] = isArray
+    ? input as readonly string[]
+    : (input as RedactOptions).paths;
+  const censor = isArray
+    ? DEFAULT_REDACT_CENSOR
+    : (input as RedactOptions).censor ?? DEFAULT_REDACT_CENSOR;
+
+  const paths = rawPaths
+    .map((path) => path.split(".").filter((segment) => segment.length > 0))
+    .filter((segments) => segments.length > 0);
+
+  return paths.length > 0 ? { paths, censor } : undefined;
+}
+
+function applyRedaction(
+  target: Record<string, unknown>,
+  redaction: CompiledRedaction,
+): void {
+  for (const segments of redaction.paths) {
+    redactPath(target, segments, 0, redaction.censor);
+  }
+}
+
+function redactPath(
+  node: unknown,
+  segments: readonly string[],
+  index: number,
+  censor: string,
+): void {
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+
+  const record = node as Record<string, unknown>;
+  const segment = segments[index];
+  const isLast = index === segments.length - 1;
+  const keys = segment === "*" ? Object.keys(record) : [segment];
+
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    if (isLast) {
+      record[key] = censor;
+    } else {
+      redactPath(record[key], segments, index + 1, censor);
+    }
+  }
+}
+
+function formatRecordLine(
+  record: LogRecord,
+  redaction: CompiledRedaction | undefined,
+): string {
   try {
-    return `${JSON.stringify(sanitizeObject(record, new WeakSet<object>()))}\n`;
+    const sanitized = sanitizeObject(record, new WeakSet<object>());
+
+    if (redaction !== undefined) {
+      applyRedaction(sanitized as Record<string, unknown>, redaction);
+    }
+
+    return `${JSON.stringify(sanitized)}\n`;
   } catch (cause) {
     throw new LogError("Failed to serialize log record", {
       code: "LOG_SERIALIZATION_FAILED",
@@ -450,6 +562,11 @@ class RootwareLogger implements Logger {
   readonly #base: LogBindings | null;
   readonly #timestamp: () => string;
   readonly #enabled: boolean;
+  readonly #messageKey: string;
+  readonly #errorKey: string;
+  readonly #redactInput?: readonly string[] | RedactOptions;
+  readonly #redaction?: CompiledRedaction;
+  readonly #onWriteError?: LogWriteErrorHandler;
 
   constructor(options: LoggerOptions, sink: LogSink) {
     const level = options.level ?? "info";
@@ -470,6 +587,15 @@ class RootwareLogger implements Logger {
       : freezeLogObject(options.base ?? {});
     this.#timestamp = options.timestamp ?? defaultTimestamp;
     this.#enabled = options.enabled ?? true;
+    this.#messageKey = options.messageKey ?? "msg";
+    this.#errorKey = options.errorKey ?? "error";
+    this.#redactInput = options.redact;
+    this.#redaction = compileRedaction(options.redact);
+    this.#onWriteError = options.onWriteError;
+  }
+
+  isLevelEnabled(level: LogLevel): boolean {
+    return this.#enabled && shouldLog(this.level, level);
   }
 
   trace(...args: unknown[]): void {
@@ -517,6 +643,10 @@ class RootwareLogger implements Logger {
         timestamp: this.#timestamp,
         base: this.#base,
         enabled: this.#enabled,
+        messageKey: this.#messageKey,
+        errorKey: this.#errorKey,
+        redact: this.#redactInput,
+        onWriteError: this.#onWriteError,
       },
       this.#sink,
     );
@@ -544,22 +674,43 @@ class RootwareLogger implements Logger {
       level: levels[levelName],
       levelName,
       time: this.#timestamp(),
-      ...(input.message !== undefined ? { msg: input.message } : {}),
-      ...(input.error !== undefined ? { error: input.error } : {}),
+      ...(input.message !== undefined
+        ? { [this.#messageKey]: input.message }
+        : {}),
+      ...(input.error !== undefined ? { [this.#errorKey]: input.error } : {}),
     };
 
-    const line = textEncoder.encode(formatLogRecord(record));
+    const line = textEncoder.encode(formatRecordLine(record, this.#redaction));
 
     try {
       const result = this.#sink.write(line);
 
       if (isPromiseLike(result)) {
         result.catch((cause) => {
-          throwWriteError(cause);
+          this.#handleWriteError(cause, line, false);
         });
       }
     } catch (cause) {
-      throwWriteError(cause);
+      this.#handleWriteError(cause, line, true);
+    }
+  }
+
+  #handleWriteError(cause: unknown, line: Uint8Array, sync: boolean): void {
+    const error = cause instanceof LogError ? cause : new LogError(
+      "Failed to write log record",
+      { code: "LOG_WRITE_FAILED", cause },
+    );
+
+    if (this.#onWriteError !== undefined) {
+      this.#onWriteError(error, textDecoder.decode(line));
+      return;
+    }
+
+    // Synchronous failures still propagate to the caller; an async failure has
+    // no caller to throw to, so without a handler it is swallowed rather than
+    // surfacing as an unhandled promise rejection.
+    if (sync) {
+      throw error;
     }
   }
 }
@@ -790,7 +941,7 @@ function sanitizeLogValue(
   }
 
   if (value instanceof Error) {
-    return sanitizeObject(serializeError(value), seen);
+    return sanitizeObject(serializeErrorForLog(value), seen);
   }
 
   if (Array.isArray(value)) {

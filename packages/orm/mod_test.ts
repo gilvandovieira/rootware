@@ -5,6 +5,7 @@ import {
   assertRejects,
   assertThrows,
 } from "@std/assert";
+import { validateSchemaSnapshot } from "@rootware/schema";
 import {
   and,
   columns,
@@ -54,6 +55,41 @@ const users = defineTable("users", {
   birthday: columns.date().optional(),
   createdAt: columns.timestamp().default(() => new Date()),
   orgId: columns.uuid().references("organizations", "id"),
+});
+
+Deno.test("@rootware/orm - Postgres column types map into a valid schema snapshot", () => {
+  const accounts = defineTable("accounts", {
+    id: columns.uuid().primaryKey(),
+    handle: columns.varchar(32).notNull(),
+    balance: columns.bigint().notNull(),
+    settings: columns.jsonb<{ theme: string }>().optional(),
+    createdAt: columns.timestamp({ withTimezone: true }).notNull(),
+  });
+
+  // Inference: bigint is typed as string (precision-safe); jsonb keeps its generic.
+  const insert: InferInsert<typeof accounts> = {
+    id: "a_1",
+    handle: "lucas",
+    balance: "9007199254740993",
+    createdAt: new Date(),
+  };
+  assertEquals(insert.balance, "9007199254740993");
+
+  const snapshot = createSchemaSnapshot({
+    dialect: "postgres",
+    tables: [accounts],
+  });
+  const table = snapshot.tables[0];
+  const columnType = (name: string) =>
+    table.columns.find((column) => column.name === name)!.type;
+
+  assertEquals(columnType("handle"), { kind: "varchar", length: 32 });
+  assertEquals(columnType("balance").kind, "bigint");
+  assertEquals(columnType("settings").kind, "jsonb");
+  assertEquals(columnType("createdAt").kind, "timestamptz");
+
+  // createSchemaSnapshot validates as it builds; re-check to be explicit.
+  assertEquals(validateSchemaSnapshot(snapshot), []);
 });
 
 Deno.test("@rootware/orm - table columns and inference compile", () => {

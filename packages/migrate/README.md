@@ -1,8 +1,11 @@
 # @rootware/migrate
 
-Database migration primitives for Rootware packages and Deno backends.
+Programmatic migration primitives for Rootware packages and Deno backends.
 
 Experimental JSR-native package for Rootware.
+
+The v0.2 surface is intentionally the migration engine API: define migrations,
+plan them, run them through injected stores/drivers, and validate checksums.
 
 ## Install
 
@@ -51,7 +54,8 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 ## Limitations
 
 This package does not include database adapters, filesystem migration discovery,
-CLI commands, schema diffing, or advisory locks yet.
+CLI commands, schema diffing, or advisory locks yet. Those workflow layers are
+planned after v0.2 and are not missing pieces of the v0.2 engine release.
 
 ## Status
 

@@ -25,12 +25,16 @@ export type ColumnName = string;
 
 export type ColumnDataType =
   | "text"
+  | "varchar"
   | "integer"
+  | "bigint"
   | "number"
   | "boolean"
   | "json"
+  | "jsonb"
   | "date"
   | "timestamp"
+  | "timestamptz"
   | "uuid";
 
 export type ColumnRuntimeType =
@@ -46,6 +50,7 @@ export type ColumnRuntimeType =
 export interface ColumnDefinition<T> {
   readonly name?: ColumnName;
   readonly dataType: ColumnDataType;
+  readonly length?: number;
   readonly nullable: boolean;
   readonly hasDefault: boolean;
   readonly primaryKey: boolean;
@@ -354,12 +359,19 @@ export class OrmError extends RootwareError {
 
 interface ColumnsFactory {
   text(): ColumnBuilder<string>;
+  /** Postgres `varchar`; pass `length` for `varchar(n)`. */
+  varchar(length?: number): ColumnBuilder<string>;
   integer(): ColumnBuilder<number>;
+  /** Postgres `bigint`. Typed as `string` to preserve 64-bit precision. */
+  bigint(): ColumnBuilder<string>;
   number(): ColumnBuilder<number>;
   boolean(): ColumnBuilder<boolean>;
   json<T = Record<string, unknown>>(): ColumnBuilder<T>;
+  /** Postgres `jsonb`. */
+  jsonb<T = Record<string, unknown>>(): ColumnBuilder<T>;
   date(): ColumnBuilder<Date>;
-  timestamp(): ColumnBuilder<Date>;
+  /** Postgres `timestamp`; `{ withTimezone: true }` maps to `timestamptz`. */
+  timestamp(options?: { readonly withTimezone?: boolean }): ColumnBuilder<Date>;
   uuid(): ColumnBuilder<string>;
 }
 
@@ -369,8 +381,19 @@ export const columns: ColumnsFactory = Object.freeze({
     return createColumnBuilder<string>("text");
   },
 
+  varchar(length?: number): ColumnBuilder<string> {
+    return createColumnBuilder<string>(
+      "varchar",
+      length === undefined ? {} : { length },
+    );
+  },
+
   integer(): ColumnBuilder<number> {
     return createColumnBuilder<number>("integer");
+  },
+
+  bigint(): ColumnBuilder<string> {
+    return createColumnBuilder<string>("bigint");
   },
 
   number(): ColumnBuilder<number> {
@@ -385,12 +408,20 @@ export const columns: ColumnsFactory = Object.freeze({
     return createColumnBuilder<T>("json");
   },
 
+  jsonb<T = Record<string, unknown>>(): ColumnBuilder<T> {
+    return createColumnBuilder<T>("jsonb");
+  },
+
   date(): ColumnBuilder<Date> {
     return createColumnBuilder<Date>("date");
   },
 
-  timestamp(): ColumnBuilder<Date> {
-    return createColumnBuilder<Date>("timestamp");
+  timestamp(options: { readonly withTimezone?: boolean } = {}): ColumnBuilder<
+    Date
+  > {
+    return createColumnBuilder<Date>(
+      options.withTimezone ? "timestamptz" : "timestamp",
+    );
   },
 
   uuid(): ColumnBuilder<string> {
@@ -1477,10 +1508,14 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
   }
 }
 
-function createColumnBuilder<T>(dataType: ColumnDataType): ColumnBuilder<T> {
+function createColumnBuilder<T>(
+  dataType: ColumnDataType,
+  extra: { readonly length?: number } = {},
+): ColumnBuilder<T> {
   return new RootwareColumnBuilder<T, false, false>(
     {
       dataType,
+      ...(extra.length === undefined ? {} : { length: extra.length }),
       nullable: false,
       hasDefault: false,
       primaryKey: false,
@@ -1518,7 +1553,10 @@ function tableToSnapshot(
     ...(table.schema === undefined ? {} : { schema: table.schema }),
     columns: columns.map((column) => ({
       name: column.name,
-      type: { kind: column.dataType },
+      type: {
+        kind: column.dataType,
+        ...(column.length === undefined ? {} : { length: column.length }),
+      },
       nullable: column.nullable,
       ...(column.references === undefined ? {} : {
         references: {
@@ -1567,6 +1605,7 @@ function cloneColumnDefinition<T>(
   return {
     ...(definition.name === undefined ? {} : { name: definition.name }),
     dataType: definition.dataType,
+    ...(definition.length === undefined ? {} : { length: definition.length }),
     nullable: definition.nullable,
     hasDefault: definition.hasDefault,
     primaryKey: definition.primaryKey,

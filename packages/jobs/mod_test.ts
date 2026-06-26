@@ -187,6 +187,40 @@ Deno.test("@rootware/jobs - queue failures retry and dead letter", async () => {
   await assertRejects(() => queue.enqueue("missing", {}), JobError);
 });
 
+Deno.test("@rootware/jobs - dead-lettered jobs are listable and worker stop is graceful", async () => {
+  const failing = defineJob({
+    name: "explode",
+    run: () => {
+      throw new Error("nope");
+    },
+  });
+  const queue = createJobQueue({ jobs: [failing], store: memoryJobStore() });
+  const job = await queue.enqueue("explode", {}, {
+    attempts: 1,
+    backoffMs: 0,
+    maxBackoffMs: 0,
+    backoffStrategy: "fixed",
+  });
+
+  // A single allowed attempt sends the job straight to the dead-letter state.
+  await assertRejects(() => queue.processNext(), JobError);
+  assertEquals((await queue.get(job.id))?.status, "dead");
+
+  const dead = await queue.list({ status: "dead" });
+  assertEquals(dead.jobs.map((entry) => entry.id), [job.id]);
+
+  // Stopping a worker that was never started is rejected explicitly.
+  const worker = queue.worker();
+  assertEquals(worker.running, false);
+  await assertRejects(() => worker.stop(), JobError);
+
+  // A started worker stops gracefully.
+  worker.start();
+  assertEquals(worker.running, true);
+  await worker.stop();
+  assertEquals(worker.running, false);
+});
+
 Deno.test("@rootware/jobs - noop store and queue", async () => {
   const store = noopJobStore();
   const job = createJobRecord("noop", {});

@@ -2,10 +2,46 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   assertValidSchemaSnapshot,
   defineSchemaSnapshot,
+  deserializeSchemaSnapshot,
+  equalSchemaSnapshots,
   normalizeSchemaSnapshot,
   type RootwareSchemaSnapshot,
+  serializeSchemaSnapshot,
   validateSchemaSnapshot,
 } from "./mod.ts";
+
+Deno.test("@rootware/schema - canonical serialization round-trips and compares equal", () => {
+  const snapshot: RootwareSchemaSnapshot = {
+    version: 1,
+    dialect: "postgres",
+    tables: [
+      {
+        name: "b_table",
+        columns: [{ name: "id", type: { kind: "uuid" }, nullable: false }],
+      },
+      {
+        name: "a_table",
+        columns: [{ name: "id", type: { kind: "uuid" }, nullable: false }],
+      },
+    ],
+  };
+
+  // Same tables in a different order are structurally equal after normalization.
+  const reordered: RootwareSchemaSnapshot = {
+    version: 1,
+    dialect: "postgres",
+    tables: [snapshot.tables[1], snapshot.tables[0]],
+  };
+
+  const json = serializeSchemaSnapshot(snapshot);
+  assertEquals(
+    deserializeSchemaSnapshot(json),
+    normalizeSchemaSnapshot(snapshot),
+  );
+  assertEquals(equalSchemaSnapshots(snapshot, reordered), true);
+
+  assertThrows(() => deserializeSchemaSnapshot("{not valid json"));
+});
 
 Deno.test("@rootware/schema - valid minimal snapshot", () => {
   const snapshot = defineSchemaSnapshot({

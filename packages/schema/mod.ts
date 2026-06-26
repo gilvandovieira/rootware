@@ -256,6 +256,47 @@ export function normalizeSchemaSnapshot(
   };
 }
 
+/**
+ * Serializes a snapshot to canonical JSON.
+ *
+ * The snapshot is normalized first, so two snapshots that differ only in
+ * table/index/constraint ordering serialize to identical strings. Use this for
+ * storage, migration journals, and checksums.
+ */
+export function serializeSchemaSnapshot(
+  snapshot: RootwareSchemaSnapshot,
+): string {
+  return JSON.stringify(normalizeSchemaSnapshot(snapshot));
+}
+
+/**
+ * Parses canonical JSON produced by {@link serializeSchemaSnapshot}, then
+ * normalizes and validates it. Throws when the JSON is malformed or the
+ * resulting snapshot is invalid, so a successful call always returns a valid,
+ * normalized snapshot.
+ */
+export function deserializeSchemaSnapshot(
+  text: string,
+): RootwareSchemaSnapshot {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch (cause) {
+    throw new Error("Invalid Rootware schema snapshot JSON", { cause });
+  }
+
+  return defineSchemaSnapshot(parsed as RootwareSchemaSnapshot);
+}
+
+/** Returns true when two snapshots are structurally equal after normalization. */
+export function equalSchemaSnapshots(
+  a: RootwareSchemaSnapshot,
+  b: RootwareSchemaSnapshot,
+): boolean {
+  return serializeSchemaSnapshot(a) === serializeSchemaSnapshot(b);
+}
+
 function normalizeTableSnapshot(
   table: RootwareTableSnapshot,
 ): RootwareTableSnapshot {

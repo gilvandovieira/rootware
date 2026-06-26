@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assertLog, testLogger } from "@rootware/testing";
 import {
   buildUrl,
   createHttpClient,
@@ -191,6 +192,31 @@ Deno.test("@rootware/http - redacts sensitive JSON body keys", () => {
       authorization: "[REDACTED]",
       nested: { api_key: "[REDACTED]", safe: true },
     },
+  );
+});
+
+Deno.test("@rootware/http - injected logger receives redacted lifecycle logs", async () => {
+  const { logger, sink } = testLogger();
+  const client = createHttpClient({
+    logger,
+    fetch: createMockFetch([
+      { path: "/users", handler: () => createJsonResponse({ ok: true }) },
+    ]),
+  });
+
+  await client.getJson(
+    "https://user:pass@api.example.com/users?token=abc&safe=ok",
+  );
+
+  const logs = assertLog(sink);
+  logs.hasMessage("http request started");
+  logs.hasMessage("http request completed");
+  // Logged URLs must not leak credentials or sensitive query parameters.
+  logs.hasRecord((record) =>
+    typeof record.url === "string" &&
+    !record.url.includes("user:pass") &&
+    !record.url.includes("token=abc") &&
+    record.url.includes("safe=ok")
   );
 });
 

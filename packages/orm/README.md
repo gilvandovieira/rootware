@@ -1,8 +1,12 @@
 # @rootware/orm
 
-Small typed SQL and ORM primitives for Rootware packages and Deno backends.
+Typed SQL and schema snapshot core for Rootware packages and Deno backends.
 
 Experimental JSR-native package for Rootware.
+
+The v0.2 surface is intentionally the root package core: table metadata, safe
+SQL composition, query builders over injected drivers, and schema snapshots for
+`@rootware/migrate`.
 
 ## Install
 
@@ -37,13 +41,20 @@ await db.execute(sql`select * from users where id = ${"u_123"}`);
 ## API
 
 - `defineTable`
-- `columns`
+- `columns` — `text`, `varchar(n)`, `integer`, `bigint`, `number`, `boolean`,
+  `json`, `jsonb`, `date`, `timestamp({ withTimezone })`, `uuid`
+- `createSchemaSnapshot`
 - `sql`
 - `raw`
 - `identifier`
 - `renderSql`
 - `createDatabase`
 - `noopOrmDriver`
+
+Postgres-typed columns (`varchar`, `bigint`, `jsonb`, `timestamptz`) carry their
+type — and `varchar` length — through to the `@rootware/schema` snapshot
+consumed by `@rootware/migrate`. `bigint` is typed as `string` to preserve
+64-bit precision.
 
 ## Security
 
@@ -55,7 +66,9 @@ See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
 ## Limitations
 
 This package does not implement real database drivers, joins, relations,
-migrations, schema introspection, pooling, or advanced SQL builders yet.
+migrations, schema introspection, pooling, or advanced SQL builders yet. Those
+features are planned after v0.2 and are not missing pieces of the v0.2 root
+core.
 
 ## Status
 

@@ -37,12 +37,13 @@ published `v0.1` foundation into a coherent `v0.2` product spine.
 > `pgTable` and `/pg`, `/postgres`, `/neon` subpaths may be added later as thin
 > aliases/adapters, but they are additive, not the primary surface.
 >
-> **What is genuinely missing** (the real `v0.2`): a concrete Postgres driver
-> (`connect` over `@db/postgres`), projection selects, projected `returning`,
-> joins, `inArray`/`ilike`, Postgres-specific column types/escaping hardening,
-> real transaction semantics, and the subpath layout. `createSchemaSnapshot` now
-> exists as the ORM -> `@rootware/schema` handoff and should be hardened rather
-> than reimplemented.
+> **Deferred after v0.2.** A concrete Postgres driver (`connect` over
+> `@db/postgres`), projection selects, projected `returning`, joins,
+> `inArray`/`ilike`, real transaction semantics beyond the current driver
+> contract, and the subpath layout are planned for v0.3+. They are not blockers
+> for the v0.2 root-package core. `createSchemaSnapshot` now exists as the ORM
+> -> `@rootware/schema` handoff and should be hardened rather than
+> reimplemented.
 
 ## Product thesis
 
@@ -429,16 +430,15 @@ import { connect } from "@rootware/orm/postgres";
 
 Tasks:
 
-- Define root export.
-- Define `/pg` export.
-- Define `/postgres` export.
-- Define `/testing` export.
+- Keep the root export as the only shipped export for v0.2.
+- Document `/pg`, `/postgres`, and `/testing` as planned subpaths only.
+- Do not add subpath exports until the target files and tests exist.
 - Hide internal files.
 - Remove or deprecate accidental exports.
 
 Acceptance:
 
-- All examples use only public exports.
+- All examples use existing public exports, or are explicitly labeled future.
 
 ### Chunk 3 — Add experimental product warning
 
@@ -473,36 +473,25 @@ Acceptance:
 
 - Every planned doc page exists, even if some pages are incomplete.
 
-## v0.2 — Postgres vertical slice
+## v0.2 — Typed SQL and schema snapshot core
 
-Goal: ship the first complete product spine.
+Goal: ship the root-package core that exists today: typed table metadata, safe
+SQL composition, query builders over an injected driver contract, and
+serializable schema snapshots.
 
 A user should be able to:
 
 ```txt
-define schema -> connect to Postgres -> insert -> select -> test compiled SQL
+define schema -> compile safe SQL -> execute through injected driver -> create schema snapshot -> test with memory/noop drivers
 ```
 
 Migration generation and execution should be handled by `@rootware/migrate`, not
-by `@rootware/orm`.
+by `@rootware/orm`. This release intentionally keeps exports root-only and does
+not include real database drivers or adapter subpaths.
 
-> **Most of this milestone already ships in `v0.1`.** Read "Implement …" in the
-> chunks below as verify-test-and-document for the parts that already exist.
-> Already shipped: Chunk 5 (`sql` tag), Chunk 6 (`quoteIdentifier`), Chunk 8
-> (`OrmDriver` / `memoryOrmDriver`), Chunk 9 (`defineTable` + `columns`), Chunk
-> 12 (insert inference via `InferInsert`), Chunk 13 (select builder), Chunk 14
-> (predicate helpers), Chunk 15 (insert builder). The **genuine gaps** are:
-> Chunk 7 (the compiler-contract abstraction — `v0.1` uses `renderSql` over
-> `Sql` chunks plus a `SqlDialect` string, not a `QueryNode`/`Dialect.compile`
-> split, so this is a design decision, not a verify), Chunk 10
-> (`createSchemaSnapshot`, now implemented and needing hardening), Chunk 11
-> (Postgres-specific column types over the generic factory), Chunk 16 (projected
-> `returning`, not the already-shipped basic `returning()`), and Chunk 17 (the
-> real `@db/postgres` driver / `connect`). Build those; verify the rest.
+### Chunk 5 — Core SQL fragments
 
-### Chunk 5 — Core SQL fragment
-
-Goal: create a safe SQL primitive.
+Verify and document the safe SQL primitives.
 
 API:
 
@@ -519,19 +508,21 @@ Compiled output:
 }
 ```
 
-Tasks:
+Scope:
 
-- Implement SQL tagged template.
-- Collect parameters safely.
-- Support nested SQL fragments.
-- Add raw SQL escape hatch with explicit naming.
-- Test parameter ordering.
+- `sql`.
+- `raw`.
+- `identifier`.
+- `joinSql`.
+- `renderSql`.
+- nested SQL fragments.
+- parameter ordering.
 
 Acceptance:
 
 - User values are parameterized by default.
 
-### Chunk 6 — Identifier escaping
+### Chunk 6 — Identifier escaping and dialect rendering
 
 Goal: safely compile table and column identifiers.
 
@@ -547,51 +538,37 @@ Compiles to:
 "users"."email"
 ```
 
-Tasks:
+Scope:
 
-- Escape Postgres identifiers with double quotes.
-- Support schema-qualified tables.
-- Test reserved words.
-- Test unusual column names.
+- `quoteIdentifier`.
+- dialect-aware parameter placeholders.
+- table and column identifier rendering.
+- reserved word and unusual identifier tests.
 
 Acceptance:
 
 - All generated identifiers are escaped consistently.
 
-### Chunk 7 — Query compiler contract
-
-Goal: establish the internal compiler boundary.
-
-Tasks:
-
-- Create `QueryNode` type.
-- Create `CompiledQuery` type.
-- Create `Dialect` interface.
-- Create `PostgresDialect` skeleton.
-
-Acceptance:
-
-- Queries compile without knowing which driver will execute them.
-
-### Chunk 8 — Driver contract
+### Chunk 7 — Driver contract
 
 Goal: isolate database execution.
 
-Tasks:
+Scope:
 
-- Define `Driver`.
-- Define `QueryResult`.
-- Define transaction placeholder.
-- Define driver error wrapping strategy.
+- `OrmDriver`.
+- `OrmQueryResult`.
+- `OrmTransaction`.
+- `createDatabase`.
+- `noopOrmDriver`.
+- `memoryOrmDriver`.
 
 Acceptance:
 
 - ORM core has no direct dependency on `@db/postgres`.
 
-### Chunk 9 — Basic table definition
+### Chunk 8 — Table definition and column metadata
 
-Goal: define typed tables. **Already shipped in `v0.1`** — this chunk is now
-verify-and-document, not implement.
+Goal: define typed tables and runtime metadata from the root package.
 
 API:
 
@@ -605,19 +582,37 @@ export const users = defineTable("users", {
 });
 ```
 
-Tasks:
+Scope:
 
-- Verify `defineTable` + the `columns` factory store
-  name/type/primary-key/not-null metadata (they do today).
-- Confirm column types are available at compile time via `InferSelect` /
-  `InferInsert`.
-- Document the `.named()`, `.default(value|fn)`, `.unique()`, `.references()`
-  modifiers.
+- `defineTable`.
+- `columns`.
+- `InferSelect`.
+- `InferInsert`.
+- `.named()`, `.default(value|fn)`, `.unique()`, `.references()`.
+- nullable/not-null/default metadata.
 
 Acceptance:
 
 - Table metadata is available at runtime and column types are available at
   compile time.
+
+### Chunk 9 — Postgres-shaped column metadata
+
+`v0.2` keeps the canonical root `columns` factory and adds the Postgres-shaped
+metadata already present there. It does not add `/pg` or `/postgres` subpaths.
+
+Scope:
+
+- `columns.varchar(length?)`.
+- `columns.bigint()`.
+- `columns.jsonb<T>()`.
+- `columns.timestamp({ withTimezone })`.
+- existing `text`, `integer`, `boolean`, and `uuid` mappings.
+
+Acceptance:
+
+- Supported columns carry type information and serializable metadata into schema
+  snapshots.
 
 ### Chunk 10 — Stable schema metadata and snapshot contract
 
@@ -632,51 +627,22 @@ import { createSchemaSnapshot } from "@rootware/orm";
 const snapshot = createSchemaSnapshot(schema);
 ```
 
-Tasks:
+Scope:
 
-- Define table metadata symbols.
-- Define column metadata shape.
-- Define default metadata shape.
-- Define index metadata shape.
-- Define unique constraint metadata shape.
-- Define foreign key metadata shape.
-- Implement `createSchemaSnapshot(schema)`.
-- Version the snapshot format.
-- Add deterministic output tests.
+- table metadata.
+- column metadata.
+- default metadata.
+- index metadata.
+- unique constraint metadata.
+- foreign key metadata.
+- `createSchemaSnapshot(schema)`.
+- deterministic output tests.
 
 Acceptance:
 
 - `@rootware/migrate` can consume the snapshot without importing ORM internals.
 
-### Chunk 11 — Postgres core column types
-
-`v0.1` already ships a dialect-generic `columns` factory:
-`text, integer, number, boolean, json, date, timestamp, uuid`. This chunk
-**extends** that factory (or adds a Postgres-typed variant) with
-Postgres-specific types and fixes the naming gap (`json` vs `jsonb`); it does
-not replace the existing API.
-
-Add Postgres-typed columns:
-
-- `varchar` (with length)
-- `bigint`
-- `jsonb` (decide whether this replaces or sits alongside the generic `json`)
-- `timestamp` with timezone option
-- keep `text`, `integer`, `boolean`, `uuid` mapping to their Postgres types
-
-Each column needs:
-
-- Runtime metadata.
-- TypeScript select type.
-- TypeScript insert type.
-- Nullable/not-null behavior.
-- Default behavior.
-
-Acceptance:
-
-- Insert and select types infer correctly for supported columns.
-
-### Chunk 12 — Insert type inference
+### Chunk 11 — Insert type inference
 
 Goal: typed inserts.
 
@@ -689,44 +655,46 @@ await db.insert(users).values({
 });
 ```
 
-Tasks:
+Scope:
 
-- Infer required fields.
-- Infer optional fields when default exists.
-- Infer nullable fields.
-- Reject unknown fields.
+- required fields.
+- optional fields when defaults exist.
+- nullable fields.
+- unknown-field rejection through TypeScript.
 
 Acceptance:
 
 - TypeScript rejects invalid insert objects.
 
-### Chunk 13 — Select query builder
+### Chunk 12 — Query builders
 
-Goal: first useful read path.
+Goal: verify the currently shipped select, insert, update, and delete builders.
 
 API:
 
 ```ts
 const result = await db
-  .select({
-    id: users.id,
-    email: users.email,
-  })
-  .from(users);
+  .select()
+  .from(users)
+  .where(eq(users.columns.email, "lucas@example.com"))
+  .execute();
 ```
 
-Tasks:
+Scope:
 
-- Support select object shape.
-- Support `from(table)`.
-- Compile selected columns.
-- Infer result row type.
+- `db.select().from(table)`.
+- `db.insert(table).values(...)`.
+- `db.update(table).set(...).where(...)`.
+- `db.delete(table).where(...)`.
+- full-table update/delete protection.
+- `unsafeAllowAllRows()` escape hatch.
+- basic `.returning()` support where currently implemented.
 
 Acceptance:
 
-- Result type matches selected fields.
+- Builders compile parameterized SQL and execute through the injected driver.
 
-### Chunk 14 — Predicate helpers
+### Chunk 13 — Predicate helpers
 
 Implement:
 
@@ -740,9 +708,8 @@ Implement:
 - `or`
 - `isNull`
 - `isNotNull`
-- `inArray`
 - `like`
-- `ilike`
+- `not`
 
 Example:
 
@@ -757,109 +724,45 @@ Acceptance:
 
 - Predicates compile to parameterized SQL.
 
-### Chunk 15 — Insert query builder
+### Chunk 14 — Tests and docs
 
-Goal: first write path.
+Verify the package tests cover:
 
-API:
-
-```ts
-await db.insert(users).values({
-  email: "lucas@example.com",
-});
-```
-
-Tasks:
-
-- Single-row insert.
-- Parameterized values.
-- Default values handling.
-- Insert type inference.
+- Postgres-shaped column metadata and schema snapshots.
+- table inference.
+- SQL rendering.
+- predicates.
+- select/insert/update/delete builders.
+- full-table update/delete safety.
+- database helpers and transactions through injected drivers.
 
 Acceptance:
 
-- Generated SQL executes against real Postgres.
+- `deno task ci` and `deno task publish:dry:orm` pass.
 
-### Chunk 16 — Projected returning
+## v0.3 — Postgres adapter and query expansion
 
-Goal: Postgres-friendly write result.
+Goal: turn the v0.2 root core into a real Postgres path and broaden query
+coverage.
 
-API:
+This milestone absorbs the heavier work that used to be listed under v0.2:
 
-```ts
-const [user] = await db
-  .insert(users)
-  .values({ email: "lucas@example.com" })
-  .returning({
-    id: users.id,
-    email: users.email,
-  });
-```
+- real `@db/postgres` driver.
+- `connect`.
+- `/postgres`, `/pg`, `/neon`, or `/testing` subpaths once files and tests
+  exist.
+- projected select API.
+- projected `returning`.
+- joins.
+- `inArray`.
+- `ilike`.
+- real database transaction semantics beyond the current driver contract.
+- Hono/Postgres example.
 
-Acceptance:
+The chunks below harden and extend the shipped builders rather than replacing
+the root v0.2 API.
 
-- Basic `.returning()` already ships; projected returning result type is
-  inferred.
-
-### Chunk 17 — @db/postgres adapter
-
-Goal: first real driver.
-
-API:
-
-```ts
-import { connect } from "@rootware/orm/postgres";
-import * as schema from "./schema.ts";
-
-const db = await connect({
-  url: Deno.env.get("DATABASE_URL")!,
-  schema,
-});
-```
-
-Tasks:
-
-- Wrap `@db/postgres` client.
-- Execute `CompiledQuery`.
-- Map rows.
-- Expose `close()`.
-- Add integration test.
-
-Acceptance:
-
-- A real Postgres database can be queried through `@rootware/orm`.
-
-### Chunk 18 — Hono Postgres example
-
-Goal: prove real usage.
-
-Example app:
-
-```txt
-examples/hono-postgres/
-  deno.json
-  schema.ts
-  db.ts
-  main.ts
-```
-
-Routes:
-
-```txt
-POST /users
-GET /users/:id
-GET /users
-```
-
-Acceptance:
-
-- Example runs with `deno task dev`.
-
-## v0.3 — Product alpha hardening
-
-Goal: make the Postgres path usable for careful real applications.
-
-### Chunk 19 — Update query builder
+### Chunk 19 — Update query builder hardening
 
 API:
 
@@ -874,7 +777,7 @@ Acceptance:
 
 - Update values are typed and SQL is parameterized.
 
-### Chunk 20 — Delete query builder
+### Chunk 20 — Delete query builder hardening
 
 API:
 
@@ -1271,26 +1174,23 @@ those snapshots and owns migration generation/execution.
 
 ## First 10 implementation chunks
 
-Do these first (most of the builder work already exists in `v0.1`; the real
-near-term gap is the snapshot contract, a concrete driver, and type-level
-tests):
+Do these first for the v0.2 root-core release:
 
-1. Audit published `v0.1` and pin the public export list.
-2. Decide subpath layout (`/postgres` etc.) — additive over the generic root.
+1. Audit published `v0.1` and pin the root public export list.
+2. Keep subpaths (`/postgres`, `/pg`, `/testing`, etc.) roadmap-only until files
+   and tests exist.
 3. Add experimental product README using `defineTable` + `columns`.
 4. Create docs skeleton.
 5. Verify the shipped `sql` tagged template and parameterization.
-6. Verify the `OrmDriver` interface and `memoryOrmDriver`.
+6. Verify the `OrmDriver` interface, `noopOrmDriver`, and `memoryOrmDriver`.
 7. Reconcile the `SqlDialect` union with the snapshot dialect union.
-8. Verify `defineTable` + `columns` metadata (already implemented).
-9. Harden schema metadata serialization and `createSchemaSnapshot()`
-   (implemented in the alignment pass).
+8. Verify `defineTable` + `columns` metadata, including Postgres-shaped column
+   metadata in the root factory.
+9. Harden schema metadata serialization and `createSchemaSnapshot()`.
 10. Add compile-time type assertion tests for schema/query inference.
 
-After these, build the real `@db/postgres` driver and `connect`, then
-Postgres-specific column types — the `select`/`insert`/`update`/`delete`
-builders and predicates already exist and only need a real driver to execute
-against.
+After v0.2, decide and implement the additive subpath layout, then build the
+real `@db/postgres` driver and `connect`.
 
 ## Product rule
 

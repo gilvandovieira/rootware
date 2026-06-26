@@ -1,5 +1,57 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `v0.2.0` release across the workspace
+
+Every package was advanced to its `v0.2` milestone and bumped to `0.2.0`. All of
+`deno task ci` (fmt, lint, check, graph, 107 tests) and `deno task publish:dry`
+pass. No runtime cross-package imports changed, so the dependency graph is
+unchanged.
+
+- **errors** — Resolved the `serializeError` naming collision (Chunk 9) by
+  renaming log's variant, not errors'; errors keeps the safe, no-stack,
+  `expose`-respecting default. Added package-specific factory examples
+  (`EnvError`/`LogError`/`HttpError`) and a stack-never-leaks serialization
+  test.
+- **env** — Verified the typed-env spine; added tests for enum inference, prefix
+  lookup, and permission-safe `readDenoEnv` failure.
+- **log** — **Breaking (0.x):** `serializeError` → `serializeErrorForLog` (the
+  with-stack, internal serializer) to end the workspace-wide name clash with
+  `@rootware/errors`' `serializeError`. Added Production Core Hardening:
+  `redact` (dot-path + `*` wildcard), configurable `messageKey`/`errorKey`,
+  `logger.isLevelEnabled`, and an `onWriteError` hook (sync failures still
+  throw; async failures route to the hook or are swallowed instead of becoming
+  unhandled rejections).
+- **testing** — Added `createCleanupStack` (Chunk 8) and `withEnvSource` (Chunk
+  5); refactored `createTestContext` onto the shared cleanup stack.
+- **http** — Verified the production fetch spine; added a logger-integration
+  test asserting request-lifecycle logs redact credentials and sensitive query
+  parameters.
+- **cache** — Added the serialization contract (Chunk 8): `CacheSerializer` and
+  the default `jsonCacheSerializer` (memory store still keeps raw values).
+- **storage** — Added `localStorageStore` (Chunk 5): a local-filesystem
+  `StorageStore` over an injectable `StorageFileSystem` (Deno-backed by default,
+  fakeable so tests stay off-disk and permission-free).
+- **session** — Added tests for secure cookie defaults
+  (`HttpOnly`/`Secure`/`SameSite=Lax`) and expired/missing-session resolution.
+- **schema** — Added `serializeSchemaSnapshot` (canonical JSON),
+  `deserializeSchemaSnapshot` (round-trip), and `equalSchemaSnapshots`, plus
+  documented serialization/compatibility rules.
+- **orm** — Added Postgres column types (Chunk 11): `varchar(n)`, `bigint`
+  (typed `string` for precision), `jsonb`, and `timestamp({ withTimezone })`,
+  threading `length`/type into the schema snapshot. Hardened and tested
+  `createSchemaSnapshot` against `@rootware/schema` validation.
+- **migrate** — Added cross-platform checksum normalization (Chunk 12): CRLF/CR
+  → LF, trailing-whitespace and trailing-blank-line stripping before hashing, so
+  a `.sql` file checksums identically on Windows and Linux.
+- **jobs** — Added a dead-letter-listing and graceful-worker-shutdown test
+  covering the Chunk 10 scenarios.
+
+**Deferred (require a live database; not CI-testable under the no-network
+rule):** the orm `@db/postgres` `connect` driver (Chunk 17) and projected
+`returning` (Chunk 16); the migrate SQL-first config loader, CLI, and Postgres
+journal/runner (Chunks 5–11, 13–15). The engine, contracts, and pure logic these
+build on are in place and tested.
+
 ## 2026-06-26 — Documentation graph alignment
 
 - Updated root `README.md` with the CI-enforced runtime dependency graph and the
