@@ -213,6 +213,12 @@ function buildBenchCommand(options: RunOptions): string[] {
     Deno.execPath(),
     "bench",
     "--json",
+    // The log benchmarks compare against npm:pino, which imports `thread-stream`
+    // (reads `process.env`) and `@std/log`; grant the perms its module load
+    // needs. Benchmarks are dev-only and not part of `deno task ci`.
+    "--allow-env",
+    "--allow-read",
+    "--allow-sys",
     "--seed",
     options.seed,
     ...(options.filter === undefined ? [] : ["--filter", options.filter]),

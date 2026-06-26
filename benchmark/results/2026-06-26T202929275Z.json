@@ -1,0 +1,1112 @@
+{
+  "schemaVersion": 2,
+  "createdAt": "2026-06-26T20:29:29.275Z",
+  "durationMs": 31480.35,
+  "command": [
+    "deno",
+    "bench",
+    "--json",
+    "--allow-env",
+    "--allow-read",
+    "--allow-sys",
+    "--seed",
+    "1",
+    "benchmark/cases"
+  ],
+  "config": {
+    "cases": [
+      "benchmark/cases"
+    ],
+    "seed": "1",
+    "tags": [],
+    "benchArgs": []
+  },
+  "runtime": {
+    "deno": "2.8.3",
+    "v8": "14.9.207.2-rusty",
+    "typescript": "6.0.3",
+    "os": "linux",
+    "arch": "x86_64",
+    "userAgent": "Deno/2.8.3",
+    "hardwareConcurrency": 20
+  },
+  "machine": {
+    "os": "linux",
+    "arch": "x86_64",
+    "cpuModel": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "cpuCores": 20,
+    "totalMemoryBytes": 16360120320
+  },
+  "workspace": {
+    "root": "rootware",
+    "denoJsonSha256": "63f2f6f274fe35d0cb2a9ac4e4b393335d754b3f07675921dea322663e2e4435",
+    "denoLockSha256": "596c38adb7bf728dd63747e09d10fc5d130efbabe1ce9c947e5b3a2b8a81a81a"
+  },
+  "git": {
+    "available": true,
+    "branch": "main",
+    "commit": "49ebcf7df93027a23442129b57116d49c99227ce",
+    "dirty": true,
+    "statusShort": [
+      "M benchmark/cases/foundation.bench.ts",
+      " M benchmark/run.ts",
+      " M deno.json",
+      " M deno.lock",
+      "?? benchmark/cases/log.bench.ts"
+    ]
+  },
+  "summary": {
+    "benchmarkCount": 44,
+    "groups": [
+      "cache.client.set-get",
+      "cache.key.join",
+      "cache.store.get",
+      "env.validate",
+      "errors.construct",
+      "errors.convert",
+      "errors.serialize",
+      "log.disabled",
+      "log.memory",
+      "log.write.json",
+      "migrate.cli.generate.large",
+      "migrate.cli.generate.small",
+      "migrate.ddl.create-table",
+      "migrate.ddl.up.diff",
+      "migrate.ddl.up.large",
+      "migrate.drift.check",
+      "migrate.file.build",
+      "migrate.plan.changes",
+      "orm.predicate.compose",
+      "orm.query.insert",
+      "orm.query.join",
+      "orm.query.select",
+      "orm.snapshot.create",
+      "schema.diff.large",
+      "schema.equal.large",
+      "schema.serialize.large",
+      "schema.serialize.small",
+      "schema.validate.large"
+    ],
+    "names": [
+      "cache.client.set-get/platform:map",
+      "cache.client.set-get/rootware",
+      "cache.key.join/platform:template",
+      "cache.key.join/rootware",
+      "cache.store.get/platform:map",
+      "cache.store.get/rootware",
+      "env.validate/platform:direct-parser",
+      "env.validate/rootware",
+      "errors.construct/platform:error",
+      "errors.construct/rootware",
+      "errors.convert/rootware",
+      "errors.serialize/platform:error-object",
+      "errors.serialize/rootware",
+      "log.disabled/npm:pino",
+      "log.disabled/rootware",
+      "log.disabled/std:log",
+      "log.memory/rootware:memorySink",
+      "log.write.json/npm:pino",
+      "log.write.json/platform:json-line",
+      "log.write.json/rootware:buffered",
+      "log.write.json/rootware:unbuffered",
+      "log.write.json/std:log",
+      "migrate.cli.generate.large/rootware",
+      "migrate.cli.generate.small/rootware",
+      "migrate.ddl.create-table/rootware",
+      "migrate.ddl.up.diff/rootware",
+      "migrate.ddl.up.large/rootware",
+      "migrate.drift.check/rootware",
+      "migrate.file.build/rootware",
+      "migrate.plan.changes/rootware",
+      "orm.predicate.compose/rootware",
+      "orm.query.insert/rootware",
+      "orm.query.join/rootware",
+      "orm.query.select/platform:template",
+      "orm.query.select/rootware",
+      "orm.snapshot.create/rootware",
+      "schema.diff.large/rootware",
+      "schema.equal.large/platform:json-equality",
+      "schema.equal.large/rootware",
+      "schema.serialize.large/platform:json-stringify",
+      "schema.serialize.large/rootware",
+      "schema.serialize.small/platform:json-stringify",
+      "schema.serialize.small/rootware",
+      "schema.validate.large/rootware"
+    ]
+  },
+  "denoBench": {
+    "version": 1,
+    "runtime": "Deno/2.8.3 x86_64-unknown-linux-gnu",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "benches": [
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "cache.client.set-get",
+        "name": "cache.client.set-get/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 62,
+              "min": 866.3929,
+              "max": 1394.6478,
+              "avg": 971.3997758064517,
+              "p75": 1010.2084,
+              "p99": 1394.6478,
+              "p995": 1394.6478,
+              "p999": 1394.6478,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "cache.client.set-get",
+        "name": "cache.client.set-get/platform:map",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 571,
+              "min": 68.9344,
+              "max": 216.9467,
+              "avg": 89.17674063047286,
+              "p75": 86.2245,
+              "p99": 207.7093,
+              "p995": 213.9648,
+              "p999": 216.9467,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "cache.store.get",
+        "name": "cache.store.get/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 311,
+              "min": 134.5651,
+              "max": 316.7747,
+              "avg": 165.96656591639865,
+              "p75": 175.3275,
+              "p99": 293.2693,
+              "p995": 297.3046,
+              "p999": 316.7747,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "cache.store.get",
+        "name": "cache.store.get/platform:map",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 587,
+              "min": 71.725,
+              "max": 208.476,
+              "avg": 86.70875553662697,
+              "p75": 86.7698,
+              "p99": 185.2423,
+              "p995": 192.569,
+              "p999": 208.476,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "cache.key.join",
+        "name": "cache.key.join/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 261,
+              "min": 175.9817,
+              "max": 390.5131,
+              "avg": 199.6580590038314,
+              "p75": 196.4846,
+              "p99": 363.2335,
+              "p995": 370.217,
+              "p999": 390.5131,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "cache.key.join",
+        "name": "cache.key.join/platform:template",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 15710,
+              "min": 2.9882,
+              "max": 26.5346,
+              "avg": 3.1847449013368205,
+              "p75": 2.9937,
+              "p99": 6.7347,
+              "p995": 6.9339,
+              "p999": 18.0567,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.serialize.small",
+        "name": "schema.serialize.small/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 19786,
+              "min": 19931,
+              "max": 861805,
+              "avg": 25283,
+              "p75": 24311,
+              "p99": 67911,
+              "p995": 89073,
+              "p999": 189738,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.serialize.small",
+        "name": "schema.serialize.small/platform:json-stringify",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 33879,
+              "min": 12743,
+              "max": 525424,
+              "avg": 14763,
+              "p75": 13705,
+              "p99": 30560,
+              "p995": 37960,
+              "p999": 153802,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.serialize.large",
+        "name": "schema.serialize.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 2460,
+              "min": 166056,
+              "max": 579188,
+              "avg": 204083,
+              "p75": 197398,
+              "p99": 428301,
+              "p995": 488019,
+              "p999": 529148,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.serialize.large",
+        "name": "schema.serialize.large/platform:json-stringify",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 3927,
+              "min": 111322,
+              "max": 406070,
+              "avg": 127642,
+              "p75": 122556,
+              "p99": 244714,
+              "p995": 301165,
+              "p999": 349720,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.validate.large",
+        "name": "schema.validate.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 19810,
+              "min": 20122,
+              "max": 242431,
+              "avg": 25253,
+              "p75": 23591,
+              "p99": 53067,
+              "p995": 99217,
+              "p999": 186972,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.diff.large",
+        "name": "schema.diff.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1027,
+              "min": 428972,
+              "max": 1143529,
+              "avg": 491816,
+              "p75": 481868,
+              "p99": 875534,
+              "p995": 932166,
+              "p999": 1086368,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.equal.large",
+        "name": "schema.equal.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1262,
+              "min": 353368,
+              "max": 905606,
+              "avg": 399219,
+              "p75": 395233,
+              "p99": 696796,
+              "p995": 728313,
+              "p999": 783026,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/data_state.bench.ts",
+        "group": "schema.equal.large",
+        "name": "schema.equal.large/platform:json-equality",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 1935,
+              "min": 228269,
+              "max": 597050,
+              "avg": 259732,
+              "p75": 246846,
+              "p99": 481757,
+              "p995": 532899,
+              "p999": 551220,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "errors.construct",
+        "name": "errors.construct/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 31,
+              "min": 1964.9271,
+              "max": 3853.9882,
+              "avg": 2297.166280645162,
+              "p75": 2604.0475,
+              "p99": 3853.9882,
+              "p995": 3853.9882,
+              "p999": 3853.9882,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "errors.construct",
+        "name": "errors.construct/platform:error",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 41,
+              "min": 1521.368,
+              "max": 1876.9338,
+              "avg": 1613.4591585365852,
+              "p75": 1641.7251,
+              "p99": 1876.9338,
+              "p995": 1876.9338,
+              "p999": 1876.9338,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "errors.convert",
+        "name": "errors.convert/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 28,
+              "min": 2248.0154,
+              "max": 4885.6106,
+              "avg": 2686.632353571428,
+              "p75": 2757.447,
+              "p99": 4885.6106,
+              "p995": 4885.6106,
+              "p999": 4885.6106,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "errors.serialize",
+        "name": "errors.serialize/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 24,
+              "min": 3301.4766,
+              "max": 5160.5476,
+              "avg": 3595.2053583333327,
+              "p75": 3692.6,
+              "p99": 5160.5476,
+              "p995": 5160.5476,
+              "p999": 5160.5476,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "errors.serialize",
+        "name": "errors.serialize/platform:error-object",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 4658,
+              "min": 7.2375,
+              "max": 57.0644,
+              "avg": 10.778961635895246,
+              "p75": 11.4718,
+              "p99": 38.2587,
+              "p995": 41.6661,
+              "p999": 47.4692,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "env.validate",
+        "name": "env.validate/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 49,
+              "min": 1146.0787,
+              "max": 2148.7214,
+              "avg": 1313.3029265306122,
+              "p75": 1354.3507,
+              "p99": 2148.7214,
+              "p995": 2148.7214,
+              "p999": 2148.7214,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/foundation.bench.ts",
+        "group": "env.validate",
+        "name": "env.validate/platform:direct-parser",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 59,
+              "min": 962.5333,
+              "max": 1471.5536,
+              "avg": 1032.1522169491527,
+              "p75": 1032.8995,
+              "p99": 1471.5536,
+              "p995": 1471.5536,
+              "p999": 1471.5536,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.write.json",
+        "name": "log.write.json/rootware:unbuffered",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 29,
+              "min": 2347.6826,
+              "max": 3985.4608,
+              "avg": 2726.2809758620683,
+              "p75": 2884.0842,
+              "p99": 3985.4608,
+              "p995": 3985.4608,
+              "p999": 3985.4608,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.write.json",
+        "name": "log.write.json/rootware:buffered",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 22,
+              "min": 3799.4694,
+              "max": 5218.7559,
+              "avg": 4187.940131818183,
+              "p75": 4346.2614,
+              "p99": 5218.7559,
+              "p995": 5218.7559,
+              "p999": 5218.7559,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.write.json",
+        "name": "log.write.json/platform:json-line",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 48,
+              "min": 680.1583,
+              "max": 2209.0788,
+              "avg": 1346.12623125,
+              "p75": 1683.7129,
+              "p99": 2209.0788,
+              "p995": 2209.0788,
+              "p999": 2209.0788,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.write.json",
+        "name": "log.write.json/npm:pino",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 69,
+              "min": 782.2925,
+              "max": 1139.1733,
+              "avg": 848.7340666666666,
+              "p75": 877.245,
+              "p99": 1139.1733,
+              "p995": 1139.1733,
+              "p999": 1139.1733,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.write.json",
+        "name": "log.write.json/std:log",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 148,
+              "min": 330.1694,
+              "max": 593.8687,
+              "avg": 371.1033425675675,
+              "p75": 363.9616,
+              "p99": 583.3861,
+              "p995": 593.8687,
+              "p999": 593.8687,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.disabled",
+        "name": "log.disabled/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1593,
+              "min": 25.0474,
+              "max": 81.2373,
+              "avg": 31.702659447583176,
+              "p75": 31.7231,
+              "p99": 61.8586,
+              "p995": 67.4747,
+              "p999": 78.9405,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.disabled",
+        "name": "log.disabled/npm:pino",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 9348,
+              "min": 4.9062,
+              "max": 32.993,
+              "avg": 5.3544789580659105,
+              "p75": 5.2341,
+              "p99": 10.6078,
+              "p995": 11.363,
+              "p999": 23.0049,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.disabled",
+        "name": "log.disabled/std:log",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 4303,
+              "min": 7.382,
+              "max": 40.527,
+              "avg": 11.651663211712757,
+              "p75": 11.821,
+              "p99": 20.7657,
+              "p995": 24.682,
+              "p999": 30.5595,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/log.bench.ts",
+        "group": "log.memory",
+        "name": "log.memory/rootware:memorySink",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 25,
+              "min": 2985.0841,
+              "max": 4208.3452,
+              "avg": 3374.768832,
+              "p75": 3423.2264,
+              "p99": 4208.3452,
+              "p995": 4208.3452,
+              "p999": 4208.3452,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.snapshot.create",
+        "name": "orm.snapshot.create/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 21,
+              "min": 3704.2444,
+              "max": 6438.4549,
+              "avg": 4453.918328571429,
+              "p75": 4775.1506,
+              "p99": 6438.4549,
+              "p995": 6438.4549,
+              "p999": 6438.4549,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.select",
+        "name": "orm.query.select/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 114329,
+              "min": 3348,
+              "max": 574745,
+              "avg": 4374,
+              "p75": 3964,
+              "p99": 9531,
+              "p995": 27177,
+              "p999": 71622,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.select",
+        "name": "orm.query.select/platform:template",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 5957,
+              "min": 6.7212,
+              "max": 36.9273,
+              "avg": 8.409284270605996,
+              "p75": 9.1383,
+              "p99": 15.0564,
+              "p995": 17.1394,
+              "p999": 24.2748,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.insert",
+        "name": "orm.query.insert/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 24,
+              "min": 3466.2344,
+              "max": 4372.2352,
+              "avg": 3858.748879166667,
+              "p75": 3994.2342,
+              "p99": 4372.2352,
+              "p995": 4372.2352,
+              "p999": 4372.2352,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.join",
+        "name": "orm.query.join/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 17,
+              "min": 7498.0483,
+              "max": 8521.5299,
+              "avg": 7848.365347058822,
+              "p75": 7946.2664,
+              "p99": 8521.5299,
+              "p995": 8521.5299,
+              "p999": 8521.5299,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.predicate.compose",
+        "name": "orm.predicate.compose/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 20,
+              "min": 4831.9872,
+              "max": 5823.5371,
+              "avg": 5230.61885,
+              "p75": 5345.7399,
+              "p99": 5823.5371,
+              "p995": 5823.5371,
+              "p999": 5823.5371,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.ddl.create-table",
+        "name": "migrate.ddl.create-table/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 30,
+              "min": 2425.1797,
+              "max": 3134.5281,
+              "avg": 2634.4512766666667,
+              "p75": 2730.6823,
+              "p99": 3134.5281,
+              "p995": 3134.5281,
+              "p999": 3134.5281,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.ddl.up.large",
+        "name": "migrate.ddl.up.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1081,
+              "min": 365129,
+              "max": 1259474,
+              "avg": 466679,
+              "p75": 464027,
+              "p99": 995577,
+              "p995": 1126798,
+              "p999": 1181548,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.ddl.up.diff",
+        "name": "migrate.ddl.up.diff/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 294,
+              "min": 1502369,
+              "max": 3086641,
+              "avg": 1762011,
+              "p75": 1760142,
+              "p99": 2921916,
+              "p995": 2937367,
+              "p999": 3086641,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.plan.changes",
+        "name": "migrate.plan.changes/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 518,
+              "min": 874399,
+              "max": 2024383,
+              "avg": 985650,
+              "p75": 991486,
+              "p99": 1541253,
+              "p995": 1777847,
+              "p999": 2024383,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.file.build",
+        "name": "migrate.file.build/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 4616,
+              "min": 92828,
+              "max": 583876,
+              "avg": 108569,
+              "p75": 104054,
+              "p99": 264831,
+              "p995": 306599,
+              "p999": 421207,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.drift.check",
+        "name": "migrate.drift.check/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1036,
+              "min": 425650,
+              "max": 1042828,
+              "avg": 488004,
+              "p75": 487734,
+              "p99": 820796,
+              "p995": 843682,
+              "p999": 1040444,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.cli.generate.small",
+        "name": "migrate.cli.generate.small/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 5090,
+              "min": 85399,
+              "max": 843691,
+              "avg": 98425,
+              "p75": 96722,
+              "p99": 199875,
+              "p995": 226115,
+              "p999": 341940,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.cli.generate.large",
+        "name": "migrate.cli.generate.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 617,
+              "min": 693558,
+              "max": 1692908,
+              "avg": 823873,
+              "p75": 823155,
+              "p99": 1335029,
+              "p995": 1382779,
+              "p999": 1692908,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

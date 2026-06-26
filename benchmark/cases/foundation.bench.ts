@@ -4,26 +4,20 @@ import {
   toRootwareError,
 } from "@rootware/errors";
 import { validateEnv } from "@rootware/env";
-import { createLogger } from "@rootware/log";
 import { consume } from "../fixtures/blackhole.ts";
 import {
   benchmarkEnvSchema,
   benchmarkEnvSource,
   parseBenchmarkEnvDirect,
 } from "../fixtures/env.ts";
-import {
-  benchmarkLogObject,
-  discardLogSink,
-  fixedTimestamp,
-  writePlatformJsonLog,
-} from "../fixtures/log.ts";
 import { benchmarkName } from "../fixtures/names.ts";
+
+// Log benchmarks live in `log.bench.ts` (the `0.8` benchmarks milestone).
 
 const ERRORS_CONSTRUCT = "errors.construct";
 const ERRORS_CONVERT = "errors.convert";
 const ERRORS_SERIALIZE = "errors.serialize";
 const ENV_VALIDATE = "env.validate";
-const LOG_INFO_DISCARD = "log.info.discard";
 
 const rootwareError = new RootwareError("Benchmark failure", {
   code: "ROOTWARE_INTERNAL_ERROR",
@@ -39,18 +33,6 @@ const rootwareError = new RootwareError("Benchmark failure", {
 const nativeError = new Error("Benchmark failure", {
   cause: new Error("database unavailable"),
 });
-
-const rootwareLogger = createLogger({
-  level: "info",
-  name: "rootware",
-  base: null,
-  bindings: {
-    service: "benchmark",
-  },
-  timestamp: fixedTimestamp,
-}, discardLogSink());
-
-const platformLogSink = discardLogSink();
 
 Deno.bench({
   name: benchmarkName(ERRORS_CONSTRUCT, "rootware"),
@@ -120,23 +102,6 @@ Deno.bench({
   group: ENV_VALIDATE,
   fn(): void {
     consume(parseBenchmarkEnvDirect());
-  },
-});
-
-Deno.bench({
-  name: benchmarkName(LOG_INFO_DISCARD, "rootware"),
-  group: LOG_INFO_DISCARD,
-  baseline: true,
-  fn(): void {
-    rootwareLogger.info(benchmarkLogObject, "request completed");
-  },
-});
-
-Deno.bench({
-  name: benchmarkName(LOG_INFO_DISCARD, "platform:json-line"),
-  group: LOG_INFO_DISCARD,
-  fn(): void {
-    writePlatformJsonLog(platformLogSink);
   },
 });
 

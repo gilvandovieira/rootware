@@ -30,6 +30,12 @@ Run one case file and annotate the result:
 deno task benchmark --case benchmark/cases/foundation.bench.ts --tag local --note "laptop baseline"
 ```
 
+Both `deno task bench` and the `deno task benchmark` runner grant
+`--allow-env --allow-read --allow-sys` because `cases/log.bench.ts` compares
+against `npm:pino` (its `thread-stream` dependency reads `process.env` at
+import) and `jsr:@std/log`. These permissions are dev-only — `deno task ci` and
+`deno task test` stay permission-free.
+
 ## Layout
 
 - `cases/` contains `*.bench.ts` files registered with `Deno.bench`.
