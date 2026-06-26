@@ -1021,9 +1021,25 @@ Acceptance:
 
 - Users know when libSQL behavior differs from local SQLite.
 
-## v0.6 — Turso migrations
+## v0.6 — Turso migrations — **done (`0.6.0`)**
 
 Goal: support Turso as a hosted SQLite-family target.
+
+Shipped in `0.6.0` — the `@rootware/migrate/turso` subpath. Turso is hosted
+libSQL, so this is a thin, Turso-named entrypoint over the `0.5` libSQL
+migrator:
+
+- **`createTursoMigrator({ url, authToken })`** — delegates to
+  `createLibsqlMigrator` but, for a real connection, validates that both a `url`
+  and an `authToken` are present (`MIGRATION_INVALID` otherwise). Accepts an
+  injected `client`/`executor` for permission-free tests; re-exports the SQLite
+  DDL generators.
+- **Migration journal** — inherited from the libSQL migrator (the SQLite history
+  store applied verbatim); apply / re-apply (no-op) / rollback work against
+  Turso over the `@libsql/client` HTTP path with interactive transactions.
+
+Deno Deploy + Turso: the adapter runs on serverless runtimes (`--allow-net`);
+deployment migration guidance lives with the example apps.
 
 ### Chunk 31 — Turso driver support
 

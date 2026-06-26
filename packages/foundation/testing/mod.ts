@@ -20,6 +20,7 @@ import {
 } from "@rootware/env";
 import {
   createLogger,
+  type LogLevelName,
   type LogRecord,
   type MemoryLogSink,
   memorySink,
@@ -528,6 +529,125 @@ export function testLogger(): {
   );
 
   return { sink, logger };
+}
+
+/** Options for {@link captureLogs}. */
+export interface CaptureLogsOptions {
+  /** Minimum level captured; defaults to `"debug"`. */
+  readonly level?: LogLevelName;
+}
+
+/**
+ * A captured-logs handle: a logger plus inline assertions. The
+ * `@rootware/log`-and-`@rootware/testing` integration point (log v0.6) — one
+ * call gives a logger whose records you can assert without juggling a sink.
+ */
+export interface CapturedLogs {
+  readonly logger: ReturnType<typeof createLogger>;
+  readonly sink: MemoryLogSink;
+  /** All captured records, in order. */
+  records(): LogRecord[];
+  /** Records with volatile fields (`time`) stripped, for snapshot tests. */
+  normalized(): LogRecord[];
+  /** Clears captured records. */
+  clear(): void;
+  /** Asserts at least one record matches every field in `match`. */
+  assertContains(match: Partial<LogRecord>): void;
+  /** Asserts a record with `event` (and optional extra fields) was logged. */
+  assertEvent(event: string, fields?: Partial<LogRecord>): void;
+  /** Asserts exactly `count` records were captured. */
+  assertCount(count: number): void;
+  /** Asserts no records were captured. */
+  assertEmpty(): void;
+}
+
+/** Volatile record fields stripped by {@link CapturedLogs.normalized}. */
+const VOLATILE_LOG_FIELDS: readonly string[] = ["time"];
+
+/**
+ * Captures structured logs into a logger with inline assertions and
+ * snapshot-friendly normalization.
+ *
+ * ```ts
+ * const logs = captureLogs();
+ * logs.logger.info({ event: "user.created", userId: "u_123" }, "created");
+ * logs.assertEvent("user.created", { userId: "u_123" });
+ * logs.assertCount(1);
+ * ```
+ */
+export function captureLogs(options: CaptureLogsOptions = {}): CapturedLogs {
+  const sink = memorySink();
+  const logger = createLogger(
+    { level: options.level ?? "debug" },
+    unbufferedSink(sink),
+  );
+
+  const records = (): LogRecord[] => sink.records<LogRecord>();
+
+  const matches = (record: LogRecord, match: Partial<LogRecord>): boolean => {
+    for (const [key, value] of Object.entries(match)) {
+      if (!isEqual(record[key], value)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const self: CapturedLogs = {
+    logger,
+    sink,
+
+    records(): LogRecord[] {
+      return records();
+    },
+
+    normalized(): LogRecord[] {
+      return records().map((record) => {
+        const copy: LogRecord = { ...record };
+        for (const field of VOLATILE_LOG_FIELDS) {
+          delete copy[field];
+        }
+        return copy;
+      });
+    },
+
+    clear(): void {
+      sink.clear();
+    },
+
+    assertContains(match: Partial<LogRecord>): void {
+      if (!records().some((record) => matches(record, match))) {
+        throwAssertionFailure({
+          message: "Expected a log record matching the given fields",
+          actual: records(),
+          expected: match,
+          operator: "captureLogs.assertContains",
+        });
+      }
+    },
+
+    assertEvent(event: string, fields: Partial<LogRecord> = {}): void {
+      self.assertContains({ event, ...fields });
+    },
+
+    assertCount(count: number): void {
+      const actual = records().length;
+      if (actual !== count) {
+        throwAssertionFailure({
+          message: `Expected ${count} log records, found ${actual}`,
+          actual,
+          expected: count,
+          operator: "captureLogs.assertCount",
+        });
+      }
+    },
+
+    assertEmpty(): void {
+      self.assertCount(0);
+    },
+  };
+
+  return self;
 }
 
 /** Creates log assertions for a memory sink. */

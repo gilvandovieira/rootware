@@ -685,6 +685,166 @@ export function defineJobs(jobs: JobDefinition[]): JobRegistry {
   });
 }
 
+// --- Integration job builders (v0.6) ---
+
+/** Fetch-compatible transport injected into {@link defineWebhookJob}. */
+export type JobFetch = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+/** Result returned by a {@link defineWebhookJob} handler. */
+export interface WebhookJobResult {
+  readonly status: number;
+  readonly ok: boolean;
+}
+
+/** Options for {@link defineWebhookJob}. */
+export interface WebhookJobOptions<TPayload = unknown> {
+  readonly name: JobName;
+  /** Target URL, static or derived from the payload. */
+  readonly url: string | ((payload: TPayload) => string);
+  /** HTTP method; defaults to `POST`. */
+  readonly method?: string;
+  readonly headers?: Record<string, string>;
+  /** Serializes the payload to a request body; defaults to JSON. */
+  readonly serialize?: (payload: TPayload) => BodyInit;
+  /** Throw on a non-2xx response so the job retries. Defaults to `true`. */
+  readonly expectOk?: boolean;
+  /** Injectable transport; defaults to global `fetch`. */
+  readonly fetch?: JobFetch;
+  readonly defaultRetry?: RetryOptions;
+  readonly defaultPriority?: JobPriority;
+  readonly validate?: (payload: unknown) => TPayload;
+  readonly description?: string;
+}
+
+/**
+ * Builds a job that delivers its payload to a webhook over HTTP. A non-2xx
+ * response throws (by default), so the queue's retry/backoff policy applies —
+ * giving at-least-once webhook delivery. SDK-free: only `fetch` is used (the
+ * `@rootware/http` client is not imported, preserving the jobs-core graph), and
+ * `fetch` is injectable for tests. Provider-specific webhook packages can wrap
+ * this with signing/headers.
+ */
+export function defineWebhookJob<TPayload = unknown>(
+  options: WebhookJobOptions<TPayload>,
+): JobDefinition<TPayload, WebhookJobResult> {
+  const method = options.method ?? "POST";
+  const expectOk = options.expectOk ?? true;
+  const serialize = options.serialize ??
+    ((payload: TPayload) => JSON.stringify(payload ?? null));
+
+  return defineJob<TPayload, WebhookJobResult>({
+    name: options.name,
+    ...(options.validate === undefined ? {} : { validate: options.validate }),
+    ...(options.defaultRetry === undefined
+      ? {}
+      : { defaultRetry: options.defaultRetry }),
+    ...(options.defaultPriority === undefined
+      ? {}
+      : { defaultPriority: options.defaultPriority }),
+    ...(options.description === undefined
+      ? {}
+      : { description: options.description }),
+    async run(payload: TPayload, ctx: JobContext): Promise<WebhookJobResult> {
+      const url = typeof options.url === "function"
+        ? options.url(payload)
+        : options.url;
+      const headers = new Headers(options.headers);
+      if (!headers.has("content-type")) {
+        headers.set("content-type", "application/json");
+      }
+
+      const fetchFn = options.fetch ?? getGlobalJobFetch();
+      const response = await fetchFn(url, {
+        method,
+        headers,
+        body: methodHasBody(method) ? serialize(payload) : null,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+      });
+
+      if (expectOk && !response.ok) {
+        await response.body?.cancel();
+        throw new JobError(`Webhook responded ${response.status}`, {
+          code: "JOB_EXECUTE_FAILED",
+          status: response.status,
+          details: { url, status: response.status },
+        });
+      }
+
+      await response.body?.cancel();
+      return { status: response.status, ok: response.ok };
+    },
+  });
+}
+
+/** A normalized mail message passed to a {@link defineMailJob} sender. */
+export interface MailMessage {
+  readonly to: string | readonly string[];
+  readonly subject: string;
+  readonly text?: string;
+  readonly html?: string;
+  readonly from?: string;
+  readonly [key: string]: unknown;
+}
+
+/** Options for {@link defineMailJob}. */
+export interface MailJobOptions<TPayload = MailMessage> {
+  readonly name: JobName;
+  /** Provider-specific sender, injected by the app (Resend, SES, SMTP, …). */
+  readonly send: (message: MailMessage) => unknown | Promise<unknown>;
+  /** Maps a payload to a {@link MailMessage}; defaults to using the payload. */
+  readonly toMessage?: (payload: TPayload) => MailMessage;
+  readonly defaultRetry?: RetryOptions;
+  readonly defaultPriority?: JobPriority;
+  readonly validate?: (payload: unknown) => TPayload;
+  readonly description?: string;
+}
+
+/**
+ * Builds a job that sends an email via an injected provider `send` function —
+ * the app supplies the SDK (Resend, SES, SMTP, …), keeping jobs-core SDK-free.
+ * Failures propagate so the queue retries.
+ */
+export function defineMailJob<TPayload = MailMessage>(
+  options: MailJobOptions<TPayload>,
+): JobDefinition<TPayload, void> {
+  const toMessage = options.toMessage ??
+    ((payload: TPayload) => payload as unknown as MailMessage);
+
+  return defineJob<TPayload, void>({
+    name: options.name,
+    ...(options.validate === undefined ? {} : { validate: options.validate }),
+    ...(options.defaultRetry === undefined
+      ? {}
+      : { defaultRetry: options.defaultRetry }),
+    ...(options.defaultPriority === undefined
+      ? {}
+      : { defaultPriority: options.defaultPriority }),
+    ...(options.description === undefined
+      ? {}
+      : { description: options.description }),
+    async run(payload: TPayload): Promise<void> {
+      await options.send(toMessage(payload));
+    },
+  });
+}
+
+function methodHasBody(method: string): boolean {
+  const upper = method.toUpperCase();
+  return upper !== "GET" && upper !== "HEAD";
+}
+
+function getGlobalJobFetch(): JobFetch {
+  if (typeof globalThis.fetch !== "function") {
+    throw new JobError("globalThis.fetch is not available", {
+      code: "JOB_EXECUTE_FAILED",
+    });
+  }
+  return (input, init) => globalThis.fetch(input, init);
+}
+
 /** Creates a job queue backed by an async store. */
 export function createJobQueue(
   options: JobQueueOptions = {},

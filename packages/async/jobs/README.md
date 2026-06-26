@@ -47,6 +47,7 @@ await queue.processNext();
   `jobsTableDdl`, `JOB_TABLE_COLUMNS`, `DEFAULT_JOBS_TABLE`
 - `@rootware/jobs/postgres` (`0.5`) — `createPostgresJobStore`,
   `ensureJobsTable`, `rowToJobRecord`, `jobToParams`
+- Integration job builders (`0.6`) — `defineWebhookJob`, `defineMailJob`
 
 ## Recurring scheduling (`0.3`)
 
@@ -122,6 +123,32 @@ multiple workers share a queue safely; `store.heartbeat(id, leaseMs)` extends a
 held lease and `store.reclaimExpired()` recovers crashed workers' jobs. Delivery
 is **at-least-once** — keep handlers idempotent. The `@db/postgres` driver is
 imported only by this subpath (jobs-core stays driver-free).
+
+## Integration job builders (`0.6`)
+
+SDK-free helpers for the two most common job shapes (provider packages layer on
+top; jobs-core stays driver-free):
+
+```ts
+import { defineMailJob, defineWebhookJob } from "jsr:@rootware/jobs";
+
+// POSTs the payload to a webhook; a non-2xx throws → the queue retries.
+const deliver = defineWebhookJob<{ id: string }>({
+  name: "deliver-webhook",
+  url: (payload) => `https://hooks.example.com/${payload.id}`,
+});
+
+// Sends mail via an injected provider (Resend/SES/SMTP); failures retry.
+const welcome = defineMailJob<{ email: string; name: string }>({
+  name: "welcome-email",
+  send: (message) => mailProvider.send(message),
+  toMessage: (p) => ({ to: p.email, subject: `Welcome, ${p.name}` }),
+});
+```
+
+`defineWebhookJob` takes an injectable `fetch` (defaults to global `fetch`);
+`defineMailJob` takes the provider `send` function — neither imports a provider
+SDK or `@rootware/http`.
 
 ## Security
 

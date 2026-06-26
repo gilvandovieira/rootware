@@ -13,7 +13,7 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno check packages/*/*/mod.ts packages/foundation/log/compat/pino/mod.ts packages/foundation/log/http/mod.ts packages/data/orm/postgres/mod.ts packages/data/orm/sqlite/mod.ts packages/data/orm/libsql/mod.ts packages/data/migrate/postgres/mod.ts packages/data/migrate/sqlite/mod.ts packages/data/migrate/libsql/mod.ts packages/async/jobs/postgres/mod.ts packages/data/migrate/cli/mod.ts",
+    "check": "deno check packages/*/*/mod.ts packages/foundation/log/compat/pino/mod.ts packages/foundation/log/http/mod.ts packages/data/orm/postgres/mod.ts packages/data/orm/sqlite/mod.ts packages/data/orm/libsql/mod.ts packages/data/orm/turso/mod.ts packages/data/migrate/postgres/mod.ts packages/data/migrate/sqlite/mod.ts packages/data/migrate/libsql/mod.ts packages/data/migrate/turso/mod.ts packages/async/jobs/postgres/mod.ts packages/data/migrate/cli/mod.ts",
     "benchmark:check": "deno check benchmark/*.ts benchmark/**/*.ts",
     "bench": "deno bench benchmark/cases/",
     "benchmark": "deno run --allow-run=deno,git --allow-read=. --allow-write=benchmark/results --allow-env=CI,PATH --allow-sys=systemMemoryInfo benchmark/run.ts",

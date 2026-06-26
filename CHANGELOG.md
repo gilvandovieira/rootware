@@ -1,5 +1,28 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `v0.6` milestones completed
+
+Advanced every package with a `v0.6` roadmap milestone. Only four had one;
+`errors`, `env`, `http`, `cache`, `storage`, `session`, and `schema` go straight
+to `v1.0`, so they stay at their current versions. No new infrastructure —
+**Turso is hosted libSQL**, so the Turso adapters are thin named entrypoints
+over the existing `0.5` libSQL adapters.
+
+- **log → testing** (both → `0.6.0`) — `captureLogs()` lands in
+  `@rootware/testing`: a logger with inline assertions (`assertEvent`,
+  `assertContains`, `assertCount`, `assertEmpty`) and snapshot-friendly
+  `normalized()`. `@rootware/log` keeps `memorySink`/`LogRecord` stable and
+  exports the types the helper composes (`testing` → `log`, direction intact).
+- **orm** (`0.6.0`) — `@rootware/orm/turso`: `createTursoDb({ url, authToken })`
+  over the libSQL adapter, validating the auth token a hosted Turso connection
+  requires; injectable `client`/`executor` for tests.
+- **migrate** (`0.6.0`) — `@rootware/migrate/turso`: `createTursoMigrator` over
+  the libSQL migrator (re-exports the SQLite DDL generators).
+- **jobs** (`0.6.0`) — SDK-free integration job builders: `defineWebhookJob`
+  (HTTP POST via injected `fetch`, retry-on-non-2xx → at-least-once delivery)
+  and `defineMailJob` (injected provider `send`). Media processing and the
+  reference-app thumbnail job stay app/provider territory.
+
 ## 2026-06-26 — `v0.5` milestones completed
 
 Advanced every package with a `v0.5` roadmap milestone to `0.5.0` (unpublished).
