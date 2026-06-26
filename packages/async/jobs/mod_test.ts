@@ -17,6 +17,8 @@ import {
   DEFAULT_JOBS_TABLE,
   defineJob,
   defineJobs,
+  defineMailJob,
+  defineWebhookJob,
   deserializeJobError,
   isJobReady,
   isRetryableJobStatus,
@@ -413,4 +415,65 @@ Deno.test("@rootware/jobs - JOB_TABLE_COLUMNS covers the record and lease column
     ),
     ["id"],
   );
+});
+
+Deno.test("@rootware/jobs - defineWebhookJob POSTs the payload and retries on non-2xx", async () => {
+  const calls: Array<{ url: string; method: string; body: string }> = [];
+  let status = 500;
+  const fetch = (input: string | URL, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      method: init?.method ?? "GET",
+      body: String(init?.body ?? ""),
+    });
+    return Promise.resolve(new Response(null, { status }));
+  };
+
+  const job = defineWebhookJob<{ id: string }>({
+    name: "deliver-webhook",
+    url: (payload) => `https://hooks.example.com/${payload.id}`,
+    fetch,
+  });
+  const queue = createJobQueue({ jobs: [job], store: memoryJobStore() });
+  await queue.enqueue("deliver-webhook", { id: "evt_1" }, {
+    attempts: 2,
+    backoffMs: 0,
+    maxBackoffMs: 0,
+    backoffStrategy: "fixed",
+  });
+
+  // First attempt: the webhook returns 500 → the job throws and is requeued.
+  await assertRejects(() => queue.processNext(), JobError);
+  assertEquals(calls[0].url, "https://hooks.example.com/evt_1");
+  assertEquals(calls[0].method, "POST");
+  assertEquals(JSON.parse(calls[0].body), { id: "evt_1" });
+
+  // Second attempt succeeds (2xx) → the job completes.
+  status = 200;
+  const done = await queue.processNext();
+  assertEquals(done?.status, "succeeded");
+  assertEquals(calls.length, 2);
+});
+
+Deno.test("@rootware/jobs - defineMailJob calls the injected sender", async () => {
+  const sent: Array<{ to: unknown; subject: string }> = [];
+  const job = defineMailJob<{ email: string; name: string }>({
+    name: "welcome-email",
+    send: (message) => {
+      sent.push({ to: message.to, subject: message.subject });
+      return Promise.resolve();
+    },
+    toMessage: (payload) => ({
+      to: payload.email,
+      subject: `Welcome, ${payload.name}`,
+      text: "Thanks for joining.",
+    }),
+  });
+
+  const queue = createJobQueue({ jobs: [job], store: memoryJobStore() });
+  await queue.enqueue("welcome-email", { email: "a@b.com", name: "Ada" });
+  const done = await queue.processNext();
+
+  assertEquals(done?.status, "succeeded");
+  assertEquals(sent, [{ to: "a@b.com", subject: "Welcome, Ada" }]);
 });

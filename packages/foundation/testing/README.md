@@ -20,6 +20,23 @@ logger.info({ userId: "u_123" }, "user created");
 assertLog(sink).hasMessage("user created");
 ```
 
+## Capturing logs (`0.6`)
+
+`captureLogs()` bundles a logger with inline assertions — the
+`@rootware/log`-to-`@rootware/testing` integration point:
+
+```ts
+const logs = captureLogs();
+
+logs.logger.info({ event: "user.created", userId: "u_123" }, "created");
+
+logs.assertEvent("user.created", { userId: "u_123" });
+logs.assertCount(1);
+
+// Snapshot-friendly: `normalized()` strips the volatile `time` field.
+assertSnapshot(logs.normalized());
+```
+
 ## Test context composition
 
 `createTestContext` bundles a non-global fake clock, an in-memory log sink, and
@@ -95,6 +112,8 @@ override the synthetic `ServeHandlerInfo`. A handler that throws surfaces as a
 - `testLogger`
 - `assertLog` (`hasMessage`, `hasMessageMatching`, `hasField`, `hasRecord`,
   `hasNoRecord`, `isEmpty`, `messages`, `last`, `count`)
+- `captureLogs` (`0.6`) → `CapturedLogs` (`logger`, `assertContains`,
+  `assertEvent`, `assertCount`, `assertEmpty`, `normalized`)
 - `testRequest`, `callHandler` → `TestResponse` (`assertStatus`, `assertOk`,
   `assertHeader`, `assertJson`, `assertBodyIncludes`, `text`, `json`, `header`)
 - `createFakeClock`

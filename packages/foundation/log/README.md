@@ -168,6 +168,13 @@ It honors/generates an `x-request-id` (echoed on the response), measures
 warn), and logs + re-throws a handler that throws. (Hono middleware lives in the
 separate `@rootware/hono` package, not here.)
 
+## Testing logs (`0.6`)
+
+`memorySink()` and the `LogRecord` shape are the stable seam test helpers build
+on. `@rootware/testing` ships `captureLogs()` — a logger with inline assertions
+(`assertEvent`, `assertContains`, `assertCount`) and snapshot-friendly
+`normalized()` — composed over this package's `memorySink()` + `createLogger`.
+
 ## Security
 
 The logger serializes errors safely and does not require logging request bodies

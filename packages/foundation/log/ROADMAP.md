@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, current package manifest version `@rootware/log@0.5.0`\
+Status: experimental, current package manifest version `@rootware/log@0.6.0`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -1442,22 +1442,21 @@ Acceptance criteria:
 - Request logging is deterministic in tests.
 - Middleware does not create a circular dependency with `@rootware/http`.
 
-### `0.6.0` — Testing Package Integration
+### `0.6.0` — Testing Package Integration — **done (`0.6.0`)**
 
 Goal: make log assertions clean through `@rootware/testing`.
 
-Scope in `@rootware/log`:
+Done in `@rootware/log` (no behavioral change — the contract was already
+stable): `memorySink()`, the `LogRecord` shape, and the `MemoryLogSink`/
+`LogRecord`/`LogLevelName` types stay frozen and are exported for the test
+helpers below.
 
-- Keep `memorySink()` stable.
-- Keep record shape stable.
-- Export enough types for test helpers.
-
-Scope in `@rootware/testing`:
-
-- Add `captureLogs()`.
-- Add log assertion helpers.
-- Add event assertion helpers.
-- Add snapshot-friendly normalization.
+Done in `@rootware/testing` (`0.6.0`): `captureLogs()` returns a `CapturedLogs`
+handle — a logger plus inline assertions (`assertContains`, `assertEvent`,
+`assertCount`, `assertEmpty`) and snapshot-friendly `normalized()` (strips the
+volatile `time` field). It composes the same `memorySink()` + `createLogger`
+this package exposes, keeping the dependency direction clean (`testing` →
+`log`).
 
 Possible API in `@rootware/testing`:
 

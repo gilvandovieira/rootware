@@ -99,6 +99,8 @@ await migrator.migrate({
 - `@rootware/migrate/libsql` — `createLibsqlMigrator`,
   `createLibsqlMigrationDriver`, `createLibsqlExecutor` (libSQL/Turso over
   `@libsql/client`; re-exports the SQLite DDL generators)
+- `@rootware/migrate/turso` — `createTursoMigrator` (hosted libSQL; requires
+  `url` + `authToken`)
 - `@rootware/migrate/cli` — `parseMigrateCliArgs`, `runMigrateCli`,
   `createPostgresMigrateRunner`, `main`
 

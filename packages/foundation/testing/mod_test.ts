@@ -15,6 +15,7 @@ import {
   callHandler,
   captureAsyncError,
   captureError,
+  captureLogs,
   createCleanupStack,
   createFakeClock,
   createFixture,
@@ -401,4 +402,26 @@ Deno.test("@rootware/testing - Equal/Expect type utilities (compile-time)", () =
   const diff: _Diff = false;
   rootAssertEquals(same, true);
   rootAssertEquals(diff, false);
+});
+
+Deno.test("@rootware/testing - captureLogs bundles a logger with inline assertions", () => {
+  const logs = captureLogs();
+
+  logs.logger.info({ event: "user.created", userId: "u_123" }, "created");
+  logs.logger.warn({ event: "quota.warned" }, "quota");
+
+  logs.assertEvent("user.created", { userId: "u_123" });
+  logs.assertContains({ msg: "quota" });
+  logs.assertCount(2);
+
+  rootAssertThrows(() => logs.assertEvent("nonexistent"));
+  rootAssertThrows(() => logs.assertCount(5));
+
+  // normalized() strips the volatile `time` field for snapshot tests.
+  const normalized = logs.normalized();
+  rootAssertEquals(normalized.every((record) => !("time" in record)), true);
+  rootAssertEquals(normalized[0].event, "user.created");
+
+  logs.clear();
+  logs.assertEmpty();
 });

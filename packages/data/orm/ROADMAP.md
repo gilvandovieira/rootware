@@ -1100,9 +1100,22 @@ Acceptance:
 
 - Users know when to choose SQLite vs libSQL.
 
-## v0.6 — Turso
+## v0.6 — Turso — **done (`0.6.0`)**
 
 Goal: support hosted SQLite-family database workflows.
+
+Shipped in `0.6.0` — the `@rootware/orm/turso` subpath. Turso is hosted libSQL,
+so this is a thin, Turso-named entrypoint over the `0.5` libSQL adapter:
+
+- **`createTursoDb({ url, authToken })`** (alias `connect`) — delegates to
+  `createLibsqlDb` but, for a real connection, validates that both a `url` and
+  an `authToken` are present (a hosted Turso connection without a token is
+  almost always a mistake → `ORM_DRIVER_MISSING`). Accepts an injected `client`/
+  `executor` for permission-free tests.
+- **Edge/serverless query path** — inherited from libSQL: the `@libsql/client`
+  HTTP path works on Deno Deploy and other serverless runtimes (`--allow-net`),
+  with interactive transactions; the same `defineTable`/`columns`/query-builder
+  surface as SQLite/libSQL.
 
 ### Chunk 34 — Turso adapter
 

@@ -342,12 +342,25 @@ adapter subpath; jobs-core stays driver-free):
   (`integration/jobs_postgres_test.ts`) exercising claim → heartbeat → expire →
   reclaim → re-claim against real PostgreSQL.
 
-## v0.6.0 — Integration packages
+## v0.6.0 — Integration packages — **done (`0.6.0`)**
 
-- Mail jobs.
-- Webhook jobs.
-- Media processing jobs.
-- Doomscrollr thumbnail job.
+Shipped as **SDK-free integration job builders** in jobs-core (the
+graph-constrained interpretation of "integration packages" — provider-specific
+packages layer on top). Media processing and the Doomscrollr thumbnail job stay
+app/provider territory.
+
+- **Webhook jobs** — `defineWebhookJob({ name, url, fetch?, … })` builds a job
+  that POSTs its payload to a webhook over `fetch` (injectable; the
+  `@rootware/http` client is **not** imported, so jobs-core stays driver-free).
+  A non-2xx response throws by default, so the queue's retry/backoff gives
+  at-least-once delivery; `url` can be derived from the payload.
+- **Mail jobs** — `defineMailJob({ name, send, toMessage? })` builds a job that
+  sends an email via an **injected** provider `send(message)` (Resend, SES,
+  SMTP, …) — the app supplies the SDK; failures retry. `MailMessage` is the
+  normalized message shape.
+- **Media / Doomscrollr** — out of scope for the core: media processing needs
+  image libraries and the thumbnail job is reference-app-specific; both build on
+  `defineJob` + the durable Postgres queue from `0.5`.
 
 ## v1.0.0 — Stable background work contract
 
