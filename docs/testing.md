@@ -27,7 +27,7 @@ deno task graph
 
 ## Writing Tests
 
-- Put tests next to each package as `packages/<name>/mod_test.ts`.
+- Put tests next to each package as `packages/<group>/<name>/mod_test.ts`.
 - Use `@std/assert` through the root import map.
 - Use `@rootware/testing` when testing application code or higher-level flows.
 - Do not import `@rootware/testing` from production package code.

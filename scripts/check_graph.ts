@@ -21,16 +21,16 @@ interface Violation {
   readonly message: string;
 }
 
+interface PackageInfo {
+  readonly name: string;
+  readonly path: string;
+}
+
 const violations: Violation[] = [];
 
-for await (const packageEntry of Deno.readDir(PACKAGE_ROOT)) {
-  if (!packageEntry.isDirectory) {
-    continue;
-  }
+const packages = await discoverPackages(PACKAGE_ROOT);
 
-  const packageName = packageEntry.name;
-  const packagePath = `${PACKAGE_ROOT}/${packageName}`;
-
+for (const { name: packageName, path: packagePath } of packages) {
   if (!(packageName in ALLOWED_RUNTIME_DEPS)) {
     violations.push({
       file: packagePath,
@@ -51,6 +51,16 @@ for await (const packageEntry of Deno.readDir(PACKAGE_ROOT)) {
   }
 }
 
+for (const packageName of Object.keys(ALLOWED_RUNTIME_DEPS)) {
+  if (!packages.some((info) => info.name === packageName)) {
+    violations.push({
+      file: PACKAGE_ROOT,
+      specifier: packageName,
+      message: "Package from graph policy was not found",
+    });
+  }
+}
+
 if (violations.length > 0) {
   console.error("Rootware package graph violations:");
 
@@ -64,6 +74,50 @@ if (violations.length > 0) {
 }
 
 console.log("Rootware package graph OK");
+
+async function discoverPackages(root: string): Promise<PackageInfo[]> {
+  const packages: PackageInfo[] = [];
+
+  for await (const dir of walkDirectories(root)) {
+    const manifestPath = `${dir}/deno.json`;
+
+    try {
+      const manifestText = await Deno.readTextFile(manifestPath);
+      const manifest = JSON.parse(manifestText) as { readonly name?: unknown };
+
+      if (typeof manifest.name !== "string") {
+        continue;
+      }
+
+      if (!manifest.name.startsWith("@rootware/")) {
+        continue;
+      }
+
+      packages.push({
+        name: manifest.name.slice("@rootware/".length),
+        path: dir,
+      });
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  return packages.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function* walkDirectories(dir: string): AsyncGenerator<string> {
+  yield dir;
+
+  for await (const entry of Deno.readDir(dir)) {
+    if (entry.isDirectory) {
+      yield* walkDirectories(`${dir}/${entry.name}`);
+    }
+  }
+}
 
 async function* walkTsFiles(dir: string): AsyncGenerator<string> {
   for await (const entry of Deno.readDir(dir)) {
@@ -161,8 +215,7 @@ function checkPostgresImportBoundary(
 ): void {
   if (
     isPostgresDriverSpecifier(specifier) &&
-    !file.startsWith("packages/orm/postgres/") &&
-    !file.startsWith("packages/migrate/postgres/")
+    !isPostgresAdapterFile(packageName, packagePath, file)
   ) {
     violations.push({
       file,
@@ -184,6 +237,15 @@ function checkPostgresImportBoundary(
         "Root, core, and schema modules must not import PostgreSQL adapter code",
     });
   }
+}
+
+function isPostgresAdapterFile(
+  packageName: string,
+  packagePath: string,
+  file: string,
+): boolean {
+  return (packageName === "orm" || packageName === "migrate") &&
+    file.startsWith(`${packagePath}/postgres/`);
 }
 
 function isPostgresDriverSpecifier(specifier: string): boolean {

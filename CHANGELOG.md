@@ -63,8 +63,8 @@ build on are in place and tested.
 
 ## 2026-06-26 — Move package roadmaps beside package code
 
-- Moved package-specific roadmaps from `roadmaps/*.md` to
-  `packages/*/ROADMAP.md` so each roadmap now lives with the package it owns.
+- Moved package-specific roadmaps from `roadmaps/*.md` to package-local
+  `ROADMAP.md` files so each roadmap now lives with the package it owns.
 - Kept `roadmaps/` for workspace-level planning only: the root package roadmap,
   adapters roadmap, template, and roadmap index.
 - Left package `deno.json` publish includes unchanged, so `ROADMAP.md` files
@@ -98,8 +98,8 @@ build on are in place and tested.
 This pass cross-checked the roadmap/spec docs against the actual code in (the
 archive now holds 16 docs under `roadmaps/` — the original 15 reviewed against
 code, plus `schema.md` added during this pass — alongside this top-level
-`CHANGELOG.md`) `packages/*/mod.ts` and corrected the mismatches. The headline:
-the roadmaps had drifted from the shipped `v0.1` in three ways — one
+`CHANGELOG.md`) package `mod.ts` entrypoints and corrected the mismatches. The
+headline: the roadmaps had drifted from the shipped `v0.1` in three ways — one
 load-bearing architecture error (which the _code_ actually gets right), many
 places where the docs schedule work that already shipped, and API names in the
 docs that don't match the published exports.
@@ -454,7 +454,7 @@ them:
 
 1. ~~Snapshot type ownership.~~ **Decided: the `@rootware/schema` leaf owns the
    type; orm produces, migrate consumes.** The current package plan lives in
-   `packages/schema/ROADMAP.md`; the interface was removed from
+   `packages/data/schema/ROADMAP.md`; the interface was removed from
    `orm.md`/`migrate.md`. The `@rootware/schema` package now exists.
 2. Dialect union: are `mysql`/`generic` real snapshot targets, and are
    `libsql`/`turso` distinct dialects or `sqlite` + an adapter tag?

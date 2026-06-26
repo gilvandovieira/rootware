@@ -36,12 +36,12 @@ deno task publish:dry
 
 ## Adding A Package
 
-1. Create `packages/<name>/mod.ts`.
-2. Add `packages/<name>` to the root `workspace`.
-3. Add `packages/<name>/deno.json` with JSR metadata.
-4. Add `packages/<name>/README.md`.
-5. Add `packages/<name>/mod_test.ts`.
-6. Add `packages/<name>/ROADMAP.md` for repository planning.
+1. Choose the current package group and create `packages/<group>/<name>/mod.ts`.
+2. Ensure the group is covered by the root `workspace`.
+3. Add `packages/<group>/<name>/deno.json` with flat JSR metadata.
+4. Add `packages/<group>/<name>/README.md`.
+5. Add `packages/<group>/<name>/mod_test.ts`.
+6. Add `packages/<group>/<name>/ROADMAP.md` for repository planning.
 7. Add the package to `scripts/check_graph.ts`.
 8. Update the root README dependency graph.
 9. Update [docs/packages.md](./docs/packages.md).

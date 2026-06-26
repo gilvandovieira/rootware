@@ -7,7 +7,25 @@ Rootware is a Deno 2.x workspace of independently published JSR packages.
 It is not a framework, runtime, or build system. Keep packages small, explicit,
 and useful on their own.
 
-Package source lives under `packages/<name>/` with:
+Package source lives under `packages/<group>/<name>/`, grouped by current
+ecosystem area while keeping public JSR names flat:
+
+```txt
+packages/foundation/errors -> @rootware/errors
+packages/foundation/env    -> @rootware/env
+packages/foundation/log    -> @rootware/log
+packages/foundation/testing -> @rootware/testing
+packages/data/schema       -> @rootware/schema
+packages/data/migrate      -> @rootware/migrate
+packages/data/orm          -> @rootware/orm
+packages/web/http          -> @rootware/http
+packages/state/cache       -> @rootware/cache
+packages/state/storage     -> @rootware/storage
+packages/state/session     -> @rootware/session
+packages/async/jobs        -> @rootware/jobs
+```
+
+Each package directory contains:
 
 - `mod.ts` as the public entrypoint.
 - `mod_test.ts` for package tests.
@@ -97,9 +115,9 @@ deno task coverage:lcov
 - Root `README.md` owns the public package table, runtime graph, and build-order
   summary.
 - `docs/packages.md` owns detailed package graph and package matrix policy.
-- `packages/<name>/README.md` is published package documentation.
-- `packages/<name>/ROADMAP.md` is repository-only planning documentation unless
-  a package manifest explicitly includes it.
+- `packages/<group>/<name>/README.md` is published package documentation.
+- `packages/<group>/<name>/ROADMAP.md` is repository-only planning documentation
+  unless a package manifest explicitly includes it.
 - Keep package READMEs free of `ROADMAP.md` links while roadmaps are excluded
   from JSR package contents.
 
@@ -121,12 +139,12 @@ Before publishing a package:
 
 When adding a package:
 
-1. Create `packages/<name>/mod.ts`.
-2. Add `packages/<name>` to the root `workspace`.
-3. Add `packages/<name>/deno.json` with JSR metadata.
-4. Add `packages/<name>/README.md`.
-5. Add `packages/<name>/mod_test.ts`.
-6. Add `packages/<name>/ROADMAP.md`.
+1. Choose the current package group and create `packages/<group>/<name>/mod.ts`.
+2. Ensure the package group is covered by the root `workspace`.
+3. Add `packages/<group>/<name>/deno.json` with flat JSR metadata.
+4. Add `packages/<group>/<name>/README.md`.
+5. Add `packages/<group>/<name>/mod_test.ts`.
+6. Add `packages/<group>/<name>/ROADMAP.md`.
 7. Add the package to `scripts/check_graph.ts`.
 8. Update the root README dependency graph.
 9. Update `docs/packages.md`.
