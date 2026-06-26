@@ -1,6 +1,10 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
+  type CacheEntry,
   CacheError,
+  type CacheKey,
+  type CacheLock,
+  type CacheStore,
   cloneCacheEntry,
   createCache,
   createCacheEntry,
@@ -223,4 +227,84 @@ Deno.test("@rootware/cache - maxEntries and cloneValues", async () => {
   const second = await cache.get<{ nested: { count: number } }>("object");
 
   assertEquals(second!.nested.count, 1);
+});
+
+Deno.test("@rootware/cache - getOrSet uses a store lock and double-checks after acquiring", async () => {
+  const events: string[] = [];
+  const entries = new Map<CacheKey, CacheEntry<unknown>>();
+  let preLockValue: CacheEntry<unknown> | undefined = undefined;
+
+  const lockingStore: CacheStore = {
+    get<T = unknown>(key: CacheKey): Promise<CacheEntry<T> | undefined> {
+      return Promise.resolve(entries.get(key) as CacheEntry<T> | undefined);
+    },
+    set<T = unknown>(key: CacheKey, entry: CacheEntry<T>): Promise<void> {
+      entries.set(key, entry);
+      return Promise.resolve();
+    },
+    delete(key: CacheKey): Promise<boolean> {
+      return Promise.resolve(entries.delete(key));
+    },
+    has(key: CacheKey): Promise<boolean> {
+      return Promise.resolve(entries.has(key));
+    },
+    clear(): Promise<void> {
+      entries.clear();
+      return Promise.resolve();
+    },
+    acquireLock(key: CacheKey): Promise<CacheLock | undefined> {
+      events.push("acquire");
+      // Simulate another node populating the value while the lock was contended.
+      if (preLockValue !== undefined) {
+        entries.set(key, preLockValue);
+      }
+      return Promise.resolve({
+        release(): Promise<void> {
+          events.push("release");
+          return Promise.resolve();
+        },
+      });
+    },
+  };
+
+  const cache = createCache({ store: lockingStore });
+
+  // First call: no value yet, so it computes under the lock, stores, releases.
+  let factoryCalls = 0;
+  const value = await cache.getOrSet("k", () => {
+    factoryCalls += 1;
+    return "computed";
+  }, { lockTimeoutMs: 1000 });
+  assertEquals(value, "computed");
+  assertEquals(factoryCalls, 1);
+  assertEquals(events, ["acquire", "release"]);
+
+  // Now simulate the value appearing right after the lock is acquired: the
+  // double-check returns it and the factory never runs.
+  entries.clear();
+  events.length = 0;
+  preLockValue = createCacheEntry("from-other-node");
+  let secondFactoryCalls = 0;
+  const cached = await cache.getOrSet("k2", () => {
+    secondFactoryCalls += 1;
+    return "should-not-run";
+  }, { lockTimeoutMs: 1000 });
+  assertEquals(cached, "from-other-node");
+  assertEquals(secondFactoryCalls, 0);
+  assertEquals(events, ["acquire", "release"]);
+});
+
+Deno.test("@rootware/cache - getOrSet without lockTimeoutMs never calls acquireLock", async () => {
+  let acquired = false;
+  const store = memoryCacheStore() as CacheStore & {
+    acquireLock(): Promise<CacheLock | undefined>;
+  };
+  store.acquireLock = () => {
+    acquired = true;
+    return Promise.resolve(undefined);
+  };
+
+  const cache = createCache({ store });
+  await cache.getOrSet("k", () => "v");
+  assertEquals(acquired, false);
 });

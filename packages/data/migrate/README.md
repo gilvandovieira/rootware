@@ -8,9 +8,9 @@ The root `@rootware/migrate` import contains migration planning and generic
 migration primitives. Database-specific execution lives behind subpath exports
 such as `@rootware/migrate/postgres`.
 
-v0.3 adds PostgreSQL execution as a subpath integration. It does not create a
-public `@rootware/postgres` package yet. That extraction waits until the data
-core is proven in a real app.
+PostgreSQL execution is available through the package subpath. It does not
+create a public `@rootware/postgres` package yet. That extraction waits until
+the data core is proven in a real app.
 
 ## Install
 
@@ -78,10 +78,86 @@ await migrator.migrate({
 - `createMigrator`
 - `memoryMigrationStore`
 - `createMigrationPlan`
+- `defineSchemaMigrationPlan`
+- `planSchemaChanges` — classify a snapshot diff into ordered changes (flags
+  destructive ones)
+- `formatMigrationFilename` / `slugifyMigrationName`
+- `defineConfig`, `checkDrift`
+- Filesystem workflow — `MigrationFileSystem`, `denoMigrationFileSystem`,
+  `buildMigrationFile`, `writeMigrationFile`, `readMigrationsDir`,
+  `nextMigrationSequence`
 - `noopMigrationDriver`
 - `noopMigrator`
 - `@rootware/migrate/postgres` — `createPgMigrator`, `createPgMigrationDriver`,
-  `createPgMigrationHistoryStore`, `createPgExecutor`, `createPgPool`
+  `createPgMigrationHistoryStore`, `createPgExecutor`, `createPgPool`, and the
+  DDL generators `generatePostgresCreateTable`, `generatePostgresUpStatements`,
+  `generatePostgresColumnType`, `quotePgIdent`
+- `@rootware/migrate/cli` — `parseMigrateCliArgs`, `runMigrateCli`,
+  `createPostgresMigrateRunner`, `main`
+
+## Generated migrations (`0.3`)
+
+`@rootware/migrate` consumes a plain schema snapshot the **application** builds
+(via `@rootware/orm`), so `migrate` never imports `orm`. `planSchemaChanges`
+diffs two snapshots (using `@rootware/schema`'s `diffSchemaSnapshots`) into an
+ordered, classified change list and surfaces destructive changes separately:
+
+```ts
+import { planSchemaChanges } from "jsr:@rootware/migrate";
+import { generatePostgresUpStatements } from "jsr:@rootware/migrate/postgres";
+
+const plan = planSchemaChanges({ from: previousSnapshot, to: currentSnapshot });
+if (plan.destructive.length > 0) {
+  // drop table/column or column type change — require an explicit unsafe flag
+}
+
+const { statements, destructive } = generatePostgresUpStatements(
+  currentSnapshot,
+  previousSnapshot,
+);
+// statements: additive CREATE TABLE / ALTER TABLE ADD COLUMN only.
+// destructive: changes that are detected but never emitted as ordinary SQL.
+```
+
+The generators are pure (no driver, no connection), so they are fully unit
+tested.
+
+## SQL-first CLI (`0.3`)
+
+`@rootware/migrate/cli` ships the file-based workflow on top of the generators.
+Configure it with `rootware.migrate.ts` (default-exporting a `MigrateConfig`),
+where the **app** builds the snapshot via `@rootware/orm` so `migrate` never
+imports `orm`:
+
+```ts
+// rootware.migrate.ts
+import { defineConfig } from "jsr:@rootware/migrate";
+import { createSchemaSnapshot } from "jsr:@rootware/orm";
+import * as schema from "./src/db/schema.ts";
+
+export default defineConfig({
+  dir: "./migrations",
+  dialect: "postgres",
+  snapshot: createSchemaSnapshot({ tables: schema }),
+  databaseUrl: Deno.env.get("DATABASE_URL"),
+});
+```
+
+```sh
+deno run -A jsr:@rootware/migrate/cli generate add_users  # diff -> NNNN_*.sql + snapshot
+deno run -A jsr:@rootware/migrate/cli migrate             # apply pending
+deno run -A jsr:@rootware/migrate/cli status              # applied / pending
+deno run -A jsr:@rootware/migrate/cli check               # non-zero on drift or pending
+deno run -A jsr:@rootware/migrate/cli baseline            # mark existing as applied
+deno run -A jsr:@rootware/migrate/cli repair              # re-record history checksums
+```
+
+The argument parser and command handlers are pure and database-agnostic (a
+`MigrateCliRunner` is injected), so they unit-test without a database;
+`denoMigrationFileSystem` and `createPostgresMigrateRunner` provide the real
+filesystem and Postgres wiring, exercised end-to-end by the integration suite.
+The only remaining hardening item is a PostgreSQL **advisory lock** for
+concurrent migrators.
 
 ## Security
 

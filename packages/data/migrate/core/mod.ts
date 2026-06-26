@@ -2,9 +2,13 @@ import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 import {
   assertValidSchemaSnapshot,
+  diffSchemaSnapshots,
   normalizeSchemaSnapshot,
   type RootwareSchemaSnapshot,
+  SCHEMA_SNAPSHOT_VERSION,
 } from "@rootware/schema";
+
+export * from "./workflow.ts";
 
 const DEFAULT_LOCK_ID = "rootware:migrate";
 
@@ -416,6 +420,119 @@ export function defineSchemaMigrationPlan(
     ...(from === undefined ? {} : { from }),
     to,
   };
+}
+
+/** A single structural change between two schema snapshots. */
+export type SchemaChangeKind =
+  | "create_table"
+  | "drop_table"
+  | "add_column"
+  | "drop_column"
+  | "alter_column";
+
+/** One classified schema change, with a destructiveness flag. */
+export interface SchemaChange {
+  readonly kind: SchemaChangeKind;
+  readonly table: string;
+  readonly schema?: string;
+  readonly column?: string;
+  /** True when applying the change can lose data (drop/alter). */
+  readonly destructive: boolean;
+}
+
+/** Result of {@link planSchemaChanges}: an ordered, classified change list. */
+export interface SchemaMigrationChanges {
+  readonly changes: readonly SchemaChange[];
+  readonly destructive: readonly SchemaChange[];
+  readonly isEmpty: boolean;
+}
+
+const EMPTY_SCHEMA_SNAPSHOT: RootwareSchemaSnapshot = {
+  version: SCHEMA_SNAPSHOT_VERSION,
+  tables: [],
+};
+
+/**
+ * Classifies the changes from one schema snapshot to another into ordered
+ * {@link SchemaChange}s, flagging destructive operations (drop table/column and
+ * column type changes). A missing `from` treats every table as newly created.
+ *
+ * This builds on the dependency-free `diffSchemaSnapshots` from
+ * `@rootware/schema`; `@rootware/migrate` never imports `@rootware/orm`.
+ */
+export function planSchemaChanges(
+  input: SchemaMigrationPlanInput,
+): SchemaMigrationChanges {
+  const plan = defineSchemaMigrationPlan(input);
+  const diff = diffSchemaSnapshots(plan.from ?? EMPTY_SCHEMA_SNAPSHOT, plan.to);
+  const changes: SchemaChange[] = [];
+
+  for (const table of diff.addedTables) {
+    changes.push(schemaChange("create_table", table, undefined, false));
+  }
+
+  for (const table of diff.changedTables) {
+    for (const column of table.columns.added) {
+      changes.push(schemaChange("add_column", table, column.name, false));
+    }
+    for (const column of table.columns.changed) {
+      changes.push(schemaChange("alter_column", table, column.name, true));
+    }
+    for (const column of table.columns.removed) {
+      changes.push(schemaChange("drop_column", table, column.name, true));
+    }
+  }
+
+  for (const table of diff.removedTables) {
+    changes.push(schemaChange("drop_table", table, undefined, true));
+  }
+
+  return {
+    changes,
+    destructive: changes.filter((change) => change.destructive),
+    isEmpty: changes.length === 0,
+  };
+}
+
+function schemaChange(
+  kind: SchemaChangeKind,
+  table: { readonly name: string; readonly schema?: string },
+  column: string | undefined,
+  destructive: boolean,
+): SchemaChange {
+  return {
+    kind,
+    table: table.name,
+    ...(table.schema === undefined ? {} : { schema: table.schema }),
+    ...(column === undefined ? {} : { column }),
+    destructive,
+  };
+}
+
+/**
+ * Builds a zero-padded, slugged migration filename such as
+ * `0002_create_users.sql`. The sequence is padded to at least 4 digits.
+ */
+export function formatMigrationFilename(
+  sequence: number,
+  name: string,
+  extension = "sql",
+): string {
+  const id = String(Math.max(0, Math.trunc(sequence))).padStart(4, "0");
+  const slug = slugifyMigrationName(name);
+  return slug.length === 0
+    ? `${id}.${extension}`
+    : `${id}_${slug}.${extension}`;
+}
+
+/** Lowercases a migration name into an underscore slug (`Add Users` → `add_users`). */
+export function slugifyMigrationName(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 /** Returns a new migration list sorted by id. */

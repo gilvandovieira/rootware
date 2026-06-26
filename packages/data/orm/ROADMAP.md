@@ -2,18 +2,19 @@
 
 ## Status
 
-`@rootware/orm` already has an experimental `v0.1` published. This plan assumes
-the package is not a proof of concept. It is a real Rootware product that is
-currently pre-1.0 and should be productized through small, testable releases.
+`@rootware/orm` is an experimental pre-1.0 package. This plan assumes the
+package is not a proof of concept. It is a real Rootware product that should be
+productized through small, testable releases.
 
-The next phase is not to restart the ORM. The next phase is to convert the
-published `v0.1` foundation into a coherent `v0.2` product spine.
+The next phase is not to restart the ORM. The v0.2 root spine exists, and the
+current forward work is to harden the shipped PostgreSQL subpath and broaden the
+query surface.
 
-> **Current `v0.1` surface (reconciled with source).** The published package
-> already ships much of what the roadmap below schedules as future work, but
-> under different names than this document originally used. The examples
-> throughout this file were updated to match the real exports. Concretely,
-> `v0.1` already provides:
+> **Current surface (reconciled with source).** The published package already
+> ships much of what the roadmap below schedules as future work, but under
+> different names than this document originally used. The examples throughout
+> this file were updated to match the real exports. Concretely, the root import
+> already provides:
 >
 > - The `sql` tagged template plus `raw`, `identifier`, `joinSql`, `renderSql`,
 >   `quoteIdentifier` (parameterized by default).
@@ -28,22 +29,25 @@ published `v0.1` foundation into a coherent `v0.2` product spine.
 > - Type inference: `InferSelect`, `InferInsert`, and a phantom-typed
 >   `ColumnBuilder` (`notNull`, `nullable`, `optional`, `default`, `primaryKey`,
 >   `unique`, `references`).
+> - Postgres-shaped column metadata (`varchar`, `bigint`, `jsonb`,
+>   `timestamp({ withTimezone })`) and schema snapshots through
+>   `@rootware/schema`.
+> - The `@rootware/orm/postgres` subpath with `createPgDb`, `createPgOrmDriver`,
+>   `createPgExecutor`, and `createPgPool` over `@db/postgres`.
 >
 > **Naming decision.** The shipped schema API is
 > `defineTable(name, { col: columns.x() })` with a single dialect-generic
 > entrypoint and a `SqlDialect` field — **not** `pgTable` + a `/pg` subpath.
 > Because `0.1` is published, the canonical API stays `defineTable` +
 > `columns.*`, and this document was rewritten to use it. A Drizzle-style
-> `pgTable` and `/pg`, `/postgres`, `/neon` subpaths may be added later as thin
-> aliases/adapters, but they are additive, not the primary surface.
+> `pgTable` and `/pg` may be added later as thin aliases, but they are additive,
+> not the primary surface. `/postgres` is now an implemented execution subpath.
 >
-> **Deferred after v0.2.** A concrete Postgres driver (`connect` over
-> `@db/postgres`), projection selects, projected `returning`, joins,
-> `inArray`/`ilike`, real transaction semantics beyond the current driver
-> contract, and the subpath layout are planned for v0.3+. They are not blockers
-> for the v0.2 root-package core. `createSchemaSnapshot` now exists as the ORM
-> -> `@rootware/schema` handoff and should be hardened rather than
-> reimplemented.
+> **Deferred after v0.2.** Projection selects, projected `returning`, joins,
+> `inArray`/`ilike`, stronger transaction semantics, `/pg` aliases, and
+> additional provider subpaths such as `/neon` are planned for later releases.
+> `createSchemaSnapshot` now exists as the ORM -> `@rootware/schema` handoff and
+> should be hardened rather than reimplemented.
 
 ## Product thesis
 
@@ -70,8 +74,7 @@ The canonical package name is:
 jsr:@rootware/orm
 ```
 
-The package currently ships a single dialect-generic entrypoint. Today's
-imports:
+The package root remains dialect-generic. Today's root imports:
 
 ```ts
 import {
@@ -85,11 +88,16 @@ import {
 } from "@rootware/orm";
 ```
 
-Planned subpaths (additive, pending implementation) once a real driver and
-dialect-specific column types exist:
+Current PostgreSQL execution subpath:
 
 ```ts
-import { connect } from "@rootware/orm/postgres"; // future: @db/postgres driver
+import { createPgDb } from "@rootware/orm/postgres";
+```
+
+Planned additive subpaths:
+
+```ts
+import { pgTable } from "@rootware/orm/pg"; // future alias
 import { connect as connectNeon } from "@rootware/orm/neon"; // future: serverless
 import { connect as connectLibsql } from "@rootware/orm/libsql"; // future
 import { connect as connectTurso } from "@rootware/orm/turso"; // future
@@ -424,14 +432,14 @@ Target imports:
 
 ```ts
 import { and, columns, defineTable, eq, sql } from "@rootware/orm";
-// future subpath, once the driver exists:
-import { connect } from "@rootware/orm/postgres";
+import { createPgDb } from "@rootware/orm/postgres";
 ```
 
 Tasks:
 
-- Keep the root export as the only shipped export for v0.2.
-- Document `/pg`, `/postgres`, and `/testing` as planned subpaths only.
+- Keep the root export database-agnostic.
+- Document `/postgres` as the shipped PostgreSQL execution subpath.
+- Document `/pg`, `/neon`, and `/testing` as planned subpaths only.
 - Do not add subpath exports until the target files and tests exist.
 - Hide internal files.
 - Remove or deprecate accidental exports.
@@ -486,8 +494,8 @@ define schema -> compile safe SQL -> execute through injected driver -> create s
 ```
 
 Migration generation and execution should be handled by `@rootware/migrate`, not
-by `@rootware/orm`. This release intentionally keeps exports root-only and does
-not include real database drivers or adapter subpaths.
+by `@rootware/orm`. The root export intentionally stays database-agnostic;
+PostgreSQL execution is isolated behind `@rootware/orm/postgres`.
 
 ### Chunk 5 — Core SQL fragments
 
@@ -599,7 +607,8 @@ Acceptance:
 ### Chunk 9 — Postgres-shaped column metadata
 
 `v0.2` keeps the canonical root `columns` factory and adds the Postgres-shaped
-metadata already present there. It does not add `/pg` or `/postgres` subpaths.
+metadata already present there. PostgreSQL execution remains isolated behind
+`@rootware/orm/postgres`; `/pg` is still only a possible future alias.
 
 Scope:
 
@@ -740,17 +749,27 @@ Acceptance:
 
 - `deno task ci` and `deno task publish:dry:orm` pass.
 
-## v0.3 — Postgres adapter and query expansion
+## v0.3 — Postgres hardening and query expansion — **done (`0.3.0`)**
 
-Goal: turn the v0.2 root core into a real Postgres path and broaden query
-coverage.
+> **Done in `0.3.0`.** Query expansion: `ilike` and the `inArray`/`notInArray`
+> set predicates (empty sets compile to a safe constant rather than invalid
+> `IN ()`); column-aware comparison predicates (`eq(a.col, b.col)`);
+> `innerJoin`/`leftJoin`; projected `select({ alias: column })` and projected
+> `returning({ alias: column })`; and the `connect` convenience alias over
+> `createPgDb`. The live-database parts that v0.2 deferred — real `@db/postgres`
+> execution of joins/projections, and real transaction semantics
+> (`db.transaction` BEGIN/COMMIT/ROLLBACK) — are now exercised by the opt-in
+> integration suite (`integration/data_layer_test.ts`) against PostgreSQL 14–18.
+> Automatic left-join nullability typing remains a documented runtime caveat
+> (projected columns from a left-joined table can be `null`).
+
+Goal: harden the shipped PostgreSQL path and broaden query coverage.
 
 This milestone absorbs the heavier work that used to be listed under v0.2:
 
-- real `@db/postgres` driver.
-- `connect`.
-- `/postgres`, `/pg`, `/neon`, or `/testing` subpaths once files and tests
-  exist.
+- hardening for the real `@db/postgres` driver under `/postgres`.
+- possible `connect` convenience alias over `createPgDb`.
+- `/pg`, `/neon`, or `/testing` subpaths once files and tests exist.
 - projected select API.
 - projected `returning`.
 - joins.
@@ -1177,8 +1196,8 @@ those snapshots and owns migration generation/execution.
 Do these first for the v0.2 root-core release:
 
 1. Audit published `v0.1` and pin the root public export list.
-2. Keep subpaths (`/postgres`, `/pg`, `/testing`, etc.) roadmap-only until files
-   and tests exist.
+2. Keep root exports database-agnostic; keep new subpaths roadmap-only until
+   files and tests exist.
 3. Add experimental product README using `defineTable` + `columns`.
 4. Create docs skeleton.
 5. Verify the shipped `sql` tagged template and parameterization.
@@ -1189,8 +1208,9 @@ Do these first for the v0.2 root-core release:
 9. Harden schema metadata serialization and `createSchemaSnapshot()`.
 10. Add compile-time type assertion tests for schema/query inference.
 
-After v0.2, decide and implement the additive subpath layout, then build the
-real `@db/postgres` driver and `connect`.
+After v0.2, harden the shipped `@rootware/orm/postgres` path, decide whether
+`connect`/`pgTable` aliases are worth adding, and keep additional provider
+subpaths roadmap-only until their files and tests exist.
 
 ## Product rule
 

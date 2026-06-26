@@ -183,14 +183,19 @@ function assertString(value: unknown, field: string): string {
 }
 
 function assertNumber(value: unknown, field: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  // PostgreSQL `double precision`/`numeric` columns are returned as strings by
+  // some drivers (e.g. `@db/postgres` returns `float8` as a string), so coerce a
+  // numeric string before validating.
+  const numeric = typeof value === "string" ? Number(value) : value;
+
+  if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
     throw new MigrationError("Migration history row is invalid", {
       code: "MIGRATION_INVALID",
       details: { field },
     });
   }
 
-  return value;
+  return numeric;
 }
 
 function toIsoString(value: unknown, field: string): string {

@@ -44,6 +44,49 @@ logger.isLevelEnabled("debug"); // gate expensive log payloads
   synchronous failures still throw, while asynchronous failures are swallowed
   rather than surfacing as unhandled rejections.
 
+## Pino compatibility (`0.3`)
+
+Migrating from Pino? Import the Pino-shaped constructor from the `/compat/pino`
+subpath — the root module stays explicit (`createLogger`, sinks):
+
+```ts
+import pino from "jsr:@rootware/log/compat/pino";
+
+const logger = pino({
+  name: "api",
+  level: "info",
+  base: { service: "api" },
+  messageKey: "msg", // Pino default, also the Rootware default
+  errorKey: "err", // Pino default (Rootware's own default is "error")
+  serializers: { req: (r) => ({ method: r.method, url: r.url }) },
+  redact: ["password", "req.headers.cookie"],
+});
+
+logger.info("server started");
+logger.info({ port: 8000 }, "listening");
+logger.error(new Error("boom"), "request failed");
+logger.child({ requestId: "req_123" }).debug("loaded user");
+```
+
+### `pino` to `@rootware/log` migration guide
+
+| Pino                                | `@rootware/log` compat                              |
+| ----------------------------------- | --------------------------------------------------- |
+| `import pino from "pino"`           | `import pino from "jsr:@rootware/log/compat/pino"`  |
+| `pino({ level, base, messageKey })` | same options                                        |
+| `logger.info({ a }, "msg")`         | same call forms                                     |
+| `logger.error(err, "msg")`          | error serialized under `errorKey` (`"err"`)         |
+| `logger.child({ reqId })`           | `logger.child({ reqId }, { level?, serializers? })` |
+| `serializers: { err, req }`         | same — field + error serializers                    |
+| `redact: ["a.b.c"]`                 | same dot-paths with `*` wildcard                    |
+| `transport` / `pino.destination`    | **not supported** — pass a `LogSink` instead        |
+| `logger.level = "debug"`            | **read-only** — use `child(b, { level })`           |
+| `timestamp: false`                  | blanks `time` (records always carry `time`)         |
+
+The `time` field is always emitted (ISO by default; pass a `timestamp` function
+for a custom format). Transports, worker threads, `pino-pretty`, and Pino symbol
+internals are deliberately out of scope.
+
 ## API
 
 - `createLogger`
@@ -52,6 +95,7 @@ logger.isLevelEnabled("debug"); // gate expensive log payloads
 - `unbufferedSink`
 - `createNoopLogger`
 - `serializeErrorForLog`
+- `pino` (from `@rootware/log/compat/pino`)
 
 ## Security
 

@@ -1,0 +1,97 @@
+# Integration-test database matrix for @rootware/* data and state packages.
+#
+# This stack is ONLY for the opt-in integration suite under `integration/`.
+# It is never used by `deno task test` / `deno task ci`, which stay network-
+# and database-free (see CLAUDE.md).
+#
+#   docker compose up -d --wait     # start every version, wait for healthy
+#   deno task test:integration      # run the suite against every reachable one
+#   docker compose down -v          # stop and remove volumes
+#
+# Matrix: PostgreSQL 14, 15, 16, 17, 18 and Redis 6, 7, 8.8 (the current
+# latest of each line). Each service is exposed on a distinct host port so the
+# suite can run the same tests against every version in one go. The port's last
+# digits encode the version (Postgres 54xx, Redis 63xx). Credentials are
+# throwaway.
+#
+# Run a subset by naming services, e.g.:
+#   docker compose up -d --wait postgres-18 redis-8.8
+# The suite skips versions whose service is not reachable.
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: rootware
+  POSTGRES_PASSWORD: rootware
+  POSTGRES_DB: rootware
+
+x-postgres-healthcheck: &postgres-healthcheck
+  test: ["CMD-SHELL", "pg_isready -U rootware -d rootware"]
+  interval: 3s
+  timeout: 5s
+  retries: 20
+
+x-redis-healthcheck: &redis-healthcheck
+  test: ["CMD", "redis-cli", "ping"]
+  interval: 3s
+  timeout: 5s
+  retries: 20
+
+services:
+  postgres-14:
+    image: postgres:14-alpine
+    environment: *postgres-env
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    ports: ["5414:5432"]
+    healthcheck: *postgres-healthcheck
+    tmpfs: ["/var/lib/postgresql/data"]
+
+  postgres-15:
+    image: postgres:15-alpine
+    environment: *postgres-env
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    ports: ["5415:5432"]
+    healthcheck: *postgres-healthcheck
+    tmpfs: ["/var/lib/postgresql/data"]
+
+  postgres-16:
+    image: postgres:16-alpine
+    environment: *postgres-env
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    ports: ["5416:5432"]
+    healthcheck: *postgres-healthcheck
+    tmpfs: ["/var/lib/postgresql/data"]
+
+  postgres-17:
+    image: postgres:17-alpine
+    environment: *postgres-env
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    ports: ["5417:5432"]
+    healthcheck: *postgres-healthcheck
+    tmpfs: ["/var/lib/postgresql/data"]
+
+  postgres-18:
+    image: postgres:18-alpine
+    environment: *postgres-env
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    ports: ["5418:5432"]
+    healthcheck: *postgres-healthcheck
+    # Postgres 18+ moved its data into a subdirectory of /var/lib/postgresql
+    # (not /var/lib/postgresql/data), so the ephemeral mount sits one level up.
+    tmpfs: ["/var/lib/postgresql"]
+
+  redis-6:
+    image: redis:6-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6306:6379"]
+    healthcheck: *redis-healthcheck
+
+  redis-7:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6307:6379"]
+    healthcheck: *redis-healthcheck
+
+  redis-8.8:
+    image: redis:8.8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6308:6379"]
+    healthcheck: *redis-healthcheck

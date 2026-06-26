@@ -1,6 +1,9 @@
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 const DEFAULT_RETRYABLE_STATUSES = [408, 425, 429, 500, 502, 503, 504] as const;
 const DEFAULT_RETRYABLE_METHODS = ["GET", "HEAD", "OPTIONS"] as const;
 const DEFAULT_BACKOFF_MS = 100;
@@ -40,6 +43,7 @@ export type HttpErrorCode =
   | "HTTP_NETWORK_ERROR"
   | "HTTP_RESPONSE_ERROR"
   | "HTTP_PARSE_ERROR"
+  | "HTTP_RESPONSE_TOO_LARGE"
   | "HTTP_RETRY_EXHAUSTED"
   | "HTTP_UNKNOWN_ERROR"
   | (string & Record<never, never>);
@@ -69,10 +73,15 @@ export type HttpResponseErrorBody =
 /** Retry configuration for transient HTTP failures. */
 export interface RetryOptions {
   readonly attempts?: number;
+  /** Base delay used for exponential backoff. Defaults to `100`. */
   readonly backoffMs?: number;
   readonly maxBackoffMs?: number;
   readonly retryOnStatuses?: number[];
   readonly retryOnMethods?: HttpMethod[];
+  /** Apply full jitter to the backoff delay. Defaults to `true`. */
+  readonly jitter?: boolean;
+  /** Honor a `Retry-After` response header when retrying. Defaults to `true`. */
+  readonly respectRetryAfter?: boolean;
 }
 
 export interface RequiredRetryOptions {
@@ -81,6 +90,8 @@ export interface RequiredRetryOptions {
   readonly maxBackoffMs: number;
   readonly retryOnStatuses: number[];
   readonly retryOnMethods: HttpMethod[];
+  readonly jitter: boolean;
+  readonly respectRetryAfter: boolean;
 }
 
 /** Context passed to retry decision helpers. */
@@ -101,6 +112,12 @@ export interface HttpClientOptions {
   readonly fetch?: FetchLike;
   readonly logger?: Logger;
   readonly userAgent?: string;
+  /**
+   * Maximum response body size, in bytes, accepted when reading a JSON or error
+   * body. A larger body fails with `HTTP_RESPONSE_TOO_LARGE` instead of being
+   * buffered. Unbounded when omitted.
+   */
+  readonly maxResponseBytes?: number;
 }
 
 /** Options for one raw HTTP request. */
@@ -114,6 +131,8 @@ export interface HttpRequestOptions {
   readonly retry?: RetryOptions | false;
   readonly signal?: AbortSignal;
   readonly expectOk?: boolean;
+  /** Per-request override of the client's `maxResponseBytes`. */
+  readonly maxResponseBytes?: number;
 }
 
 /** Options for one JSON request. */
@@ -222,6 +241,7 @@ export function createHttpClient(
   const retry = options.retry;
   const fetchFn = options.fetch ?? getGlobalFetch();
   const logger = options.logger;
+  const defaultMaxResponseBytes = options.maxResponseBytes;
 
   const send = (
     path: string,
@@ -236,6 +256,8 @@ export function createHttpClient(
       logger,
       path,
       options: requestOptions,
+      maxResponseBytes: requestOptions.maxResponseBytes ??
+        defaultMaxResponseBytes,
     });
   };
 
@@ -244,7 +266,9 @@ export function createHttpClient(
     requestOptions: JsonRequestOptions = {},
   ): Promise<T> => {
     const response = await send(path, prepareJsonOptions(requestOptions));
-    return parseJsonResponse<T>(response);
+    return parseJsonResponse<T>(response, {
+      maxBytes: requestOptions.maxResponseBytes ?? defaultMaxResponseBytes,
+    });
   };
 
   return {
@@ -447,15 +471,26 @@ export function redactHttpJson(value: unknown): unknown {
   return sanitizeJsonValue(value, new WeakSet<object>());
 }
 
+/** Options for reading and parsing a response body. */
+export interface ParseJsonResponseOptions {
+  /** Maximum body size in bytes; a larger body fails `HTTP_RESPONSE_TOO_LARGE`. */
+  readonly maxBytes?: number;
+}
+
 /** Reads and parses a response body as JSON, throwing HttpError on invalid JSON. */
 export async function parseJsonResponse<T = unknown>(
   response: Response,
+  options: ParseJsonResponseOptions = {},
 ): Promise<T> {
   let text: string;
 
   try {
-    text = await response.text();
+    text = await readResponseText(response, options.maxBytes);
   } catch (cause) {
+    if (isHttpErrorCode(cause, "HTTP_RESPONSE_TOO_LARGE")) {
+      throw cause;
+    }
+
     throw new HttpError("Failed to read HTTP response body", {
       code: "HTTP_PARSE_ERROR",
       status: response.status,
@@ -495,12 +530,99 @@ export async function parseJsonResponse<T = unknown>(
 /** Safely reads and parses JSON, returning undefined for empty or invalid bodies. */
 export async function safeParseJsonResponse<T = unknown>(
   response: Response,
+  options: ParseJsonResponseOptions = {},
 ): Promise<T | undefined> {
   try {
-    return await parseJsonResponse<T>(response);
+    return await parseJsonResponse<T>(response, options);
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Reads a response body as text, enforcing a maximum byte length.
+ *
+ * Rejects early on a `Content-Length` that exceeds `maxBytes`, then streams the
+ * body and aborts as soon as the accumulated bytes pass the limit, so an
+ * oversized or unbounded body is never fully buffered.
+ */
+async function readResponseText(
+  response: Response,
+  maxBytes: number | undefined,
+): Promise<string> {
+  if (maxBytes === undefined || !Number.isFinite(maxBytes)) {
+    return await response.text();
+  }
+
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw responseTooLarge(response, maxBytes, declared);
+  }
+
+  const body = response.body;
+  if (body === null) {
+    const text = await response.text();
+    if (textEncoder.encode(text).byteLength > maxBytes) {
+      throw responseTooLarge(response, maxBytes);
+    }
+    return text;
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      received += value.byteLength;
+      if (received > maxBytes) {
+        await reader.cancel();
+        throw responseTooLarge(response, maxBytes);
+      }
+
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return textDecoder.decode(concatBytes(chunks, received));
+}
+
+function responseTooLarge(
+  response: Response,
+  maxBytes: number,
+  contentLength?: number,
+): HttpError {
+  return new HttpError("HTTP response body exceeds the maximum size", {
+    code: "HTTP_RESPONSE_TOO_LARGE",
+    status: response.status,
+    expose: false,
+    severity: "error",
+    details: {
+      status: response.status,
+      url: response.url,
+      maxBytes,
+      ...(contentLength === undefined ? {} : { contentLength }),
+    },
+  });
+}
+
+function concatBytes(chunks: readonly Uint8Array[], total: number): Uint8Array {
+  const output = new Uint8Array(total);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return output;
 }
 
 /** Returns true for default retryable HTTP status codes. */
@@ -678,6 +800,7 @@ interface ExecuteRequestOptions {
   readonly logger?: Logger;
   readonly path: string;
   readonly options: HttpRequestOptions;
+  readonly maxResponseBytes?: number;
 }
 
 async function executeRequest(
@@ -727,6 +850,16 @@ async function executeRequest(
         shouldRetry({ attempt, method, response, options: retryOptions })
       ) {
         attempt += 1;
+        const retryAfterMs = retryOptions.respectRetryAfter
+          ? parseRetryAfter(response.headers.get("retry-after"))
+          : undefined;
+        const delayMs = computeRetryDelay({
+          attempt,
+          backoffMs: retryOptions.backoffMs,
+          maxBackoffMs: retryOptions.maxBackoffMs,
+          jitter: retryOptions.jitter,
+          retryAfterMs,
+        });
         logWarn(
           context.logger,
           {
@@ -734,15 +867,21 @@ async function executeRequest(
             url: safeUrl,
             attempt,
             status: response.status,
+            delayMs,
           },
           "http request retrying",
         );
-        await wait(getRetryDelay(attempt, retryOptions));
+        await wait(delayMs);
         continue;
       }
 
       if (expectOk && !response.ok) {
-        throw await createResponseError(response, method, url);
+        throw await createResponseError(
+          response,
+          method,
+          url,
+          context.maxResponseBytes,
+        );
       }
 
       logDebug(
@@ -766,16 +905,23 @@ async function executeRequest(
         shouldRetry({ attempt, method, error, options: retryOptions })
       ) {
         attempt += 1;
+        const delayMs = computeRetryDelay({
+          attempt,
+          backoffMs: retryOptions.backoffMs,
+          maxBackoffMs: retryOptions.maxBackoffMs,
+          jitter: retryOptions.jitter,
+        });
         logWarn(
           context.logger,
           {
             method,
             url: safeUrl,
             attempt,
+            delayMs,
           },
           "http request retrying",
         );
-        await wait(getRetryDelay(attempt, retryOptions));
+        await wait(delayMs);
         continue;
       }
 
@@ -866,14 +1012,86 @@ function normalizeRetryOptions(
       ...(options.retryOnStatuses ?? DEFAULT_RETRYABLE_STATUSES),
     ],
     retryOnMethods: [...(options.retryOnMethods ?? DEFAULT_RETRYABLE_METHODS)],
+    jitter: options.jitter ?? true,
+    respectRetryAfter: options.respectRetryAfter ?? true,
   };
 }
 
-function getRetryDelay(
-  attempt: number,
-  options: RequiredRetryOptions,
-): number {
-  return Math.min(options.backoffMs * attempt, options.maxBackoffMs);
+/** Inputs to {@link computeRetryDelay}. */
+export interface RetryDelayInput {
+  /** 1-based number of the attempt about to be delayed. */
+  readonly attempt: number;
+  readonly backoffMs: number;
+  readonly maxBackoffMs: number;
+  /** Apply full jitter to the exponential delay. */
+  readonly jitter: boolean;
+  /** Server-requested delay (from `Retry-After`), in milliseconds, if honored. */
+  readonly retryAfterMs?: number;
+  /** Injectable randomness for deterministic tests. Defaults to `Math.random`. */
+  readonly random?: () => number;
+}
+
+/**
+ * Computes the delay before a retry attempt.
+ *
+ * A server-supplied `Retry-After` delay takes precedence (and is not jittered);
+ * otherwise the delay is exponential (`backoffMs * 2^(attempt-1)`) capped at
+ * `maxBackoffMs`, with optional full jitter in `[0, capped]`. The result is
+ * always bounded by `maxBackoffMs`, so a hostile `Retry-After` cannot pin the
+ * client for an unbounded time.
+ */
+export function computeRetryDelay(input: RetryDelayInput): number {
+  if (input.retryAfterMs !== undefined) {
+    return Math.min(Math.max(0, input.retryAfterMs), input.maxBackoffMs);
+  }
+
+  const exponent = Math.max(0, input.attempt - 1);
+  const exponential = input.backoffMs * 2 ** exponent;
+  const capped = Math.min(exponential, input.maxBackoffMs);
+
+  if (!input.jitter) {
+    return capped;
+  }
+
+  const random = input.random ?? Math.random;
+  return Math.round(capped * random());
+}
+
+/**
+ * Parses a `Retry-After` header value into milliseconds.
+ *
+ * Supports both delta-seconds (`"120"`) and an HTTP-date. Returns `undefined`
+ * for a missing, empty, or unparseable value, and never returns a negative
+ * delay.
+ */
+export function parseRetryAfter(
+  value: string | null,
+  now: number = Date.now(),
+): number | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1000;
+  }
+
+  const date = Date.parse(trimmed);
+  if (Number.isNaN(date)) {
+    return undefined;
+  }
+
+  return Math.max(0, date - now);
+}
+
+/** Returns true when a header, query, or field name is treated as sensitive. */
+export function isSensitiveHttpName(name: string): boolean {
+  return isSensitiveName(name);
 }
 
 function methodAllowsBody(method: HttpMethod): boolean {
@@ -926,9 +1144,11 @@ async function createResponseError(
   response: Response,
   method: HttpMethod,
   url: URL,
+  maxResponseBytes: number | undefined,
 ): Promise<HttpError> {
   const body = await safeParseJsonResponse<HttpResponseErrorBody>(
     response.clone(),
+    { maxBytes: maxResponseBytes },
   );
   const isClientError = response.status >= 400 && response.status < 500;
 
@@ -1013,13 +1233,27 @@ function classifyFetchError(error: unknown): HttpError {
     return error;
   }
 
-  if (error instanceof DOMException && error.name === "AbortError") {
-    return new HttpError("HTTP request aborted", {
-      code: "HTTP_ABORTED",
-      expose: false,
-      severity: "warn",
-      cause: error,
-    });
+  if (error instanceof DOMException) {
+    // A `TimeoutError` (e.g. from `AbortSignal.timeout`) is a timeout, not a
+    // caller-initiated abort.
+    if (error.name === "TimeoutError") {
+      return new HttpError("HTTP request timed out", {
+        code: "HTTP_TIMEOUT",
+        expose: false,
+        severity: "warn",
+        cause: error,
+      });
+    }
+
+    if (error.name === "AbortError") {
+      return new HttpError("HTTP request aborted", {
+        code: "HTTP_ABORTED",
+        expose: false,
+        severity: "warn",
+        details: describeAbortReason(error),
+        cause: error,
+      });
+    }
   }
 
   if (error instanceof TypeError) {
@@ -1037,6 +1271,25 @@ function classifyFetchError(error: unknown): HttpError {
     severity: "error",
     cause: error,
   });
+}
+
+function describeAbortReason(error: DOMException): Record<string, unknown> {
+  // `DOMException` does not standardize a `reason`, but Deno/web abort errors
+  // may carry one; surface a string form for diagnostics without leaking objects.
+  const reason = (error as { readonly reason?: unknown }).reason;
+  if (reason === undefined) {
+    return {};
+  }
+
+  if (typeof reason === "string") {
+    return { reason };
+  }
+
+  if (reason instanceof Error) {
+    return { reason: reason.message };
+  }
+
+  return {};
 }
 
 function isHttpErrorCode(

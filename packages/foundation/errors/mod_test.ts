@@ -1,11 +1,19 @@
 import { assert, assertEquals, assertExists, assertThrows } from "@std/assert";
 import {
+  clearErrorRedactors,
   createErrorFactory,
+  getErrorCause,
+  getErrorChain,
+  getErrorMessage,
   isRootwareError,
+  redactErrorKeys,
+  registerErrorRedactor,
   RootwareError,
   serializeError,
   toRootwareError,
 } from "./mod.ts";
+
+const DEFAULT_MESSAGE = "An unexpected error occurred";
 
 Deno.test("@rootware/errors - RootwareError basic fields and JSON", () => {
   const cause = new Error("cause");
@@ -115,4 +123,135 @@ Deno.test("@rootware/errors - assertThrows receives RootwareError", () => {
 
   assert(thrown instanceof RootwareError);
   assertEquals(thrown.code, "ROOTWARE_INVALID_ARGUMENT");
+});
+
+Deno.test("@rootware/errors - converts native errors, strings, objects, null, undefined", () => {
+  const native = toRootwareError(new TypeError("nope"));
+  assert(isRootwareError(native));
+  assertEquals(native.name, "TypeError");
+  assertEquals(native.message, "nope");
+
+  assertEquals(toRootwareError("oops").message, "oops");
+  assertEquals(toRootwareError("   ").message, DEFAULT_MESSAGE);
+
+  const fromObject = toRootwareError({ unknown: true });
+  assertEquals(fromObject.message, DEFAULT_MESSAGE);
+  assertEquals(fromObject.cause, { unknown: true });
+
+  const fromNull = toRootwareError(null);
+  assertEquals(fromNull.message, DEFAULT_MESSAGE);
+  assertEquals(fromNull.cause, null);
+
+  const fromUndefined = toRootwareError(undefined);
+  assertEquals(fromUndefined.message, DEFAULT_MESSAGE);
+  assertEquals(fromUndefined.cause, undefined);
+
+  // Message/cause extraction helpers degrade gracefully too.
+  assertEquals(getErrorMessage(null), DEFAULT_MESSAGE);
+  assertEquals(getErrorMessage(undefined), DEFAULT_MESSAGE);
+  assertEquals(getErrorMessage(42), DEFAULT_MESSAGE);
+  assertEquals(getErrorCause(null), undefined);
+  assertEquals(getErrorCause(new Error("x", { cause: "root" })), "root");
+
+  // Serializing any of these is safe and never throws.
+  for (const value of [null, undefined, 42, { secret: 1 }, "boom"]) {
+    const json = serializeError(value);
+    assert(!Object.hasOwn(json, "stack"));
+  }
+});
+
+Deno.test("@rootware/errors - redaction hooks strip secrets from serialized details", () => {
+  const unregister = registerErrorRedactor(
+    redactErrorKeys(["password", "API_KEY"]),
+  );
+  try {
+    const error = new RootwareError("bad login", {
+      expose: true,
+      details: { user: "alice", password: "hunter2", api_key: "sk_live" },
+    });
+    const json = error.toJSON();
+    assertEquals(json.details, {
+      user: "alice",
+      password: "[redacted]",
+      api_key: "[redacted]",
+    });
+    // The live error is untouched — redaction only affects serialized output.
+    assertEquals(error.details?.password, "hunter2");
+  } finally {
+    unregister();
+  }
+
+  // After unregistering, details pass through unredacted.
+  const json = new RootwareError("x", {
+    expose: true,
+    details: { password: "p" },
+  }).toJSON();
+  assertEquals(json.details, { password: "p" });
+});
+
+Deno.test("@rootware/errors - per-call redactor and buggy redactor safety", () => {
+  const error = new RootwareError("denied", {
+    expose: true,
+    details: { token: "secret", user: "bob" },
+  });
+  const json = serializeError(error, { redact: redactErrorKeys(["token"]) });
+  assertEquals(json.details, { token: "[redacted]", user: "bob" });
+
+  // A redactor that throws drops details instead of leaking them.
+  const unregister = registerErrorRedactor(() => {
+    throw new Error("redactor blew up");
+  });
+  try {
+    const unsafe = serializeError(error);
+    assertEquals(unsafe.details, undefined);
+  } finally {
+    unregister();
+  }
+  clearErrorRedactors();
+});
+
+Deno.test("@rootware/errors - getErrorChain walks causes safely", () => {
+  const root = new RootwareError("root");
+  const mid = new RootwareError("mid", { cause: root });
+  const top = new RootwareError("top", { cause: mid });
+
+  assertEquals(getErrorChain(top).map((e) => e.message), [
+    "top",
+    "mid",
+    "root",
+  ]);
+  assertEquals(getErrorChain(null), []);
+  assertEquals(getErrorChain(top, { maxDepth: 2 }).length, 2);
+
+  // A self-referential cause still terminates.
+  const cyclic = new RootwareError("cyclic");
+  cyclic.cause = cyclic;
+  assertEquals(getErrorChain(cyclic).length, 1);
+
+  // Mixed native/string causes are converted per link.
+  const mixed = new RootwareError("outer", {
+    cause: new Error("native", { cause: "string root" }),
+  });
+  assertEquals(getErrorChain(mixed).map((e) => e.message), [
+    "outer",
+    "native",
+    "string root",
+  ]);
+});
+
+Deno.test("@rootware/errors - serialization honors maxDepth on deep cause chains", () => {
+  const deep = new RootwareError("l0", {
+    expose: true,
+    cause: new RootwareError("l1", {
+      expose: true,
+      cause: new RootwareError("l2", { expose: true }),
+    }),
+  });
+
+  const json = serializeError(deep, { maxDepth: 1 });
+  assertEquals(json.message, "l0");
+  assertEquals(json.cause?.message, "l1");
+  // Beyond maxDepth the chain is truncated with a generic marker.
+  assertEquals(json.cause?.cause?.message, DEFAULT_MESSAGE);
+  assertEquals(json.cause?.cause?.code, "ROOTWARE_INTERNAL_ERROR");
 });

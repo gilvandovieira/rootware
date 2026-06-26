@@ -264,6 +264,14 @@ export interface JobQueue {
 
   list(options?: JobListOptions): Promise<JobListResult>;
 
+  /**
+   * Lists dead-lettered jobs (status `"dead"`) for inspection and manual
+   * intervention. A convenience over `list({ status: "dead" })`.
+   */
+  deadLetter(
+    options?: Omit<JobListOptions, "status">,
+  ): Promise<JobListResult>;
+
   close(): Promise<void>;
 }
 
@@ -653,6 +661,12 @@ export function noopJobQueue(): JobQueue {
       return Promise.resolve({ jobs: [], hasMore: false });
     },
 
+    deadLetter(
+      _options?: Omit<JobListOptions, "status">,
+    ): Promise<JobListResult> {
+      return Promise.resolve({ jobs: [], hasMore: false });
+    },
+
     close(): Promise<void> {
       return Promise.resolve();
     },
@@ -760,10 +774,18 @@ export function calculateNextRunAt(
   return new Date(now.getTime() + backoffMs).toISOString();
 }
 
+/** Backoff inputs, adding optional full jitter to {@link RetryOptions}. */
+export interface BackoffOptions extends RetryOptions {
+  /** Apply full jitter (uniform in `[0, computed]`) to the delay. */
+  readonly jitter?: boolean;
+  /** Injectable randomness for deterministic tests. Defaults to `Math.random`. */
+  readonly random?: () => number;
+}
+
 /** Calculates retry backoff in milliseconds. */
 export function calculateBackoffMs(
   attempt: number,
-  options: RetryOptions = {},
+  options: BackoffOptions = {},
 ): number {
   const normalizedAttempt = Math.max(
     1,
@@ -778,7 +800,188 @@ export function calculateBackoffMs(
     value = retry.backoffMs * 2 ** (normalizedAttempt - 1);
   }
 
-  return Math.max(0, Math.min(value, retry.maxBackoffMs));
+  const capped = Math.max(0, Math.min(value, retry.maxBackoffMs));
+
+  if (options.jitter === true) {
+    const random = options.random ?? Math.random;
+    const factor = Math.min(1, Math.max(0, random()));
+    return Math.round(capped * factor);
+  }
+
+  return capped;
+}
+
+/** Parsed 5-field cron schedule (UTC). */
+export interface CronSchedule {
+  readonly minutes: ReadonlySet<number>;
+  readonly hours: ReadonlySet<number>;
+  readonly daysOfMonth: ReadonlySet<number>;
+  readonly months: ReadonlySet<number>;
+  readonly daysOfWeek: ReadonlySet<number>;
+  readonly domRestricted: boolean;
+  readonly dowRestricted: boolean;
+  readonly expression: string;
+}
+
+/** A recurrence rule: a fixed interval or a 5-field cron expression (UTC). */
+export type RecurrenceRule =
+  | { readonly kind: "interval"; readonly everyMs: number }
+  | { readonly kind: "cron"; readonly expression: string };
+
+// Cron next-run search bound: a valid expression always recurs within 4 leap years.
+const CRON_SEARCH_MINUTES = 4 * 366 * 24 * 60;
+
+/**
+ * Parses a standard 5-field cron expression
+ * (`minute hour day-of-month month day-of-week`, UTC) into a {@link CronSchedule}.
+ * Each field supports `*`, lists (`a,b`), ranges (`a-b`), and steps (`* /n`,
+ * `a-b/n`). Day-of-week is `0`–`6` with `0` = Sunday.
+ */
+export function parseCronExpression(expression: string): CronSchedule {
+  const fields = expression.trim().split(/\s+/);
+
+  if (fields.length !== 5) {
+    throw new JobError("Cron expression must have 5 fields", {
+      code: "JOB_INVALID",
+      details: { expression, fields: fields.length },
+    });
+  }
+
+  const daysOfMonth = parseCronField(fields[2], 1, 31, expression);
+  const daysOfWeek = parseCronField(fields[4], 0, 6, expression);
+
+  return {
+    minutes: parseCronField(fields[0], 0, 59, expression),
+    hours: parseCronField(fields[1], 0, 23, expression),
+    daysOfMonth,
+    months: parseCronField(fields[3], 1, 12, expression),
+    daysOfWeek,
+    domRestricted: fields[2] !== "*",
+    dowRestricted: fields[4] !== "*",
+    expression,
+  };
+}
+
+/** Returns true when `date` (interpreted in UTC) matches the cron schedule. */
+export function cronMatches(schedule: CronSchedule, date: Date): boolean {
+  if (
+    !schedule.minutes.has(date.getUTCMinutes()) ||
+    !schedule.hours.has(date.getUTCHours()) ||
+    !schedule.months.has(date.getUTCMonth() + 1)
+  ) {
+    return false;
+  }
+
+  const domMatch = schedule.daysOfMonth.has(date.getUTCDate());
+  const dowMatch = schedule.daysOfWeek.has(date.getUTCDay());
+
+  // Standard cron: when both day fields are restricted, match on either.
+  if (schedule.domRestricted && schedule.dowRestricted) {
+    return domMatch || dowMatch;
+  }
+
+  return domMatch && dowMatch;
+}
+
+/**
+ * Returns the next UTC `Date` strictly after `after` that matches a cron
+ * expression, searching minute by minute. Throws if no run exists within four
+ * years (which only happens for an impossible expression).
+ */
+export function nextCronRun(
+  expression: string,
+  after: Date | string | number = new Date(),
+): Date {
+  const schedule = parseCronExpression(expression);
+  const cursor = toDate(after);
+  cursor.setUTCSeconds(0, 0);
+  cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
+
+  for (let step = 0; step < CRON_SEARCH_MINUTES; step += 1) {
+    if (cronMatches(schedule, cursor)) {
+      return new Date(cursor.getTime());
+    }
+    cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
+  }
+
+  throw new JobError("Cron expression has no run within the search window", {
+    code: "JOB_INVALID",
+    details: { expression },
+  });
+}
+
+/**
+ * Returns the next occurrence of a {@link RecurrenceRule} after `after` —
+ * `after + everyMs` for an interval, or {@link nextCronRun} for a cron rule.
+ */
+export function nextRecurrenceAt(
+  rule: RecurrenceRule,
+  after: Date | string | number = new Date(),
+): Date {
+  if (rule.kind === "interval") {
+    if (!Number.isFinite(rule.everyMs) || rule.everyMs <= 0) {
+      throw new JobError("Recurrence interval must be greater than zero", {
+        code: "JOB_INVALID",
+        details: { everyMs: rule.everyMs },
+      });
+    }
+    return new Date(toDate(after).getTime() + rule.everyMs);
+  }
+
+  return nextCronRun(rule.expression, after);
+}
+
+function parseCronField(
+  field: string,
+  min: number,
+  max: number,
+  expression: string,
+): Set<number> {
+  const values = new Set<number>();
+
+  for (const token of field.split(",")) {
+    const [rangePart, stepPart] = token.split("/");
+    const step = stepPart === undefined ? 1 : Number(stepPart);
+
+    if (!Number.isInteger(step) || step <= 0) {
+      throw invalidCronField(field, expression);
+    }
+
+    let lo: number;
+    let hi: number;
+
+    if (rangePart === "*") {
+      lo = min;
+      hi = max;
+    } else if (rangePart.includes("-")) {
+      const [start, end] = rangePart.split("-").map(Number);
+      lo = start;
+      hi = end;
+    } else {
+      lo = Number(rangePart);
+      hi = lo;
+    }
+
+    if (
+      !Number.isInteger(lo) || !Number.isInteger(hi) ||
+      lo < min || hi > max || lo > hi
+    ) {
+      throw invalidCronField(field, expression);
+    }
+
+    for (let value = lo; value <= hi; value += step) {
+      values.add(value);
+    }
+  }
+
+  return values;
+}
+
+function invalidCronField(field: string, expression: string): JobError {
+  return new JobError("Invalid cron field", {
+    code: "JOB_INVALID",
+    details: { field, expression },
+  });
 }
 
 /** Returns true when a queued job is ready to be claimed. */
@@ -1214,6 +1417,12 @@ class RootwareJobQueue implements JobQueue {
 
   list(options?: JobListOptions): Promise<JobListResult> {
     return this.#store.list(options);
+  }
+
+  deadLetter(
+    options: Omit<JobListOptions, "status"> = {},
+  ): Promise<JobListResult> {
+    return this.#store.list({ ...options, status: "dead" });
   }
 
   close(): Promise<void> {

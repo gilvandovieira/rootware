@@ -2,13 +2,16 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { assertLog, testLogger } from "@rootware/testing";
 import {
   buildUrl,
+  computeRetryDelay,
   createHttpClient,
   createJsonResponse,
   createMockFetch,
   createTextResponse,
   HttpError,
+  isSensitiveHttpName,
   mergeHeaders,
   parseJsonResponse,
+  parseRetryAfter,
   redactHttpHeaders,
   redactHttpJson,
   redactHttpUrl,
@@ -249,4 +252,141 @@ Deno.test("@rootware/http - response error details redact URL and body", async (
     password: "[REDACTED]",
     nested: { token: "[REDACTED]", safe: "ok" },
   });
+});
+
+Deno.test("@rootware/http - computeRetryDelay: exponential, capped, jittered, retry-after", () => {
+  const base = { backoffMs: 100, maxBackoffMs: 1000, jitter: false };
+
+  // Exponential without jitter: 100, 200, 400...
+  assertEquals(computeRetryDelay({ ...base, attempt: 1 }), 100);
+  assertEquals(computeRetryDelay({ ...base, attempt: 2 }), 200);
+  assertEquals(computeRetryDelay({ ...base, attempt: 3 }), 400);
+  // Capped at maxBackoffMs.
+  assertEquals(computeRetryDelay({ ...base, attempt: 10 }), 1000);
+
+  // Full jitter stays within [0, capped] (deterministic random).
+  assertEquals(
+    computeRetryDelay({ ...base, attempt: 3, jitter: true, random: () => 0.5 }),
+    200,
+  );
+  assertEquals(
+    computeRetryDelay({ ...base, attempt: 3, jitter: true, random: () => 0 }),
+    0,
+  );
+
+  // Retry-After takes precedence (not jittered) but is bounded by maxBackoffMs.
+  assertEquals(
+    computeRetryDelay({ ...base, attempt: 1, retryAfterMs: 500 }),
+    500,
+  );
+  assertEquals(
+    computeRetryDelay({ ...base, attempt: 1, retryAfterMs: 9_000 }),
+    1000,
+  );
+});
+
+Deno.test("@rootware/http - parseRetryAfter handles seconds and HTTP-date", () => {
+  assertEquals(parseRetryAfter("120"), 120_000);
+  assertEquals(parseRetryAfter(null), undefined);
+  assertEquals(parseRetryAfter("   "), undefined);
+  assertEquals(parseRetryAfter("not-a-date"), undefined);
+
+  const now = Date.parse("2026-06-26T00:00:00.000Z");
+  assertEquals(
+    parseRetryAfter("Fri, 26 Jun 2026 00:00:30 GMT", now),
+    30_000,
+  );
+  // A past date never yields a negative delay.
+  assertEquals(
+    parseRetryAfter("Fri, 26 Jun 2026 00:00:00 GMT", now + 5_000),
+    0,
+  );
+});
+
+Deno.test("@rootware/http - maxResponseBytes rejects oversized JSON bodies", async () => {
+  const big = "x".repeat(5_000);
+  const client = createHttpClient({
+    baseUrl: "https://api.example.com",
+    maxResponseBytes: 1_000,
+    fetch: createMockFetch([
+      { path: "/big", handler: () => createJsonResponse({ big }) },
+    ]),
+  });
+
+  const error = await assertRejects(() => client.getJson("/big"), HttpError);
+  assert(error instanceof HttpError);
+  assertEquals(error.code, "HTTP_RESPONSE_TOO_LARGE");
+  assertEquals(error.details?.maxBytes, 1_000);
+
+  // A small body under the limit still parses.
+  const okClient = createHttpClient({
+    baseUrl: "https://api.example.com",
+    maxResponseBytes: 1_000,
+    fetch: createMockFetch([
+      { path: "/small", handler: () => createJsonResponse({ ok: true }) },
+    ]),
+  });
+  assertEquals(await okClient.getJson("/small"), { ok: true });
+});
+
+Deno.test("@rootware/http - parseJsonResponse rejects bodies over maxBytes via content-length", async () => {
+  const response = createJsonResponse({ value: "y".repeat(2_000) });
+  const error = await assertRejects(
+    () => parseJsonResponse(response, { maxBytes: 100 }),
+    HttpError,
+  );
+  assert(error instanceof HttpError);
+  assertEquals(error.code, "HTTP_RESPONSE_TOO_LARGE");
+});
+
+Deno.test("@rootware/http - isSensitiveHttpName and redactHttpHeaders policy", () => {
+  assert(isSensitiveHttpName("authorization"));
+  assert(isSensitiveHttpName("X-API-Key"));
+  assert(isSensitiveHttpName("session-token"));
+  assert(!isSensitiveHttpName("content-type"));
+
+  const redacted = redactHttpHeaders({
+    authorization: "Bearer abc",
+    cookie: "sid=1",
+    "content-type": "application/json",
+  });
+  assertEquals(redacted.authorization, "[REDACTED]");
+  assertEquals(redacted.cookie, "[REDACTED]");
+  assertEquals(redacted["content-type"], "application/json");
+});
+
+Deno.test("@rootware/http - retry lifecycle logs occur in order with delays", async () => {
+  let calls = 0;
+  const { logger, sink } = testLogger();
+  const client = createHttpClient({
+    baseUrl: "https://api.example.com",
+    logger,
+    retry: { attempts: 2, backoffMs: 0 },
+    fetch: createMockFetch([
+      {
+        path: "/flaky",
+        handler: () => {
+          calls += 1;
+          return calls < 2
+            ? createJsonResponse({ error: "later" }, { status: 503 })
+            : createJsonResponse({ ok: true });
+        },
+      },
+    ]),
+  });
+
+  assertEquals(await client.getJson("/flaky"), { ok: true });
+
+  // Guaranteed ordering: started -> retrying -> completed.
+  const messages = assertLog(sink).messages();
+  assertEquals(messages, [
+    "http request started",
+    "http request retrying",
+    "http request completed",
+  ]);
+  assertLog(sink).hasRecord(
+    (record) =>
+      record.msg === "http request retrying" &&
+      typeof record.delayMs === "number",
+  );
 });

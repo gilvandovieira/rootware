@@ -1,5 +1,123 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `orm` and `migrate` v0.3 milestones completed
+
+Finished the parts of the `orm` and `migrate` v0.3 milestones that v0.2/v0.3 had
+deferred, putting the live-DB/filesystem work in the right test tier (pure logic
+in CI; real execution in the integration suite). Both roadmaps are now **done**.
+Versions stay `0.3.0` (unpublished).
+
+- **orm** — Query builder expansion: `innerJoin`/`leftJoin`, projected
+  `select({ alias: column })`, projected `returning({ alias: column })`,
+  column-aware comparison predicates (`eq(a.col, b.col)` for join `ON`), and the
+  `connect` alias over `createPgDb`. Real execution of joins/projections and
+  `db.transaction` commit/rollback are validated in the integration suite on
+  PostgreSQL 14–18. (Automatic left-join nullability typing remains a documented
+  runtime caveat.)
+- **migrate** — SQL-first workflow: an injectable `MigrationFileSystem`
+  (`denoMigrationFileSystem` default) with `buildMigrationFile` /
+  `writeMigrationFile` / `readMigrationsDir`, `checkDrift`, `defineConfig`, and
+  the new `@rootware/migrate/cli` subpath
+  (`generate`/`migrate`/`status`/`check`/ `baseline`/`repair`) built on a pure
+  parser + dependency-injected runner (`createPostgresMigrateRunner` for the
+  real Postgres path). The full generate→check→migrate→check workflow is
+  integration-tested end-to-end against PostgreSQL 14–18. A PostgreSQL advisory
+  lock for concurrent migrators is the one remaining hardening item.
+- **Integration suite** — extended with orm joins/transactions in
+  `data_layer_test.ts` and a new `migrate_cli_test.ts`; `test:integration` now
+  also grants `--allow-read`/`--allow-write` for the temp-dir CLI workflow.
+
+## 2026-06-26 — Live-database integration suite (multi-version)
+
+Added an opt-in integration suite under `integration/` plus a `compose.yaml`
+database matrix, kept entirely separate from `deno task test` / `deno task ci`
+(which stay network- and database-free). It runs the same tests against multiple
+versions of each engine and skips versions whose container is not up.
+
+- **Matrix** — PostgreSQL **14, 15, 16, 17, 18** and Redis **6, 7, 8.8** (the
+  current latest of each line), each on its own host port.
+- **Data layer** — drives the real `orm` + `schema` + `migrate` path: ORM tables
+  → `createSchemaSnapshot` → `diffSchemaSnapshots` → generated PostgreSQL DDL →
+  applied through the real `createPgMigrator` → verified via
+  `information_schema` → CRUD with the `eq` / `inArray` / `ilike` builders →
+  schema evolution via a generated `ALTER TABLE`. Validated on all five Postgres
+  versions.
+- **Cache** — drives `createCache` over a real Redis-backed `CacheStore` (built
+  on the `0.3` `RedisLikeClient` contract via a dependency-free RESP client):
+  set/get/has/delete, JSON round-trips, `getOrSet`, real `PX` TTL expiry, and
+  `clear`. Validated on all three Redis versions.
+- **Tasks** — `deno task it:up` / `it:down` (compose) and
+  `deno task test:integration` (`--allow-net --allow-env`); the default test
+  task is now scoped to `packages/`.
+- **Bug fixed (found by the suite):** `@rootware/migrate/postgres` history
+  reader rejected the second `migrate()` call against real Postgres because
+  `@db/postgres` returns a `double precision` column (`execution_ms`) as a
+  string; the reader now coerces numeric strings (with a CI regression test).
+
+## 2026-06-26 — `v0.3.0` release across the workspace
+
+Every package was advanced to its `v0.3` milestone and bumped to `0.3.0`, in
+dependency-graph order (errors → env → log → testing → http/cache/storage →
+session → schema → migrate/orm → jobs). All of `deno task ci` (fmt, lint, check,
+graph, 166 tests, examples) and `deno task publish:dry` pass. The runtime
+dependency graph is unchanged. The only new public subpath is
+`@rootware/log/compat/pino`. Where a v0.3 milestone needs a live database or
+filesystem (the orm Postgres `connect` driver and the migrate CLI / Postgres
+runner), only the pure, CI-testable slice shipped; those parts stay deferred
+under the no-network rule, as in `0.2`.
+
+- **errors** — Added redaction hooks (`registerErrorRedactor`,
+  `clearErrorRedactors`, `redactErrorKeys`), per-call `serializeError`
+  redaction, depth-limited cause-chain serialization, `getErrorChain`, and
+  compatibility docs/tests.
+- **env** — Developer-experience milestone: clearer validation messages, prefix
+  edge-case docs/tests, and enforced `mode` semantics (`development`/`test`/
+  `production`) — `test` requires an explicit source and strict modes reject
+  default secrets (`ENV_MODE_VIOLATION`, `reason: "unsafe-default"`).
+- **log** — Added the Pino-shaped compatibility subpath
+  `@rootware/log/compat/pino` (`pino()` default export) with common call forms,
+  `serializers`, `base`, `timestamp`, `messageKey`/`errorKey` (Pino's `err`
+  default), child loggers, README migration guide, and compatibility tests.
+- **testing** — Shared scaffolding for `/testing`-subpath fixtures:
+  `TestContext.use(fixture)` composition, richer `assertLog`
+  (`hasMessageMatching`, `hasNoRecord`, `isEmpty`, `messages`, `last`), and the
+  subpath-convention docs. `assertRootwareError` already lived here.
+- **http** — Hardening: exponential backoff with full jitter
+  (`computeRetryDelay`), `Retry-After` handling (`parseRetryAfter`),
+  `maxResponseBytes` streaming limit (`HTTP_RESPONSE_TOO_LARGE`), better error
+  classification (`TimeoutError`/abort reason), the public `isSensitiveHttpName`
+  policy, and documented logging-hook ordering.
+- **cache** — Adapter readiness: the `RedisLikeClient`/`DenoKvLike` adapter
+  contracts, documented database-backed constraints and distributed caveats, and
+  an optional distributed-lock contract (`CacheStore.acquireLock` +
+  `getOrSet({ lockTimeoutMs })`) that double-checks the value after locking.
+- **storage** — Signed-URL contract: `signUrl` on the client/bucket with
+  `SignUrlOptions`/`SignedUrl`, the optional `StorageStore.signUrl` adapter
+  seam, documented expiry rules (15-min default, 7-day cap), and
+  `STORAGE_SIGNING_UNSUPPORTED` for stores that cannot sign.
+- **session** — Cache-backed-session hardening: documented cache-TTL ↔
+  `expiresAt` semantics and non-durability caveats, plus eviction-vs-expiry edge
+  tests (session expiry is enforced independently of cache TTL).
+- **schema** — Added the dependency-free snapshot diff primitive
+  `diffSchemaSnapshots` (+ `isEmptySchemaSnapshotDiff`) that `migrate` builds
+  generated migrations on, preserving the orm ↔ migrate decoupling.
+- **migrate** — Generated-migration slice on top of the schema diff:
+  `planSchemaChanges` (classifies changes, flags destructive),
+  `formatMigrationFilename`/`slugifyMigrationName`, and the pure Postgres DDL
+  generators (`generatePostgresCreateTable`, `generatePostgresUpStatements`,
+  which withhold destructive SQL). File writer, drift check, transaction/lock,
+  and CLI remain deferred.
+- **orm** — Query expansion: the `ilike` predicate and the
+  `inArray`/`notInArray` set predicates (parameterized members; empty sets
+  compile to a safe constant instead of invalid `IN ()`). The live
+  `@db/postgres` driver, joins, and projected `returning` remain deferred.
+- **jobs** — Recurring scheduling and idempotency hardening: pure UTC recurrence
+  primitives (`parseCronExpression`/`cronMatches`/`nextCronRun`,
+  `RecurrenceRule` + `nextRecurrenceAt`), opt-in backoff `jitter`, the
+  `queue.deadLetter()` inspection API, and worker-lifecycle tests. Idempotency
+  (`idempotencyKey` + `findByIdempotencyKey`) was already present and is now
+  documented.
+
 ## 2026-06-26 — `v0.2.0` release across the workspace
 
 Every package was advanced to its `v0.2` milestone and bumped to `0.2.0`. All of

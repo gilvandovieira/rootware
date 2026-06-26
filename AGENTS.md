@@ -25,9 +25,18 @@ packages/state/session     -> @rootware/session
 packages/async/jobs        -> @rootware/jobs
 ```
 
+Implemented subpath exports currently exist for the log Pino compatibility layer
+and data PostgreSQL integrations:
+
+```txt
+packages/foundation/log/compat/pino -> @rootware/log/compat/pino
+packages/data/orm/postgres     -> @rootware/orm/postgres
+packages/data/migrate/postgres -> @rootware/migrate/postgres
+```
+
 Each package directory contains:
 
-- `mod.ts` as the public entrypoint.
+- `mod.ts` as the package-root public entrypoint.
 - `mod_test.ts` for package tests.
 - `deno.json` for JSR package metadata.
 - `README.md` as published package documentation.

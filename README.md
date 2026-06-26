@@ -29,6 +29,11 @@ JSR package names stay flat as `@rootware/<name>`.
 | `@rootware/orm`     | Typed SQL and ORM primitives    | Experimental |
 | `@rootware/jobs`    | Background job queue primitives | Experimental |
 
+Implemented subpath exports currently exist for `@rootware/log/compat/pino`,
+`@rootware/orm/postgres`, `@rootware/migrate/postgres`, and
+`@rootware/migrate/cli`. Planned subpaths stay roadmap-only until their files,
+tests, and export entries exist.
+
 ## Dependency Graph
 
 Runtime imports are enforced by `deno task graph`, using
@@ -96,6 +101,13 @@ deno task lint
 deno task check
 deno task graph
 deno task test
+```
+
+Run benchmarks directly or record reproducible benchmark data:
+
+```sh
+deno task bench
+deno task benchmark
 ```
 
 Run the local CI task:

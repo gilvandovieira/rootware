@@ -12,9 +12,9 @@ and Deno applications.
 > explicit sources (`fromRecord`), `readDenoEnv`, secret redaction (`redactEnv`,
 > `isSecretKey`), `generateEnvExample`, the parser helpers, `EnvError`,
 > `InferEnv`, and prefix lookup through `DefineEnvOptions.prefix`. Treat the
-> v0.2 chunks as verify-and-test; the real forward work is v0.3 DX (messages and
-> actual `mode` semantics) and the optional v0.4 file-loading helpers.
-> `DefineEnvOptions.mode` exists today but is currently inert.
+> v0.2 chunks as verify-and-test. The v0.3 DX work is now done: better
+> validation messages, prefix edge-case docs/tests, and actual `mode` semantics.
+> The remaining forward work is the optional v0.4 file-loading helpers.
 
 Last reviewed: `2026-06-26`
 
@@ -236,20 +236,33 @@ Implement `generateEnvExample`.
 Test parsers, defaults, required variables, redaction, enum inference, and
 Deno.env failure behavior.
 
-## v0.3.0 — Developer experience
+## v0.3.0 — Developer experience — **done (`0.3.0`)**
 
-- Better validation messages.
-- Prefix behavior documentation and edge-case tests (the option exists).
-- Define and implement actual `mode` semantics.
-- Example app configuration.
-- Integration examples with `@rootware/log`.
+- **Better validation messages** — invalid-variable errors now read
+  `Invalid environment variable PORT: expected integer` (and spell out enum
+  choices), keeping the variable name and `expected` in `details`.
+- **Prefix behavior** — documented in the README plus edge-case tests (empty
+  prefix no-op, optional/default under a prefix, unprefixed-collision is
+  ignored).
+- **Actual `mode` semantics** — implemented and tested:
+  - `development` (and unset): permissive — defaults apply to everything.
+  - `test`: `defineEnv` refuses to fall back to `Deno.env`
+    (`ENV_MODE_VIOLATION`) and ignores defaults for secrets.
+  - `production`: ignores defaults for secrets (missing secret →
+    `ENV_MISSING_VARIABLE` with `reason: "unsafe-default"`); non-secret defaults
+    still apply. "Secret" means `env.secret()` **or** a key matched by
+    `isSecretKey`.
+- **Example app configuration** — README `config.ts` pattern (validate once,
+  export the frozen result).
+- **`@rootware/log` integration example** — README shows logging the `redactEnv`
+  snapshot without `env` importing `log`.
 
-Potential `mode` semantics:
+Implemented `mode` semantics:
 
 - `development`: allow defaults and ergonomic local configuration.
-- `test`: require explicit test-safe values and avoid accidental production
-  secrets.
-- `production`: stricter required values, no unsafe defaults, and clearer fatal
+- `test`: require an explicit source and reject default secrets, so tests never
+  pick up ambient or hard-coded production secrets.
+- `production`: reject default secrets (no unsafe defaults) with clearer fatal
   configuration errors.
 
 ## v0.4.0 — File loading helpers

@@ -20,16 +20,59 @@ logger.info({ userId: "u_123" }, "user created");
 assertLog(sink).hasMessage("user created");
 ```
 
+## Test context composition
+
+`createTestContext` bundles a non-global fake clock, an in-memory log sink, and
+a LIFO cleanup stack. Compose setup/teardown with `context.use(fixture)`, which
+runs the fixture and registers its teardown automatically:
+
+```ts
+const ctx = createTestContext({ name: "checkout" });
+const clock = ctx.clock; // deterministic time, no global Date patch
+const resource = await ctx.use(myFixture); // teardown auto-registered
+
+// ... exercise code, assert against ctx.logs ...
+
+await ctx.runCleanup(); // LIFO teardown, aggregates the first failure
+```
+
+## The `/testing` subpath convention
+
+The core here (`createFixture`, `createCleanupStack`, `createFakeClock`,
+`createTestContext`, `assertLog`) is what higher packages build
+**package-owned** fakes on. A package ships its production-shaped fakes from its
+own `/testing` subpath (e.g. `@rootware/cache/testing`), never from this core —
+that keeps `@rootware/testing` free of higher-level dependencies.
+
+A `/testing` fixture is just a `TestFixture<T>` that composes the core:
+
+```ts
+// @rootware/cache/testing (illustrative)
+import { createFixture } from "jsr:@rootware/testing";
+import { memoryCacheStore } from "jsr:@rootware/cache";
+
+export const memoryCacheFixture = () =>
+  createFixture(
+    "memory-cache",
+    () => memoryCacheStore(),
+    (store) => store.clear(),
+  );
+
+// in a test
+const cache = await ctx.use(memoryCacheFixture());
+```
+
 ## API
 
 - `assert`, `assertEquals`, `assertThrows`, `assertRejects`
 - `assertRootwareError`, `assertErrorCode`, `assertThrowsRootwareError`
 - `testEnv`, `withEnvSource`
 - `testLogger`
-- `assertLog`
+- `assertLog` (`hasMessage`, `hasMessageMatching`, `hasField`, `hasRecord`,
+  `hasNoRecord`, `isEmpty`, `messages`, `last`, `count`)
 - `createFakeClock`
-- `createFixture`
-- `createTestContext`
+- `createFixture`, `useFixture`
+- `createTestContext` (`use`, `cleanup`, `runCleanup`)
 - `createCleanupStack`
 
 ## Security

@@ -67,6 +67,13 @@ export interface TestContext {
   readonly clock: FakeClock;
   readonly logs: MemoryLogSink;
   cleanup(fn: () => void | Promise<void>): void;
+  /**
+   * Sets up a {@link TestFixture} and registers its teardown on this context's
+   * cleanup stack, returning the fixture value. This is the composition seam a
+   * higher package's `/testing` subpath fixture plugs into — e.g.
+   * `const cache = await ctx.use(memoryCacheFixture())`.
+   */
+  use<T>(fixture: TestFixture<T>): Promise<T>;
   runCleanup(): Promise<void>;
 }
 
@@ -97,11 +104,23 @@ export interface FakeClock {
 /** Assertion helper for records captured by a memory log sink. */
 export interface LogAssertion {
   hasMessage(message: string): void;
+  hasMessageMatching(pattern: RegExp): void;
   hasLevel(level: string): void;
   hasField(key: string, value?: unknown): void;
   hasRecord(predicate: (record: LogRecord) => boolean, message?: string): void;
+  /** Asserts that no record matches the predicate. */
+  hasNoRecord(
+    predicate: (record: LogRecord) => boolean,
+    message?: string,
+  ): void;
+  /** Asserts that the sink captured no records at all. */
+  isEmpty(): void;
   count(): number;
   records(): LogRecord[];
+  /** Returns every captured `msg` string in order. */
+  messages(): string[];
+  /** Returns the most recently captured record, if any. */
+  last(): LogRecord | undefined;
 }
 
 export interface EnvTestOptions {
@@ -342,6 +361,27 @@ export function createTestContext(
       stack.push(fn);
     },
 
+    async use<T>(fixture: TestFixture<T>): Promise<T> {
+      let value: T;
+
+      try {
+        value = await fixture.setup();
+      } catch (cause) {
+        throw new TestError(`Fixture setup failed: ${fixture.name}`, {
+          code: "TEST_FIXTURE_FAILED",
+          details: { fixture: fixture.name, phase: "setup" },
+          cause,
+        });
+      }
+
+      if (fixture.teardown !== undefined) {
+        const teardown = fixture.teardown;
+        stack.push(() => teardown(value));
+      }
+
+      return value;
+    },
+
     runCleanup(): Promise<void> {
       return stack.run();
     },
@@ -502,6 +542,17 @@ export function assertLog(sink: MemoryLogSink): LogAssertion {
       );
     },
 
+    hasMessageMatching(pattern: RegExp): void {
+      hasRecord(
+        (record) => typeof record.msg === "string" && pattern.test(record.msg),
+        `Expected a log record with message matching ${
+          formatValue(
+            pattern.source,
+          )
+        }`,
+      );
+    },
+
     hasLevel(level: string): void {
       hasRecord(
         (record) => record.levelName === level,
@@ -533,12 +584,54 @@ export function assertLog(sink: MemoryLogSink): LogAssertion {
       hasRecord(predicate, message);
     },
 
+    hasNoRecord(
+      predicate: (record: LogRecord) => boolean,
+      message = "Expected no matching log record",
+    ): void {
+      const records = readRecords();
+
+      for (const record of records) {
+        if (predicate(record)) {
+          throwAssertionFailure({
+            message,
+            actual: record,
+            expected: "no matching log record",
+            operator: "assertLog",
+          });
+        }
+      }
+    },
+
+    isEmpty(): void {
+      const records = readRecords();
+
+      if (records.length > 0) {
+        throwAssertionFailure({
+          message: `Expected no log records, found ${records.length}`,
+          actual: records.length,
+          expected: 0,
+          operator: "assertLog",
+        });
+      }
+    },
+
     count(): number {
       return readRecords().length;
     },
 
     records(): LogRecord[] {
       return readRecords();
+    },
+
+    messages(): string[] {
+      return readRecords()
+        .map((record) => record.msg)
+        .filter((msg): msg is string => typeof msg === "string");
+    },
+
+    last(): LogRecord | undefined {
+      const records = readRecords();
+      return records[records.length - 1];
     },
   };
 }

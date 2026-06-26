@@ -39,10 +39,38 @@ const url = storage.publicUrl("avatars/u_123.png");
 - `createStorageObject`
 - `normalizeStorageKey`
 - `normalizeBucketName`
+- `signUrl` + `SignUrlOptions` / `SignedUrl` / `ResolvedSignUrlOptions`
 
 `localStorageStore({ rootDir })` persists objects to disk using Deno file APIs
 (needs `--allow-read`/`--allow-write` on `rootDir`). Inject a custom
 `StorageFileSystem` to test without touching disk.
+
+## Signed URLs (`0.3`)
+
+`signUrl` issues a time-limited URL for a download (`GET`) or direct upload
+(`PUT`), letting clients transfer bytes without proxying through your server:
+
+```ts
+const download = await storage.signUrl("avatars/u_123.png"); // GET, 15 min
+const upload = await storage.bucket("uploads").signUrl("u_123.png", {
+  method: "PUT",
+  expiresInMs: 60_000,
+  contentType: "image/png",
+});
+// { url, method, expiresAt, key }
+```
+
+**Expiry rules.** `expiresInMs` defaults to 15 minutes and is capped at 7 days;
+the returned `expiresAt` is an absolute ISO timestamp, so validity is decided by
+the **signing service's** clock, not the caller's. A `0`/negative/over-cap
+expiry is rejected with `STORAGE_SIGN_FAILED`. Signing does not check object
+existence — a `PUT` URL is issued for a key that does not exist yet, and a `GET`
+URL may outlive a deletion.
+
+**Unsupported stores.** Signing needs a backend that can sign (S3, R2, GCS). A
+store advertises support by implementing the optional `StorageStore.signUrl`;
+the in-memory and local-filesystem stores (and `noopStorage`) cannot sign, so
+`signUrl` rejects with `STORAGE_SIGNING_UNSUPPORTED`.
 
 ## Security
 
@@ -54,8 +82,10 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package does not implement filesystem, S3, R2, Supabase Storage, signed
-URLs, multipart uploads, or streaming adapters yet.
+This package ships memory, local-filesystem, and noop stores. S3/R2/Supabase
+adapters (and the signing backends behind `signUrl`), multipart uploads, and
+streaming adapters are future work — the `signUrl` **contract** ships now, but
+no bundled store can sign.
 
 ## Status
 

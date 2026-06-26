@@ -24,10 +24,11 @@ part of `@rootware/orm`.
 >   below was rewritten to describe how `down` and the destructive-change guard
 >   work together rather than implying rollback is impossible.
 > - **The product has two layers.** The programmatic engine above is the v0.2
->   release boundary. The `defineConfig` + CLI + SQL-folder + Postgres-store
->   workflow is planned for v0.3+ as a thin layer _on top of_ that engine
->   (config loader, folder reader, a Postgres `MigrationStore` /
->   `MigrationDriver`, and CLI argument parsing), not a rewrite. The
+>   release boundary. PostgreSQL execution now exists under
+>   `@rootware/migrate/postgres` (`createPgMigrator`, PostgreSQL history store,
+>   driver, executor, and pool). The `defineConfig` + CLI + SQL-folder workflow
+>   is still planned as a thin layer _on top of_ that engine and subpath (config
+>   loader, folder reader, and CLI argument parsing), not a rewrite. The
 >   `createMigrator` / `MigrationStore` / `MigrationDriver` contracts are the
 >   seam the CLI builds on.
 > - **Schema snapshots now have a metadata seam.** `defineSchemaMigrationPlan`
@@ -78,6 +79,12 @@ import {
   defineSqlMigration,
   memoryMigrationStore,
 } from "@rootware/migrate";
+```
+
+Current PostgreSQL execution subpath:
+
+```ts
+import { createPgMigrator } from "@rootware/migrate/postgres";
 ```
 
 Planned CLI usage (v0.3+):
@@ -144,11 +151,11 @@ query behavior.
 should consume that metadata through a stable snapshot contract.
 
 The migration package should not reach into private ORM internals — and, just as
-importantly, it must not import `@rootware/orm` at all. The current
-`packages/data/migrate/mod.ts` imports `@rootware/errors`, `@rootware/log`, and
-`@rootware/schema`; that sibling boundary must be preserved. The application is
-the integration point: it calls `orm.createSchemaSnapshot(schema)` and passes
-the resulting plain snapshot object into the migrate config.
+importantly, it must not import `@rootware/orm` at all. The current `mod.ts`
+imports `@rootware/errors`, `@rootware/log`, and `@rootware/schema`; that
+sibling boundary must be preserved. The application is the integration point: it
+calls `orm.createSchemaSnapshot(schema)` and passes the resulting plain snapshot
+object into the migrate config.
 
 Planned v0.3+ config (snapshot is prebuilt by the app, so migrate never imports
 the ORM):
@@ -586,9 +593,10 @@ A user should be able to:
 define migrations -> plan applied/pending/rollback -> dry-run or execute through injected store/driver -> validate checksums -> accept schema snapshots
 ```
 
-This release intentionally does not include config loading, filesystem
-discovery, a CLI, or real database adapters. Those are layers on top of the
-programmatic engine and are planned for v0.3+.
+This release intentionally keeps config loading, filesystem discovery, and a CLI
+out of the root import. PostgreSQL execution is isolated in
+`@rootware/migrate/postgres`; the SQL-folder and CLI workflow remains planned
+for v0.3+.
 
 ### Chunk 5 — Migration definitions
 
@@ -681,10 +689,28 @@ Acceptance:
 
 - `deno task ci` and `deno task publish:dry:migrate` pass.
 
-## v0.3 — SQL-first workflow, generated migrations, and hardening
+## v0.3 — SQL-first workflow, generated migrations, and hardening — **done (`0.3.0`)**
 
-Goal: add config/file/CLI/Postgres workflow and generated migrations on top of
-the v0.2 programmatic engine.
+> **Done in `0.3.0`.** Snapshot ingestion (`defineSchemaMigrationPlan`, Chunk
+> 16); snapshot diff + classification with destructive detection
+> (`planSchemaChanges`, Chunks 17 + 23 — the structural diff lives in the
+> dependency-free `@rootware/schema`); Postgres CREATE TABLE / ADD COLUMN
+> generators that withhold destructive SQL (`generatePostgresCreateTable`,
+> `generatePostgresUpStatements`, Chunk 18); readable filenames
+> (`formatMigrationFilename`/`slugifyMigrationName`, Chunk 24); the injectable
+> `MigrationFileSystem` with the file writer and folder reader/discovery
+> (`buildMigrationFile`, `writeMigrationFile`, `readMigrationsDir`, Chunk 19);
+> drift checking (`checkDrift`, Chunk 20); `defineConfig`; and the
+> `@rootware/migrate/cli` subpath (`generate`/`migrate`/`status`/`check`/
+> `baseline`/`repair`, with a pure parser + dependency-injected runner). The
+> filesystem/live-DB parts — real file writing via `denoMigrationFileSystem`,
+> transaction behavior (Chunk 21), and the full CLI generate→migrate→check
+> workflow against real Postgres — are exercised by the opt-in integration suite
+> (`integration/migrate_cli_test.ts`) on PostgreSQL 14–18. The PostgreSQL
+> advisory **lock** (Chunk 22) is the one remaining hardening item.
+
+Goal: add config/file/CLI workflow and generated migrations on top of the v0.2
+programmatic engine and shipped PostgreSQL subpath.
 
 This milestone absorbs the heavier workflow work that used to be listed under
 v0.2:
@@ -694,14 +720,14 @@ v0.2:
 - CLI skeleton and command parsing.
 - filesystem SQL migration discovery.
 - migration folder reader.
-- Postgres migration journal table.
-- Postgres SQL migration runner.
+- PostgreSQL history table hardening.
+- PostgreSQL SQL runner hardening.
 - status command.
 - checksum checking for file-backed migrations.
 - dry-run output for SQL files.
 - baseline command.
 - repair command.
-- real database adapters.
+- generated migration flow over the shipped PostgreSQL subpath.
 
 A user should be able to:
 
@@ -1068,7 +1094,7 @@ Possible events:
 Do these first for the v0.2 engine release:
 
 1. Audit published `v0.1`.
-2. Verify root-only public package exports.
+2. Verify root import and PostgreSQL subpath exports.
 3. Add README product warning and v0.2 scope note.
 4. Create docs skeleton.
 5. Verify `defineMigration` and `defineSqlMigration`.
@@ -1080,8 +1106,8 @@ Do these first for the v0.2 engine release:
 10. Run `deno task ci` and `deno task publish:dry:migrate`.
 
 After v0.2, implement `defineConfig`, the CLI skeleton, migration folder reader,
-Postgres migration journal table, pending SQL-file detection, and Postgres SQL
-runner.
+pending SQL-file detection, generated migration flow, and hardening around the
+shipped PostgreSQL runner/history table.
 
 ## Product rule
 

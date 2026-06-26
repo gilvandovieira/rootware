@@ -1,0 +1,483 @@
+{
+  "schemaVersion": 2,
+  "createdAt": "2026-06-26T17:54:45.800Z",
+  "durationMs": 10431.74,
+  "command": [
+    "deno",
+    "bench",
+    "--json",
+    "--seed",
+    "1",
+    "benchmark/cases/orm_migrate.bench.ts"
+  ],
+  "config": {
+    "cases": [
+      "benchmark/cases/orm_migrate.bench.ts"
+    ],
+    "seed": "1",
+    "tags": [
+      "baseline",
+      "data-group"
+    ],
+    "note": "Data group (orm + migrate) and migrate CLI generate timing baseline.",
+    "benchArgs": []
+  },
+  "runtime": {
+    "deno": "2.8.3",
+    "v8": "14.9.207.2-rusty",
+    "typescript": "6.0.3",
+    "os": "linux",
+    "arch": "x86_64",
+    "userAgent": "Deno/2.8.3",
+    "hardwareConcurrency": 20
+  },
+  "machine": {
+    "os": "linux",
+    "arch": "x86_64",
+    "cpuModel": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "cpuCores": 20,
+    "totalMemoryBytes": 16360120320
+  },
+  "workspace": {
+    "root": "rootware",
+    "denoJsonSha256": "49ca019745b7ffcac7500dbf7c1d551095d5941026b51235c46c62cd2593a791",
+    "denoLockSha256": "29f5f9c25165804a240537c51191e5f350005f2e29f4e0661f9bb0d904583f47"
+  },
+  "git": {
+    "available": true,
+    "branch": "main",
+    "commit": "fa7701ee3f366209e3f6a75ced58608a2629554d",
+    "dirty": true,
+    "statusShort": [
+      "M AGENTS.md",
+      " M CHANGELOG.md",
+      " M CLAUDE.md",
+      " M FUTURE.md",
+      " M README.md",
+      " M deno.json",
+      " M docs/packages.md",
+      " M docs/release.md",
+      " M packages/async/jobs/README.md",
+      " M packages/async/jobs/ROADMAP.md",
+      " M packages/async/jobs/deno.json",
+      " M packages/async/jobs/mod.ts",
+      " M packages/async/jobs/mod_test.ts",
+      " M packages/data/migrate/README.md",
+      " M packages/data/migrate/ROADMAP.md",
+      " M packages/data/migrate/core/mod.ts",
+      " M packages/data/migrate/deno.json",
+      " M packages/data/migrate/mod_test.ts",
+      " M packages/data/migrate/postgres/history.ts",
+      " M packages/data/migrate/postgres/mod.ts",
+      " M packages/data/migrate/postgres/mod_test.ts",
+      " M packages/data/orm/README.md",
+      " M packages/data/orm/ROADMAP.md",
+      " M packages/data/orm/core/mod.ts",
+      " M packages/data/orm/deno.json",
+      " M packages/data/orm/mod_test.ts",
+      " M packages/data/orm/postgres/mod.ts",
+      " M packages/data/schema/README.md",
+      " M packages/data/schema/ROADMAP.md",
+      " M packages/data/schema/deno.json",
+      " M packages/data/schema/mod.ts",
+      " M packages/data/schema/mod_test.ts",
+      " M packages/foundation/env/README.md",
+      " M packages/foundation/env/ROADMAP.md",
+      " M packages/foundation/env/deno.json",
+      " M packages/foundation/env/mod.ts",
+      " M packages/foundation/env/mod_test.ts",
+      " M packages/foundation/errors/README.md",
+      " M packages/foundation/errors/ROADMAP.md",
+      " M packages/foundation/errors/deno.json",
+      " M packages/foundation/errors/mod.ts",
+      " M packages/foundation/errors/mod_test.ts",
+      " M packages/foundation/log/README.md",
+      " M packages/foundation/log/ROADMAP.md",
+      " M packages/foundation/log/deno.json",
+      " M packages/foundation/testing/README.md",
+      " M packages/foundation/testing/ROADMAP.md",
+      " M packages/foundation/testing/deno.json",
+      " M packages/foundation/testing/mod.ts",
+      " M packages/foundation/testing/mod_test.ts",
+      " M packages/state/cache/README.md",
+      " M packages/state/cache/ROADMAP.md",
+      " M packages/state/cache/deno.json",
+      " M packages/state/cache/mod.ts",
+      " M packages/state/cache/mod_test.ts",
+      " M packages/state/session/README.md",
+      " M packages/state/session/ROADMAP.md",
+      " M packages/state/session/deno.json",
+      " M packages/state/session/mod_test.ts",
+      " M packages/state/storage/README.md",
+      " M packages/state/storage/ROADMAP.md",
+      " M packages/state/storage/deno.json",
+      " M packages/state/storage/mod.ts",
+      " M packages/state/storage/mod_test.ts",
+      " M packages/web/http/README.md",
+      " M packages/web/http/ROADMAP.md",
+      " M packages/web/http/deno.json",
+      " M packages/web/http/mod.ts",
+      " M packages/web/http/mod_test.ts",
+      " M roadmaps/README.md",
+      " M roadmaps/adapters.md",
+      " M roadmaps/rootware-roadmap.md",
+      "?? benchmark/",
+      "?? compose.yaml",
+      "?? examples/",
+      "?? integration/",
+      "?? packages/data/migrate/cli/",
+      "?? packages/data/migrate/core/workflow.ts",
+      "?? packages/data/migrate/postgres/ddl.ts",
+      "?? packages/foundation/log/compat/"
+    ]
+  },
+  "summary": {
+    "benchmarkCount": 14,
+    "groups": [
+      "migrate.cli.generate.large",
+      "migrate.cli.generate.small",
+      "migrate.ddl.create-table",
+      "migrate.ddl.up.diff",
+      "migrate.ddl.up.large",
+      "migrate.drift.check",
+      "migrate.file.build",
+      "migrate.plan.changes",
+      "orm.predicate.compose",
+      "orm.query.insert",
+      "orm.query.join",
+      "orm.query.select",
+      "orm.snapshot.create"
+    ],
+    "names": [
+      "migrate.cli.generate.large/rootware",
+      "migrate.cli.generate.small/rootware",
+      "migrate.ddl.create-table/rootware",
+      "migrate.ddl.up.diff/rootware",
+      "migrate.ddl.up.large/rootware",
+      "migrate.drift.check/rootware",
+      "migrate.file.build/rootware",
+      "migrate.plan.changes/rootware",
+      "orm.predicate.compose/rootware",
+      "orm.query.insert/rootware",
+      "orm.query.join/rootware",
+      "orm.query.select/platform:template",
+      "orm.query.select/rootware",
+      "orm.snapshot.create/rootware"
+    ]
+  },
+  "denoBench": {
+    "version": 1,
+    "runtime": "Deno/2.8.3 x86_64-unknown-linux-gnu",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "benches": [
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.snapshot.create",
+        "name": "orm.snapshot.create/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 22,
+              "min": 3650.5536,
+              "max": 5525.0012,
+              "avg": 4326.60975,
+              "p75": 4803.2056,
+              "p99": 5525.0012,
+              "p995": 5525.0012,
+              "p999": 5525.0012,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.select",
+        "name": "orm.query.select/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 103772,
+              "min": 3459,
+              "max": 510902,
+              "avg": 4820,
+              "p75": 4369,
+              "p99": 9415,
+              "p995": 12896,
+              "p999": 91505,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.select",
+        "name": "orm.query.select/platform:template",
+        "baseline": false,
+        "results": [
+          {
+            "ok": {
+              "n": 5050,
+              "min": 6.7669,
+              "max": 58.6717,
+              "avg": 9.920953227722753,
+              "p75": 9.9001,
+              "p99": 21.333,
+              "p995": 23.5356,
+              "p999": 35.8538,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.insert",
+        "name": "orm.query.insert/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 23,
+              "min": 3514.848,
+              "max": 5354.6824,
+              "avg": 3995.0069869565214,
+              "p75": 4090.6684,
+              "p99": 5354.6824,
+              "p995": 5354.6824,
+              "p999": 5354.6824,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.query.join",
+        "name": "orm.query.join/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 16,
+              "min": 7691.3232,
+              "max": 9286.4335,
+              "avg": 8259.263299999999,
+              "p75": 8450.8415,
+              "p99": 9286.4335,
+              "p995": 9286.4335,
+              "p999": 9286.4335,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "orm.predicate.compose",
+        "name": "orm.predicate.compose/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 20,
+              "min": 4913.6011,
+              "max": 6015.4999,
+              "avg": 5171.9815149999995,
+              "p75": 5226.691,
+              "p99": 6015.4999,
+              "p995": 6015.4999,
+              "p999": 6015.4999,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.ddl.create-table",
+        "name": "migrate.ddl.create-table/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 29,
+              "min": 2430.3743,
+              "max": 3187.3543,
+              "avg": 2653.8425,
+              "p75": 2717.5129,
+              "p99": 3187.3543,
+              "p995": 3187.3543,
+              "p999": 3187.3543,
+              "highPrecision": false,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.ddl.up.large",
+        "name": "migrate.ddl.up.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1099,
+              "min": 367975,
+              "max": 1347077,
+              "avg": 458784,
+              "p75": 434992,
+              "p99": 1034083,
+              "p995": 1139854,
+              "p999": 1211031,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.ddl.up.diff",
+        "name": "migrate.ddl.up.diff/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 285,
+              "min": 1536249,
+              "max": 3266098,
+              "avg": 1815702,
+              "p75": 1803217,
+              "p99": 3014894,
+              "p995": 3207318,
+              "p999": 3266098,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.plan.changes",
+        "name": "migrate.plan.changes/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 519,
+              "min": 880036,
+              "max": 1860990,
+              "avg": 984272,
+              "p75": 970600,
+              "p99": 1648997,
+              "p995": 1669356,
+              "p999": 1860990,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.file.build",
+        "name": "migrate.file.build/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 4566,
+              "min": 94321,
+              "max": 455174,
+              "avg": 109742,
+              "p75": 106988,
+              "p99": 267339,
+              "p995": 318014,
+              "p999": 409417,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.drift.check",
+        "name": "migrate.drift.check/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 1028,
+              "min": 429031,
+              "max": 1338834,
+              "avg": 491674,
+              "p75": 486392,
+              "p99": 885468,
+              "p995": 938340,
+              "p999": 1133578,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.cli.generate.small",
+        "name": "migrate.cli.generate.small/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 4611,
+              "min": 85850,
+              "max": 926168,
+              "avg": 108676,
+              "p75": 104430,
+              "p99": 242679,
+              "p995": 291174,
+              "p999": 383411,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      },
+      {
+        "origin": "file://rootware/benchmark/cases/orm_migrate.bench.ts",
+        "group": "migrate.cli.generate.large",
+        "name": "migrate.cli.generate.large/rootware",
+        "baseline": true,
+        "results": [
+          {
+            "ok": {
+              "n": 628,
+              "min": 693364,
+              "max": 1761502,
+              "avg": 816178,
+              "p75": 796810,
+              "p99": 1376843,
+              "p995": 1566975,
+              "p999": 1761502,
+              "highPrecision": true,
+              "usedExplicitTimers": false
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

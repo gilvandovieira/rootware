@@ -13,6 +13,7 @@ import {
   createJobId,
   createJobQueue,
   createJobRecord,
+  cronMatches,
   defineJob,
   defineJobs,
   deserializeJobError,
@@ -21,10 +22,14 @@ import {
   isTerminalJobStatus,
   JobError,
   memoryJobStore,
+  nextCronRun,
+  nextRecurrenceAt,
   noopJobQueue,
   noopJobStore,
   normalizeJobName,
   normalizeQueueName,
+  parseCronExpression,
+  type RecurrenceRule,
   safeJobInfo,
   serializeJobError,
 } from "./mod.ts";
@@ -235,4 +240,120 @@ Deno.test("@rootware/jobs - noop store and queue", async () => {
   assertEquals(await queue.processNext(), undefined);
   assertEquals(await queue.drain(), []);
   await assertRejects(() => queue.retry("missing"), JobError);
+});
+
+Deno.test("@rootware/jobs - parseCronExpression and cronMatches handle fields", () => {
+  const schedule = parseCronExpression("*/15 9-17 * * 1-5");
+  assertEquals([...schedule.minutes], [0, 15, 30, 45]);
+  assertEquals(schedule.hours.has(9), true);
+  assertEquals(schedule.hours.has(18), false);
+
+  // Monday 2026-06-29 09:15 UTC matches; Sunday and off-minute do not.
+  assert(cronMatches(schedule, new Date("2026-06-29T09:15:00.000Z")));
+  assert(!cronMatches(schedule, new Date("2026-06-28T09:15:00.000Z")));
+  assert(!cronMatches(schedule, new Date("2026-06-29T09:10:00.000Z")));
+
+  assertThrows(() => parseCronExpression("* * * *"), JobError);
+  assertThrows(() => parseCronExpression("60 * * * *"), JobError);
+  assertThrows(() => parseCronExpression("*/0 * * * *"), JobError);
+});
+
+Deno.test("@rootware/jobs - nextCronRun finds the next matching minute (UTC)", () => {
+  // Daily at 00:00 UTC: from mid-day, the next run is the following midnight.
+  const next = nextCronRun("0 0 * * *", new Date("2026-06-26T12:34:56.000Z"));
+  assertEquals(next.toISOString(), "2026-06-27T00:00:00.000Z");
+
+  // Strictly after `after`: an exact match rolls to the next occurrence.
+  const after = nextCronRun("0 0 * * *", new Date("2026-06-26T00:00:00.000Z"));
+  assertEquals(after.toISOString(), "2026-06-27T00:00:00.000Z");
+});
+
+Deno.test("@rootware/jobs - nextRecurrenceAt supports interval and cron rules", () => {
+  const base = new Date("2026-06-26T00:00:00.000Z");
+  const interval: RecurrenceRule = { kind: "interval", everyMs: 60_000 };
+  assertEquals(
+    nextRecurrenceAt(interval, base).toISOString(),
+    "2026-06-26T00:01:00.000Z",
+  );
+
+  const cron: RecurrenceRule = { kind: "cron", expression: "30 * * * *" };
+  assertEquals(
+    nextRecurrenceAt(cron, base).toISOString(),
+    "2026-06-26T00:30:00.000Z",
+  );
+
+  assertThrows(
+    () => nextRecurrenceAt({ kind: "interval", everyMs: 0 }),
+    JobError,
+  );
+});
+
+Deno.test("@rootware/jobs - calculateBackoffMs applies opt-in full jitter", () => {
+  const options = {
+    backoffMs: 100,
+    maxBackoffMs: 10_000,
+    backoffStrategy: "exponential" as const,
+  };
+  // Without jitter, exponential growth is deterministic.
+  assertEquals(calculateBackoffMs(3, options), 400);
+
+  // Full jitter scales the capped value by the random factor in [0, 1].
+  assertEquals(
+    calculateBackoffMs(3, { ...options, jitter: true, random: () => 0.5 }),
+    200,
+  );
+  assertEquals(
+    calculateBackoffMs(3, { ...options, jitter: true, random: () => 0 }),
+    0,
+  );
+});
+
+Deno.test("@rootware/jobs - queue.deadLetter lists only dead jobs", async () => {
+  const queue = createJobQueue({
+    jobs: [
+      defineJob({
+        name: "always-fails",
+        run: () => {
+          throw new Error("nope");
+        },
+      }),
+    ],
+    store: memoryJobStore(),
+  });
+
+  await queue.enqueue("always-fails", {}, { attempts: 1, backoffMs: 0 });
+  // A single allowed attempt fails and dead-letters the job.
+  await assertRejects(() => queue.processNext(), JobError);
+
+  const dead = await queue.deadLetter();
+  assertEquals(dead.jobs.length, 1);
+  assertEquals(dead.jobs[0].status, "dead");
+  assertEquals(dead.jobs[0].name, "always-fails");
+
+  assertEquals((await noopJobQueue().deadLetter()).jobs, []);
+});
+
+Deno.test("@rootware/jobs - worker lifecycle: start, running flag, and stop guards", async () => {
+  const queue = createJobQueue({
+    jobs: [defineJob({ name: "noop", run: () => undefined })],
+    store: memoryJobStore(),
+  });
+  const worker = queue.worker({ intervalMs: 5 });
+
+  // Stopping before starting is rejected explicitly.
+  assertEquals(worker.running, false);
+  await assertRejects(() => worker.stop(), JobError);
+
+  worker.start();
+  assertEquals(worker.running, true);
+  // Starting again while running is rejected.
+  assertThrows(() => worker.start(), JobError);
+
+  await worker.stop();
+  assertEquals(worker.running, false);
+
+  // A manual tick still drains ready work after stopping.
+  await queue.enqueue("noop", {});
+  const processed = await worker.tick();
+  assertEquals(processed.length, 1);
 });

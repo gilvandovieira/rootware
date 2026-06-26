@@ -62,8 +62,10 @@ throw EnvError("Missing DATABASE_URL", {
 - `RootwareError`
 - `toRootwareError`
 - `serializeError`
+- `getErrorChain`
 - `createErrorFactory`
 - `defineErrorCode`
+- `registerErrorRedactor` / `clearErrorRedactors` / `redactErrorKeys`
 
 ## Security
 
@@ -74,6 +76,46 @@ It is the **safe, no-stack** serializer for user-facing payloads. For internal
 logs that need the stack and full (non-redacted) fields, reach for
 `serializeErrorForLog` from `@rootware/log` instead — the two are deliberately
 distinct so an app can import both without a name collision.
+
+### `expose` in detail
+
+`expose` controls the **serialized** payload, not the live error object. The
+fields you set are always readable in-process (`error.message`, `error.details`,
+`error.cause`); `expose` only decides what `toJSON()` / `serializeError()`
+reveal to the outside world:
+
+| Field                          | `expose: false` (default) | `expose: true`             |
+| ------------------------------ | ------------------------- | -------------------------- |
+| `message`                      | generic placeholder       | the real message           |
+| `details`                      | omitted                   | included (after redaction) |
+| `cause`                        | omitted                   | recursed (depth-limited)   |
+| `code` / `status` / `severity` | always included           | always included            |
+
+Keep internal/infrastructure errors **un-exposed** so a 500 never leaks a stack,
+query, or connection string. Mark an error `expose: true` only when its message
+and details are written for the end user (validation failures, 4xx client
+errors). `code`, `status`, and `severity` are considered safe metadata and are
+always serialized regardless of `expose`.
+
+### Redaction hooks
+
+Even on exposed errors, `details` can accidentally carry a secret. Register a
+redactor as a centralized safety net — it runs on every serialization and only
+affects output, never the live `error.details`:
+
+```ts
+import { redactErrorKeys, registerErrorRedactor } from "jsr:@rootware/errors";
+
+registerErrorRedactor(redactErrorKeys(["password", "token", "apiKey"]));
+
+// or pass a one-off redactor for a single call:
+serializeError(error, { redact: redactErrorKeys(["sessionId"]) });
+```
+
+A redactor that throws causes the affected `details` to be dropped rather than
+risk leaking unredacted values. `serializeError` also accepts `maxDepth` to cap
+how far the `cause` chain is walked; use `getErrorChain(error)` to inspect that
+chain as an array of `RootwareError`s.
 
 See [publishing](../../../docs/publishing.md) and
 [testing](../../../docs/testing.md).

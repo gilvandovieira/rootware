@@ -17,6 +17,8 @@ import {
   gt,
   gte,
   identifier,
+  ilike,
+  inArray,
   type InferInsert,
   type InferSelect,
   isColumn,
@@ -34,6 +36,7 @@ import {
   normalizeColumnName,
   normalizeTableName,
   not,
+  notInArray,
   or,
   OrmError,
   quoteIdentifier,
@@ -152,6 +155,34 @@ Deno.test("@rootware/orm - conditions render", () => {
   assert(rendered.text.includes('"users"."id" = $1'));
   assert(rendered.text.includes('not ("users"."name" is null)'));
   assertEquals(rendered.params.length, 7);
+});
+
+Deno.test("@rootware/orm - inArray, notInArray, and ilike predicates", () => {
+  const inRendered = renderSql(
+    toSql(inArray(users.columns.id, ["a", "b", "c"])),
+    { dialect: "postgres" },
+  );
+  assertEquals(inRendered.text, '"users"."id" in ($1, $2, $3)');
+  assertEquals(inRendered.params, ["a", "b", "c"]);
+
+  const notInRendered = renderSql(
+    toSql(notInArray(users.columns.id, [1, 2])),
+    { dialect: "postgres" },
+  );
+  assert(notInRendered.text.includes('"users"."id" not in ($1, $2)'));
+
+  const ilikeRendered = renderSql(
+    toSql(ilike(users.columns.email, "%@Example.com")),
+    { dialect: "postgres" },
+  );
+  assertEquals(ilikeRendered.text, '"users"."email" ilike $1');
+
+  // Empty arrays become safe constants instead of invalid SQL.
+  assertEquals(renderSql(toSql(inArray(users.columns.id, []))).text, "1 = 0");
+  assertEquals(
+    renderSql(toSql(notInArray(users.columns.id, []))).text,
+    "1 = 1",
+  );
 });
 
 Deno.test("@rootware/orm - builders generate SQL and execute with noop driver", async () => {
@@ -282,4 +313,64 @@ Deno.test("@rootware/orm - database query transaction and helpers", async () => 
       }).query(sql`select 1`),
     OrmError,
   );
+});
+
+Deno.test("@rootware/orm - joins and projected select generate SQL", () => {
+  const db = createDatabase({ driver: noopOrmDriver(), dialect: "postgres" });
+  const posts = defineTable("posts", {
+    id: columns.uuid().primaryKey(),
+    userId: columns.uuid().notNull(),
+    title: columns.text().notNull(),
+  });
+
+  const projected = db.select({
+    userId: users.columns.id,
+    title: posts.columns.title,
+  })
+    .from(users)
+    .leftJoin(posts, eq(posts.columns.userId, users.columns.id))
+    .where(eq(users.columns.id, "u_1"))
+    .toSql();
+
+  const rendered = renderSql(projected, { dialect: "postgres" });
+  assertEquals(
+    rendered.text,
+    'select "users"."id" as "userId", "posts"."title" as "title" ' +
+      'from "users" left join "posts" on "posts"."userId" = "users"."id" ' +
+      'where "users"."id" = $1',
+  );
+  assertEquals(rendered.params, ["u_1"]);
+
+  // Column-to-column equality powers the inner-join ON clause.
+  const inner = db.select().from(users).innerJoin(
+    posts,
+    eq(posts.columns.userId, users.columns.id),
+  ).toSql();
+  assert(
+    renderSql(inner).text.includes(
+      'inner join "posts" on "posts"."userId" = "users"."id"',
+    ),
+  );
+});
+
+Deno.test("@rootware/orm - projected and star returning", () => {
+  const db = createDatabase({ driver: noopOrmDriver(), dialect: "postgres" });
+
+  const insert = db.insert(users).values({
+    id: "u_1",
+    name: "Alice",
+    email: "a@example.com",
+    score: null,
+    orgId: "org_1",
+  }).returning({ id: users.columns.id }).toSql();
+  assert(renderSql(insert).text.includes('returning "users"."id" as "id"'));
+
+  const update = db.update(users).set({ name: "Bob" }).where(
+    eq(users.columns.id, "u_1"),
+  ).returning({ name: users.columns.name }).toSql();
+  assert(renderSql(update).text.includes('returning "users"."name" as "name"'));
+
+  const removed = db.delete(users).where(eq(users.columns.id, "u_1"))
+    .returning().toSql();
+  assert(renderSql(removed).text.includes("returning *"));
 });

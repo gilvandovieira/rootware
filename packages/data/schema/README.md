@@ -49,6 +49,27 @@ assertValidSchemaSnapshot(snapshot);
 - `normalizeSchemaSnapshot`
 - `serializeSchemaSnapshot` / `deserializeSchemaSnapshot`
 - `equalSchemaSnapshots`
+- `diffSchemaSnapshots` / `isEmptySchemaSnapshotDiff`
+
+## Snapshot diff (`0.3`)
+
+`diffSchemaSnapshots(from, to)` computes the structural difference between two
+snapshots — `addedTables`, `removedTables`, and `changedTables` (each with
+per-column `added`/`removed`/`changed`). Both sides are normalized first, so
+ordering is ignored. It is a dependency-free primitive: `@rootware/migrate`
+consumes it to generate migrations from a pair of snapshots without `orm` and
+`migrate` importing each other.
+
+```ts
+const diff = diffSchemaSnapshots(previous, current);
+if (!isEmptySchemaSnapshotDiff(diff)) {
+  for (const table of diff.changedTables) {
+    for (const column of table.columns.added) {
+      // emit ALTER TABLE ... ADD COLUMN ...
+    }
+  }
+}
+```
 
 ## Serialization and compatibility
 
@@ -75,10 +96,11 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package owns the snapshot contract only. ORM metadata production, migration
-diffing, SQL generation, and driver adapters live in higher-level packages.
-Normalization sorts tables and constraints deterministically while preserving
-column declaration order inside each table.
+This package owns the snapshot contract and the structural `diffSchemaSnapshots`
+primitive. ORM metadata production, migration **SQL generation**, and driver
+adapters live in higher-level packages. Normalization sorts tables and
+constraints deterministically while preserving column declaration order inside
+each table.
 
 ## Status
 

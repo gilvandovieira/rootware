@@ -233,6 +233,16 @@ Acceptance:
 - Documented serialization rules and a JSON round-trip test.
 - Compatibility notes for future version bumps.
 
+## v0.3.0 — Snapshot diff primitive — **done (`0.3.0`)**
+
+- `diffSchemaSnapshots(from, to)` returns added/removed/changed tables, each
+  changed table carrying per-column `added`/`removed`/`changed`. Both sides are
+  normalized first, so ordering is ignored.
+- `isEmptySchemaSnapshotDiff` for the no-change fast path.
+- This is the dependency-free seam `@rootware/migrate` builds generated
+  migrations on, preserving the `orm` ↔ `migrate` decoupling (both depend on
+  `schema`, neither on the other).
+
 ## v1.0.0 — Stable contract
 
 - Freeze the type shape and the version semantics.

@@ -238,6 +238,9 @@ export interface Database {
   ): Promise<OrmQueryResult<T>>;
 
   select(): SelectBuilder<unknown, unknown>;
+  select<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): SelectBuilder<unknown, InferProjection<TProjection>>;
 
   insert<TTable extends TableDefinition>(
     table: TTable,
@@ -264,10 +267,44 @@ export interface DatabaseOptions {
   readonly logger?: Logger;
 }
 
+/** A column reference usable in a select projection. */
+export interface SelectColumnRef {
+  readonly name: ColumnName;
+  readonly tableName: string;
+  readonly defaultValue?: unknown;
+}
+
+/** Map of result key to selected column, passed to `db.select({ ... })`. */
+export type SelectProjection = Record<string, SelectColumnRef>;
+
+type ProjectionColumnValue<TColumn> = TColumn extends
+  { readonly defaultValue?: infer TDefault }
+  ? (TDefault extends (...args: never[]) => infer TReturn ? TReturn
+    : Exclude<TDefault, undefined>)
+  : unknown;
+
+/** Inferred row type for a projected select. */
+export type InferProjection<TProjection extends SelectProjection> = {
+  readonly [K in keyof TProjection]: ProjectionColumnValue<TProjection[K]>;
+};
+
 export interface SelectBuilder<TTable, TResult> {
   from<TNewTable extends TableDefinition>(
     table: TNewTable,
-  ): SelectBuilder<TNewTable, InferSelect<TNewTable>>;
+  ): SelectBuilder<
+    TNewTable,
+    unknown extends TResult ? InferSelect<TNewTable> : TResult
+  >;
+
+  innerJoin(
+    table: TableDefinition,
+    on: Condition,
+  ): SelectBuilder<TTable, TResult>;
+
+  leftJoin(
+    table: TableDefinition,
+    on: Condition,
+  ): SelectBuilder<TTable, TResult>;
 
   where(condition: Condition): SelectBuilder<TTable, TResult>;
 
@@ -285,44 +322,62 @@ export interface SelectBuilder<TTable, TResult> {
   execute(): Promise<TResult[]>;
 }
 
-export interface InsertBuilder<TTable extends TableDefinition> {
+export interface InsertBuilder<
+  TTable extends TableDefinition,
+  TReturn = InferSelect<TTable>,
+> {
   values(
     value: InferInsert<TTable> | InferInsert<TTable>[],
-  ): InsertBuilder<TTable>;
+  ): InsertBuilder<TTable, TReturn>;
 
-  returning(): InsertBuilder<TTable>;
+  returning(): InsertBuilder<TTable, InferSelect<TTable>>;
+  returning<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): InsertBuilder<TTable, InferProjection<TProjection>>;
 
   toSql(): Sql;
 
-  execute(): Promise<OrmQueryResult<InferSelect<TTable>>>;
+  execute(): Promise<OrmQueryResult<TReturn>>;
 }
 
-export interface UpdateBuilder<TTable extends TableDefinition> {
+export interface UpdateBuilder<
+  TTable extends TableDefinition,
+  TReturn = InferSelect<TTable>,
+> {
   set(
     values: Partial<InferInsert<TTable>>,
-  ): UpdateBuilder<TTable>;
+  ): UpdateBuilder<TTable, TReturn>;
 
-  where(condition: Condition): UpdateBuilder<TTable>;
+  where(condition: Condition): UpdateBuilder<TTable, TReturn>;
 
-  unsafeAllowAllRows(): UpdateBuilder<TTable>;
+  unsafeAllowAllRows(): UpdateBuilder<TTable, TReturn>;
 
-  returning(): UpdateBuilder<TTable>;
+  returning(): UpdateBuilder<TTable, InferSelect<TTable>>;
+  returning<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): UpdateBuilder<TTable, InferProjection<TProjection>>;
 
   toSql(): Sql;
 
-  execute(): Promise<OrmQueryResult<InferSelect<TTable>>>;
+  execute(): Promise<OrmQueryResult<TReturn>>;
 }
 
-export interface DeleteBuilder<TTable extends TableDefinition> {
-  where(condition: Condition): DeleteBuilder<TTable>;
+export interface DeleteBuilder<
+  TTable extends TableDefinition,
+  TReturn = InferSelect<TTable>,
+> {
+  where(condition: Condition): DeleteBuilder<TTable, TReturn>;
 
-  unsafeAllowAllRows(): DeleteBuilder<TTable>;
+  unsafeAllowAllRows(): DeleteBuilder<TTable, TReturn>;
 
-  returning(): DeleteBuilder<TTable>;
+  returning(): DeleteBuilder<TTable, InferSelect<TTable>>;
+  returning<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): DeleteBuilder<TTable, InferProjection<TProjection>>;
 
   toSql(): Sql;
 
-  execute(): Promise<OrmQueryResult<InferSelect<TTable>>>;
+  execute(): Promise<OrmQueryResult<TReturn>>;
 }
 
 export interface MemoryOrmDriverOptions {
@@ -677,6 +732,31 @@ export function lte(column: unknown, value: unknown): Condition {
 
 export function like(column: unknown, value: unknown): Condition {
   return binaryCondition(column, "like", value);
+}
+
+/** Case-insensitive `ILIKE` match (PostgreSQL-oriented). */
+export function ilike(column: unknown, value: unknown): Condition {
+  return binaryCondition(column, "ilike", value);
+}
+
+/**
+ * `column IN (...)`. Each value is a bound parameter. An empty array yields a
+ * constant always-false condition (`1 = 0`) rather than invalid `IN ()` SQL, so
+ * dynamic filters with no values are safe.
+ */
+export function inArray(
+  column: unknown,
+  values: readonly unknown[],
+): Condition {
+  return inArrayCondition(column, values, false);
+}
+
+/** `column NOT IN (...)`. An empty array yields a constant always-true condition. */
+export function notInArray(
+  column: unknown,
+  values: readonly unknown[],
+): Condition {
+  return inArrayCondition(column, values, true);
 }
 
 export function isNull(column: unknown): Condition {
@@ -1037,8 +1117,17 @@ class RootwareDatabase implements Database {
     );
   }
 
-  select(): SelectBuilder<unknown, unknown> {
-    return new RootwareSelectBuilder(this);
+  select(): SelectBuilder<unknown, unknown>;
+  select<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): SelectBuilder<unknown, InferProjection<TProjection>>;
+  select(
+    projection?: SelectProjection,
+  ): SelectBuilder<unknown, unknown> {
+    return new RootwareSelectBuilder<unknown, unknown>(this, {
+      joins: [],
+      ...(projection === undefined ? {} : { projection }),
+    });
   }
 
   insert<TTable extends TableDefinition>(
@@ -1142,131 +1231,134 @@ class RootwareDatabase implements Database {
   }
 }
 
-class RootwareSelectBuilder<TTable, TResult>
-  implements SelectBuilder<TTable, TResult> {
-  readonly #database: Database;
-  readonly #table?: TableDefinition;
-  readonly #condition?: Condition;
-  readonly #order?: {
+interface SelectJoin {
+  readonly kind: "inner" | "left";
+  readonly table: TableDefinition;
+  readonly on: Condition;
+}
+
+interface SelectState {
+  readonly table?: TableDefinition;
+  readonly projection?: SelectProjection;
+  readonly joins: readonly SelectJoin[];
+  readonly condition?: Condition;
+  readonly order?: {
     readonly column: unknown;
     readonly direction: "asc" | "desc";
   };
-  readonly #limit?: number;
-  readonly #offset?: number;
+  readonly limit?: number;
+  readonly offset?: number;
+}
 
-  constructor(
-    database: Database,
-    state: {
-      readonly table?: TableDefinition;
-      readonly condition?: Condition;
-      readonly order?: {
-        readonly column: unknown;
-        readonly direction: "asc" | "desc";
-      };
-      readonly limit?: number;
-      readonly offset?: number;
-    } = {},
-  ) {
+class RootwareSelectBuilder<TTable, TResult>
+  implements SelectBuilder<TTable, TResult> {
+  readonly #database: Database;
+  readonly #state: SelectState;
+
+  constructor(database: Database, state: SelectState) {
     this.#database = database;
-    this.#table = state.table;
-    this.#condition = state.condition;
-    this.#order = state.order;
-    this.#limit = state.limit;
-    this.#offset = state.offset;
+    this.#state = state;
+  }
+
+  #with(patch: Partial<SelectState>): SelectBuilder<TTable, TResult> {
+    return new RootwareSelectBuilder<TTable, TResult>(this.#database, {
+      ...this.#state,
+      ...patch,
+    });
   }
 
   from<TNewTable extends TableDefinition>(
     table: TNewTable,
-  ): SelectBuilder<TNewTable, InferSelect<TNewTable>> {
+  ): SelectBuilder<
+    TNewTable,
+    unknown extends TResult ? InferSelect<TNewTable> : TResult
+  > {
     assertTable(table);
-    return new RootwareSelectBuilder<TNewTable, InferSelect<TNewTable>>(
-      this.#database,
-      {
-        table,
-        condition: this.#condition,
-        order: this.#order,
-        limit: this.#limit,
-        offset: this.#offset,
-      },
-    );
+    return new RootwareSelectBuilder<
+      TNewTable,
+      unknown extends TResult ? InferSelect<TNewTable> : TResult
+    >(this.#database, { ...this.#state, table });
+  }
+
+  innerJoin(
+    table: TableDefinition,
+    on: Condition,
+  ): SelectBuilder<TTable, TResult> {
+    return this.#join("inner", table, on);
+  }
+
+  leftJoin(
+    table: TableDefinition,
+    on: Condition,
+  ): SelectBuilder<TTable, TResult> {
+    return this.#join("left", table, on);
   }
 
   where(condition: Condition): SelectBuilder<TTable, TResult> {
     assertCondition(condition);
-    return new RootwareSelectBuilder<TTable, TResult>(this.#database, {
-      table: this.#table,
-      condition,
-      order: this.#order,
-      limit: this.#limit,
-      offset: this.#offset,
-    });
+    return this.#with({ condition });
   }
 
   orderBy(
     column: unknown,
     direction: "asc" | "desc" = "asc",
   ): SelectBuilder<TTable, TResult> {
-    const normalizedDirection = normalizeOrderDirection(direction);
-
-    return new RootwareSelectBuilder<TTable, TResult>(this.#database, {
-      table: this.#table,
-      condition: this.#condition,
-      order: { column, direction: normalizedDirection },
-      limit: this.#limit,
-      offset: this.#offset,
+    return this.#with({
+      order: { column, direction: normalizeOrderDirection(direction) },
     });
   }
 
   limit(count: number): SelectBuilder<TTable, TResult> {
-    return new RootwareSelectBuilder<TTable, TResult>(this.#database, {
-      table: this.#table,
-      condition: this.#condition,
-      order: this.#order,
-      limit: normalizePositiveInteger(count, "limit"),
-      offset: this.#offset,
-    });
+    return this.#with({ limit: normalizePositiveInteger(count, "limit") });
   }
 
   offset(count: number): SelectBuilder<TTable, TResult> {
-    return new RootwareSelectBuilder<TTable, TResult>(this.#database, {
-      table: this.#table,
-      condition: this.#condition,
-      order: this.#order,
-      limit: this.#limit,
-      offset: normalizeNonNegativeInteger(count, "offset"),
-    });
+    return this.#with({ offset: normalizeNonNegativeInteger(count, "offset") });
   }
 
   toSql(): Sql {
-    if (this.#table === undefined) {
+    const { table, projection, joins, condition, order, limit, offset } =
+      this.#state;
+
+    if (table === undefined) {
       throw new OrmError("Select query requires a table", {
         code: "ORM_INVALID_QUERY",
       });
     }
 
-    const parts: Sql[] = [
-      raw("select * from "),
-      identifier(this.#table.name),
-    ];
+    const parts: Sql[] = [raw("select ")];
+    parts.push(projection === undefined ? raw("*") : projectionSql(projection));
+    parts.push(raw(" from "), identifier(table.name));
 
-    if (this.#condition !== undefined) {
-      parts.push(raw(" where "), this.#condition.sql);
-    }
-
-    if (this.#order !== undefined) {
+    for (const join of joins) {
+      assertTable(join.table);
+      assertCondition(join.on);
       parts.push(
-        raw(" order by "),
-        columnToSql(this.#order.column),
-        raw(` ${this.#order.direction}`),
+        raw(join.kind === "left" ? " left join " : " inner join "),
+        identifier(join.table.name),
+        raw(" on "),
+        join.on.sql,
       );
     }
 
-    if (this.#limit !== undefined) {
-      parts.push(raw(" limit "), paramSql(this.#limit));
+    if (condition !== undefined) {
+      parts.push(raw(" where "), condition.sql);
     }
 
-    if (this.#offset !== undefined) {
-      parts.push(raw(" offset "), paramSql(this.#offset));
+    if (order !== undefined) {
+      parts.push(
+        raw(" order by "),
+        columnToSql(order.column),
+        raw(` ${order.direction}`),
+      );
+    }
+
+    if (limit !== undefined) {
+      parts.push(raw(" limit "), paramSql(limit));
+    }
+
+    if (offset !== undefined) {
+      parts.push(raw(" offset "), paramSql(offset));
     }
 
     return joinSql(parts, emptySql());
@@ -1276,6 +1368,45 @@ class RootwareSelectBuilder<TTable, TResult>
     const result = await this.#database.query<TResult>(this.toSql());
     return result.rows;
   }
+
+  #join(
+    kind: "inner" | "left",
+    table: TableDefinition,
+    on: Condition,
+  ): SelectBuilder<TTable, TResult> {
+    assertTable(table);
+    assertCondition(on);
+    return this.#with({
+      joins: [...this.#state.joins, { kind, table, on }],
+    });
+  }
+}
+
+function projectionSql(projection: SelectProjection): Sql {
+  const entries = Object.entries(projection);
+
+  if (entries.length === 0) {
+    throw new OrmError("Select projection cannot be empty", {
+      code: "ORM_INVALID_QUERY",
+    });
+  }
+
+  return joinSql(
+    entries.map(([alias, column]) =>
+      sql`${columnToSql(column)} as ${identifier(alias)}`
+    ),
+    raw(", "),
+  );
+}
+
+function returningSql(returning: SelectProjection | boolean): Sql | undefined {
+  if (returning === false) {
+    return undefined;
+  }
+  if (returning === true) {
+    return raw(" returning *");
+  }
+  return joinSql([raw(" returning "), projectionSql(returning)], emptySql());
 }
 
 class RootwareInsertBuilder<TTable extends TableDefinition>
@@ -1283,13 +1414,13 @@ class RootwareInsertBuilder<TTable extends TableDefinition>
   readonly #database: Database;
   readonly #table: TTable;
   readonly #rows?: Array<InferInsert<TTable>>;
-  readonly #returning: boolean;
+  readonly #returning: SelectProjection | boolean;
 
   constructor(
     database: Database,
     table: TTable,
     rows?: Array<InferInsert<TTable>>,
-    returning = false,
+    returning: SelectProjection | boolean = false,
   ) {
     this.#database = database;
     this.#table = table;
@@ -1316,13 +1447,19 @@ class RootwareInsertBuilder<TTable extends TableDefinition>
     );
   }
 
-  returning(): InsertBuilder<TTable> {
+  returning(): InsertBuilder<TTable, InferSelect<TTable>>;
+  returning<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): InsertBuilder<TTable, InferProjection<TProjection>>;
+  returning(
+    projection?: SelectProjection,
+  ): InsertBuilder<TTable, InferSelect<TTable>> {
     return new RootwareInsertBuilder(
       this.#database,
       this.#table,
       this.#rows,
-      true,
-    );
+      projection ?? true,
+    ) as unknown as InsertBuilder<TTable, InferSelect<TTable>>;
   }
 
   toSql(): Sql {
@@ -1361,8 +1498,9 @@ class RootwareInsertBuilder<TTable extends TableDefinition>
       valuesSql,
     ];
 
-    if (this.#returning) {
-      parts.push(raw(" returning *"));
+    const returning = returningSql(this.#returning);
+    if (returning !== undefined) {
+      parts.push(returning);
     }
 
     return joinSql(parts, emptySql());
@@ -1380,7 +1518,7 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
   readonly #values?: Partial<InferInsert<TTable>>;
   readonly #condition?: Condition;
   readonly #allowAllRows: boolean;
-  readonly #returning: boolean;
+  readonly #returning: SelectProjection | boolean;
 
   constructor(
     database: Database,
@@ -1388,7 +1526,7 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
     values?: Partial<InferInsert<TTable>>,
     condition?: Condition,
     allowAllRows = false,
-    returning = false,
+    returning: SelectProjection | boolean = false,
   ) {
     this.#database = database;
     this.#table = table;
@@ -1432,15 +1570,21 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
     );
   }
 
-  returning(): UpdateBuilder<TTable> {
+  returning(): UpdateBuilder<TTable, InferSelect<TTable>>;
+  returning<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): UpdateBuilder<TTable, InferProjection<TProjection>>;
+  returning(
+    projection?: SelectProjection,
+  ): UpdateBuilder<TTable, InferSelect<TTable>> {
     return new RootwareUpdateBuilder(
       this.#database,
       this.#table,
       this.#values,
       this.#condition,
       this.#allowAllRows,
-      true,
-    );
+      projection ?? true,
+    ) as unknown as UpdateBuilder<TTable, InferSelect<TTable>>;
   }
 
   toSql(): Sql {
@@ -1478,8 +1622,9 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
       parts.push(raw(" where "), this.#condition.sql);
     }
 
-    if (this.#returning) {
-      parts.push(raw(" returning *"));
+    const returning = returningSql(this.#returning);
+    if (returning !== undefined) {
+      parts.push(returning);
     }
 
     return joinSql(parts, emptySql());
@@ -1496,14 +1641,14 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
   readonly #table: TTable;
   readonly #condition?: Condition;
   readonly #allowAllRows: boolean;
-  readonly #returning: boolean;
+  readonly #returning: SelectProjection | boolean;
 
   constructor(
     database: Database,
     table: TTable,
     condition?: Condition,
     allowAllRows = false,
-    returning = false,
+    returning: SelectProjection | boolean = false,
   ) {
     this.#database = database;
     this.#table = table;
@@ -1533,14 +1678,20 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
     );
   }
 
-  returning(): DeleteBuilder<TTable> {
+  returning(): DeleteBuilder<TTable, InferSelect<TTable>>;
+  returning<TProjection extends SelectProjection>(
+    projection: TProjection,
+  ): DeleteBuilder<TTable, InferProjection<TProjection>>;
+  returning(
+    projection?: SelectProjection,
+  ): DeleteBuilder<TTable, InferSelect<TTable>> {
     return new RootwareDeleteBuilder(
       this.#database,
       this.#table,
       this.#condition,
       this.#allowAllRows,
-      true,
-    );
+      projection ?? true,
+    ) as unknown as DeleteBuilder<TTable, InferSelect<TTable>>;
   }
 
   toSql(): Sql {
@@ -1559,8 +1710,9 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
       parts.push(raw(" where "), this.#condition.sql);
     }
 
-    if (this.#returning) {
-      parts.push(raw(" returning *"));
+    const returning = returningSql(this.#returning);
+    if (returning !== undefined) {
+      parts.push(returning);
     }
 
     return joinSql(parts, emptySql());
@@ -1737,7 +1889,35 @@ function binaryCondition(
   operator: string,
   value: unknown,
 ): Condition {
-  return createCondition(sql`${columnToSql(column)} ${raw(operator)} ${value}`);
+  // A column value renders as a column reference (e.g. join `ON a.x = b.y`);
+  // anything else is bound as a parameter.
+  const right = isColumn(value) ? columnToSql(value) : value;
+  return createCondition(sql`${columnToSql(column)} ${raw(operator)} ${right}`);
+}
+
+function inArrayCondition(
+  column: unknown,
+  values: readonly unknown[],
+  negated: boolean,
+): Condition {
+  if (!Array.isArray(values)) {
+    throw new OrmError("inArray requires an array of values", {
+      code: "ORM_INVALID_QUERY",
+    });
+  }
+
+  if (values.length === 0) {
+    return createCondition(raw(negated ? "1 = 1" : "1 = 0"));
+  }
+
+  const list = joinSql(
+    values.map((value) => sql`${value}`),
+    raw(", "),
+  );
+
+  return createCondition(
+    sql`${columnToSql(column)} ${raw(negated ? "not in" : "in")} (${list})`,
+  );
 }
 
 function createCondition(conditionSql: Sql): Condition {

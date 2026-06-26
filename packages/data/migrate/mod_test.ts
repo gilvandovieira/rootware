@@ -1,24 +1,73 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   assertMigrationChecksum,
+  buildMigrationFile,
   calculateMigrationChecksum,
+  checkDrift,
   createAppliedMigration,
   createMigrationPlan,
   createMigrator,
+  defineConfig,
   defineMigration,
   defineSchemaMigrationPlan,
   defineSqlMigration,
+  formatMigrationFilename,
   getAppliedMigrations,
   getPendingMigrations,
   getRollbackMigrations,
   memoryMigrationStore,
   MigrationError,
+  type MigrationFileSystem,
+  nextMigrationSequence,
   noopMigrationDriver,
   noopMigrator,
+  parseMigrationSequence,
+  planSchemaChanges,
+  readMigrationsDir,
+  slugifyMigrationName,
   sortMigrations,
   validateMigration,
   validateMigrations,
+  writeMigrationFile,
 } from "./mod.ts";
+import type { RootwareSchemaSnapshot } from "@rootware/schema";
+
+/** In-memory MigrationFileSystem for tests. */
+function fakeFs(): MigrationFileSystem & {
+  readonly files: Map<string, string>;
+} {
+  const files = new Map<string, string>();
+  return {
+    files,
+    readDir(path: string): Promise<readonly string[]> {
+      const prefix = path.endsWith("/") ? path : `${path}/`;
+      const names = new Set<string>();
+      for (const key of files.keys()) {
+        if (key.startsWith(prefix)) {
+          const rest = key.slice(prefix.length);
+          if (!rest.includes("/")) {
+            names.add(rest);
+          }
+        }
+      }
+      return Promise.resolve([...names]);
+    },
+    readFile(path: string): Promise<string | undefined> {
+      return Promise.resolve(files.get(path));
+    },
+    writeFile(path: string, content: string): Promise<void> {
+      files.set(path, content);
+      return Promise.resolve();
+    },
+    mkdir(): Promise<void> {
+      return Promise.resolve();
+    },
+  };
+}
+
+const snapshot = (
+  tables: RootwareSchemaSnapshot["tables"],
+): RootwareSchemaSnapshot => ({ version: 1, tables });
 
 Deno.test("@rootware/migrate - checksum ignores line-ending and trailing-whitespace differences", () => {
   const unix = defineSqlMigration({
@@ -201,4 +250,177 @@ Deno.test("@rootware/migrate - noop migrator", async () => {
   assertEquals((await migrator.down()).executed, []);
   assertEquals(await migrator.pending(), []);
   assertEquals(await migrator.applied(), []);
+});
+
+Deno.test("@rootware/migrate - planSchemaChanges classifies additive and destructive changes", () => {
+  const from = snapshot([
+    {
+      name: "users",
+      columns: [
+        { name: "id", type: { kind: "uuid" } },
+        { name: "email", type: { kind: "text" } },
+      ],
+    },
+    { name: "legacy", columns: [{ name: "id", type: { kind: "uuid" } }] },
+  ]);
+  const to = snapshot([
+    {
+      name: "users",
+      columns: [
+        { name: "id", type: { kind: "uuid" } },
+        { name: "email", type: { kind: "varchar", length: 320 } },
+        { name: "name", type: { kind: "text" } },
+      ],
+    },
+    { name: "posts", columns: [{ name: "id", type: { kind: "uuid" } }] },
+  ]);
+
+  const plan = planSchemaChanges({ from, to });
+  const kinds = plan.changes.map((change) => `${change.kind}:${change.table}`);
+
+  assertEquals(plan.isEmpty, false);
+  assertEquals(kinds.includes("create_table:posts"), true);
+  assertEquals(kinds.includes("add_column:users"), true);
+  assertEquals(kinds.includes("alter_column:users"), true);
+  assertEquals(kinds.includes("drop_table:legacy"), true);
+
+  // alter/drop are destructive; create/add are not.
+  assertEquals(
+    plan.destructive.map((change) => change.kind).sort(),
+    ["alter_column", "drop_table"],
+  );
+});
+
+Deno.test("@rootware/migrate - planSchemaChanges with no prior snapshot creates every table", () => {
+  const plan = planSchemaChanges({
+    to: snapshot([{
+      name: "t",
+      columns: [{ name: "id", type: { kind: "uuid" } }],
+    }]),
+  });
+  assertEquals(plan.changes.map((c) => c.kind), ["create_table"]);
+  assertEquals(plan.destructive, []);
+
+  // An identical from/to yields no changes.
+  const same = snapshot([{
+    name: "t",
+    columns: [{ name: "id", type: { kind: "uuid" } }],
+  }]);
+  assertEquals(planSchemaChanges({ from: same, to: same }).isEmpty, true);
+});
+
+Deno.test("@rootware/migrate - migration filename and slug helpers", () => {
+  assertEquals(
+    formatMigrationFilename(2, "Create Users"),
+    "0002_create_users.sql",
+  );
+  assertEquals(
+    formatMigrationFilename(11, "add posts!!"),
+    "0011_add_posts.sql",
+  );
+  assertEquals(formatMigrationFilename(1, ""), "0001.sql");
+  assertEquals(formatMigrationFilename(3, "x", "json"), "0003_x.json");
+  assertEquals(slugifyMigrationName("  Add  User__Email  "), "add_user_email");
+});
+
+Deno.test("@rootware/migrate - buildMigrationFile names and formats SQL", () => {
+  const file = buildMigrationFile({
+    sequence: 2,
+    name: "Create Users",
+    statements: ['CREATE TABLE "users" ()', "ALTER TABLE x ADD y;"],
+    snapshot: snapshot([{
+      name: "users",
+      columns: [{ name: "id", type: { kind: "uuid" } }],
+    }]),
+  });
+
+  assertEquals(file.id, "0002_create_users");
+  assertEquals(file.sqlFileName, "0002_create_users.sql");
+  assertEquals(file.snapshotFileName, "0002_create_users.snapshot.json");
+  // Statements are terminated and separated by blank lines.
+  assertEquals(file.sql, 'CREATE TABLE "users" ();\n\nALTER TABLE x ADD y;\n');
+});
+
+Deno.test("@rootware/migrate - writeMigrationFile + readMigrationsDir round-trip", async () => {
+  const fs = fakeFs();
+  const snap = snapshot([
+    { name: "users", columns: [{ name: "id", type: { kind: "uuid" } }] },
+  ]);
+
+  const first = buildMigrationFile({
+    sequence: 1,
+    name: "initial",
+    statements: ['CREATE TABLE "users" ()'],
+    snapshot: snap,
+  });
+  await writeMigrationFile(fs, "migrations", first);
+
+  const discovered = await readMigrationsDir(fs, "migrations");
+  assertEquals(discovered.map((m) => m.id), ["0001_initial"]);
+  assertEquals(discovered[0].sequence, 1);
+  assertEquals(discovered[0].sql.includes('CREATE TABLE "users"'), true);
+  assertEquals(discovered[0].snapshot?.tables[0].name, "users");
+
+  assertEquals(parseMigrationSequence("0007_add_posts"), 7);
+  assertEquals(nextMigrationSequence(discovered), 2);
+});
+
+Deno.test("@rootware/migrate - defineConfig validates and normalizes", () => {
+  const config = defineConfig({
+    dir: " ./migrations ",
+    dialect: "postgres",
+    snapshot: snapshot([
+      { name: "b", columns: [{ name: "id", type: { kind: "uuid" } }] },
+      { name: "a", columns: [{ name: "id", type: { kind: "uuid" } }] },
+    ]),
+  });
+  assertEquals(config.dir, "./migrations");
+  // Snapshot is normalized (tables sorted).
+  assertEquals(config.snapshot?.tables.map((t) => t.name), ["a", "b"]);
+
+  assertThrows(() => defineConfig({ dir: "  " }), MigrationError);
+});
+
+Deno.test("@rootware/migrate - checkDrift reports schema changes and pending", () => {
+  const v1 = snapshot([
+    { name: "users", columns: [{ name: "id", type: { kind: "uuid" } }] },
+  ]);
+  const v2 = snapshot([
+    {
+      name: "users",
+      columns: [
+        { name: "id", type: { kind: "uuid" } },
+        { name: "email", type: { kind: "text" } },
+      ],
+    },
+  ]);
+
+  // Clean: current matches latest, nothing pending.
+  assertEquals(
+    checkDrift({ currentSnapshot: v1, latestSnapshot: v1 }).clean,
+    true,
+  );
+
+  // Schema changed since the last captured snapshot.
+  const drifted = checkDrift({ currentSnapshot: v2, latestSnapshot: v1 });
+  assertEquals(drifted.clean, false);
+  assertEquals(drifted.findings.map((f) => f.kind), ["schema_changed"]);
+
+  // No migration captured yet at all.
+  assertEquals(
+    checkDrift({ currentSnapshot: v1 }).findings[0].kind,
+    "schema_changed",
+  );
+
+  // Pending migrations + missing snapshot files.
+  const report = checkDrift({
+    currentSnapshot: v1,
+    latestSnapshot: v1,
+    pending: ["0002_x"],
+    migrationsMissingSnapshot: ["0001_init"],
+  });
+  assertEquals(report.findings.map((f) => f.kind), [
+    "pending_migrations",
+    "missing_snapshot",
+  ]);
 });

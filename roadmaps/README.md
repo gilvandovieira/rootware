@@ -16,28 +16,29 @@ policy lives in `../docs/packages.md`.
 
 ## Package roadmaps
 
-- `../packages/errors/ROADMAP.md`
-- `../packages/env/ROADMAP.md`
-- `../packages/log/ROADMAP.md`
-- `../packages/testing/ROADMAP.md`
-- `../packages/http/ROADMAP.md`
-- `../packages/cache/ROADMAP.md`
-- `../packages/storage/ROADMAP.md`
-- `../packages/session/ROADMAP.md`
-- `../packages/schema/ROADMAP.md`
-- `../packages/migrate/ROADMAP.md`
-- `../packages/orm/ROADMAP.md`
-- `../packages/jobs/ROADMAP.md`
+- `../packages/foundation/errors/ROADMAP.md`
+- `../packages/foundation/env/ROADMAP.md`
+- `../packages/foundation/log/ROADMAP.md`
+- `../packages/foundation/testing/ROADMAP.md`
+- `../packages/web/http/ROADMAP.md`
+- `../packages/state/cache/ROADMAP.md`
+- `../packages/state/storage/ROADMAP.md`
+- `../packages/state/session/ROADMAP.md`
+- `../packages/data/schema/ROADMAP.md`
+- `../packages/data/migrate/ROADMAP.md`
+- `../packages/data/orm/ROADMAP.md`
+- `../packages/async/jobs/ROADMAP.md`
 
-`../packages/schema/ROADMAP.md` covers the dependency-free `@rootware/schema`
-leaf package added during the 2026-06-26 alignment pass. It owns the
-serializable schema-snapshot type so `@rootware/orm` can produce snapshots and
-`@rootware/migrate` can consume prebuilt snapshots without importing each other.
-See `../CHANGELOG.md` for the reconciliation history.
+`../packages/data/schema/ROADMAP.md` covers the dependency-free
+`@rootware/schema` leaf package added during the 2026-06-26 alignment pass. It
+owns the serializable schema-snapshot type so `@rootware/orm` can produce
+snapshots and `@rootware/migrate` can consume prebuilt snapshots without
+importing each other. See `../CHANGELOG.md` for the reconciliation history.
 
-Subpath packages such as `@rootware/orm/postgres`, `@rootware/orm/neon`,
-`@rootware/http/testing`, `@rootware/migrate/cli`, and
-`@rootware/log/compat/pino` are roadmap targets only until their files and
+`@rootware/log/compat/pino`, `@rootware/orm/postgres`, and
+`@rootware/migrate/postgres` are implemented subpath exports. Planned subpaths
+such as `@rootware/orm/neon`, `@rootware/http/testing`, and
+`@rootware/migrate/cli` remain roadmap targets only until their files and
 exports exist.
 
 The intended dependency ladder remains:

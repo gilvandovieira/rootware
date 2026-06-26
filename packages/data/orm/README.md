@@ -8,9 +8,9 @@ The root `@rootware/orm` import is database-agnostic. Database-specific
 integrations live behind subpath exports such as `@rootware/orm/postgres`. This
 prevents SQLite users from loading or depending on PostgreSQL code.
 
-v0.3 adds PostgreSQL execution as a subpath integration. It does not create a
-public `@rootware/postgres` package yet. That extraction waits until the data
-core is proven in a real app.
+PostgreSQL execution is available through the package subpath. It does not
+create a public `@rootware/postgres` package yet. That extraction waits until
+the data core is proven in a real app.
 
 ## Install
 
@@ -79,8 +79,54 @@ await db.select().from(users).where(eq(users.columns.id, "u_123")).execute();
 - `renderSql`
 - `createDatabase`
 - `noopOrmDriver`
-- `@rootware/orm/postgres` — `createPgDb`, `createPgOrmDriver`,
+- Predicates — `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `like`, `ilike`, `inArray`,
+  `notInArray`, `isNull`, `isNotNull`, `and`, `or`, `not`
+- `@rootware/orm/postgres` — `createPgDb`, `connect`, `createPgOrmDriver`,
   `createPgExecutor`, `createPgPool`
+
+## Query expansion (`0.3`)
+
+`ilike` (case-insensitive, PostgreSQL-oriented) and the set predicates `inArray`
+/ `notInArray` join the comparison helpers. Set members are bound as parameters,
+and an empty array compiles to a safe constant (`1 = 0` / `1 = 1`) instead of
+invalid `IN ()` SQL, so dynamic filters with no values do not crash:
+
+```ts
+db.select().from(users).where(
+  and(inArray(users.columns.id, ids), ilike(users.columns.email, "%@acme.com")),
+);
+```
+
+### Joins, projections, and returning
+
+Comparison predicates are column-aware, so `eq(a.col, b.col)` powers join `ON`
+clauses. Project columns with `select({ alias: column })` and pick specific
+returned columns with `returning({ alias: column })`:
+
+```ts
+const rows = await db
+  .select({ name: users.columns.name, title: posts.columns.title })
+  .from(users)
+  .leftJoin(posts, eq(posts.columns.userId, users.columns.id))
+  .where(eq(users.columns.id, id))
+  .execute();
+
+const [created] = (await db
+  .insert(users)
+  .values(row)
+  .returning({ id: users.columns.id })
+  .execute()).rows;
+```
+
+Both `innerJoin` and `leftJoin` are supported. Note: a column projected from a
+**left-joined** table can be `null` at runtime; the result type does not infer
+that automatically, so treat left-joined columns as nullable.
+
+### Transactions
+
+`db.transaction(fn)` runs `fn` in a real transaction (`BEGIN`/`COMMIT`, with
+`ROLLBACK` if `fn` throws) when the driver supports it (the Postgres adapter
+does). `connect(options)` is a convenience alias for `createPgDb`.
 
 Postgres-typed columns (`varchar`, `bigint`, `jsonb`, `timestamptz`) carry their
 type — and `varchar` length — through to the `@rootware/schema` snapshot

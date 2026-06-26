@@ -282,14 +282,25 @@ two now have distinct names and an app can import both.
 
 Show `EnvError`, `LogError`, and `HttpError` examples.
 
-## v0.3.0 — Hardening
+## v0.3.0 — Hardening — **done (`0.3.0`)**
 
-- Add redaction hooks.
-- Add better cause-chain handling.
-- Add `assertRootwareError` in testing package, not here.
-- Add compatibility tests for native errors, strings, unknown objects, null,
-  undefined.
-- Improve docs around `expose`.
+- **Redaction hooks** — `registerErrorRedactor` / `clearErrorRedactors` and the
+  `redactErrorKeys` helper install a global safety net applied to `details` on
+  every serialization path; `serializeError(value, { redact })` adds a per-call
+  redactor. Redactors affect serialized output only, never the live
+  `error.details`, and a throwing redactor drops `details` rather than leaking.
+- **Better cause-chain handling** — `getErrorChain(value, { maxDepth })` walks
+  the `cause` chain cycle-safely into an array of `RootwareError`; serialization
+  is now depth-limited (`DEFAULT_MAX_CAUSE_DEPTH = 16`, overridable via
+  `serializeError(value, { maxDepth })`) in addition to its existing cycle
+  guard.
+- **Compatibility tests** — added for native errors, strings, unknown objects,
+  `null`, and `undefined`, covering `toRootwareError`, `getErrorMessage`,
+  `getErrorCause`, and `serializeError`.
+- **`expose` docs** — README now has an `expose` field-by-field table and a
+  redaction section.
+- `assertRootwareError` lives in `@rootware/testing` (its `/testing` home), not
+  here, per the package boundary rule.
 
 ## v0.4.0 — Cross-package integration
 

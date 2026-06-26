@@ -24,10 +24,12 @@ apps.
 > supplies `StoragePutOptions.checksum`. The synchronous `createStorageObject`
 > helper no longer fabricates a size-derived checksum when none is supplied.
 >
-> The genuine gaps are the **local filesystem adapter** (only the memory store
-> ships; the v0.2 local adapter is not built) and **signed URLs** (v0.3, not
-> built). The "streaming-friendly API" goal is also unrealized — the body type
-> is buffered, so either add a stream body type or drop the streaming claim.
+> The local filesystem adapter now ships as `localStorageStore` with an
+> injectable `StorageFileSystem`, so tests can stay off-disk and
+> permission-free. The genuine gaps are **signed URLs** (v0.3, not built) and
+> provider adapters such as S3/R2. The "streaming-friendly API" goal is also
+> unrealized — the body type is buffered, so either add a stream body type or
+> drop the streaming claim.
 
 Last reviewed: `2026-06-26`
 
@@ -244,19 +246,19 @@ Show memory and local storage examples.
 
 ## v0.2.0 — Memory/local storage spine
 
-> **These already ship in `v0.1`.** Read the chunks below as verify, add tests,
-> and document the existing implementation — not build from scratch, and do not
-> replace the shipped code. The only genuine gap in this milestone is the
-> **local filesystem adapter** (Chunk 5); the memory store and everything else
-> already ship.
+> The memory store, local filesystem adapter, bucket contract, key safety,
+> object metadata, listing, and `StorageError` now ship. Read the chunks below
+> as verify, add tests, and document the existing implementation — not build
+> from scratch, and do not replace the shipped code.
 
 ### Chunk 4 — Verify memory storage (ships in v0.1)
 
 Verify the shipped memory storage behavior.
 
-### Chunk 5 — Implement local storage
+### Chunk 5 — Verify local storage (ships in v0.2)
 
-Use Deno file APIs with explicit permissions.
+Verify `localStorageStore`, its explicit Deno permissions, and the injectable
+filesystem boundary.
 
 ### Chunk 6 — Verify key normalization (ships in v0.1)
 
@@ -278,11 +280,24 @@ Use `RootwareError`.
 
 Test put/get/delete/list/key safety.
 
-## v0.3.0 — Signed URL contract
+## v0.3.0 — Signed URL contract — **done (`0.3.0`)**
 
-- Define signed read/write URL interface.
-- Implement unsupported behavior for adapters that cannot sign.
-- Document expiry rules.
+- **Signed read/write URL interface** — `SignUrlOptions` (`method` GET/PUT,
+  `expiresInMs`, `contentType`), the resolved `ResolvedSignUrlOptions` handed to
+  adapters, and the `SignedUrl` result (`url`, `method`, `expiresAt`, `key`).
+  `signUrl` is on `StorageClient`/`StorageBucket`; the optional
+  `StorageStore.signUrl` is the adapter seam.
+- **Unsupported behavior** — stores that cannot sign omit
+  `StorageStore.signUrl`; the client/bucket (and `noopStorage`) then reject with
+  `STORAGE_SIGNING_UNSUPPORTED`. The memory and local-filesystem stores are
+  unsupported.
+- **Expiry rules** — 15-minute default, 7-day cap, absolute `expiresAt` from the
+  signer's clock, `STORAGE_SIGN_FAILED` for invalid/over-cap expiry; documented
+  in the README (signing does not check existence). Covered by tests with a fake
+  signing store.
+
+The concrete S3/R2/GCS signing adapters stay deferred (they require live
+services); the contract and unsupported behavior they plug into ship now.
 
 ## v0.4.0 — S3/R2 adapter
 
@@ -325,8 +340,9 @@ Use storage for memes, avatars, thumbnails, and generated media.
 
 ## First 10 implementation chunks
 
-The memory store, buckets, key safety, metadata, and upload validation already
-ship in `v0.1`; start with verification and the local adapter.
+The memory store, local adapter, buckets, key safety, metadata, and upload
+validation already ship; start with verification and the remaining signed-URL /
+provider-adapter gaps.
 
 1. Audit the published surface (`createStorage`, `memoryStorageStore`,
    `createStorageBucket`, `StorageError`).
@@ -334,8 +350,7 @@ ship in `v0.1`; start with verification and the local adapter.
 3. Verify the memory adapter and safe key normalization (no `../` traversal).
 4. Verify object metadata (size, content type, SHA-256 checksum) and `list`
    prefixing.
-5. Implement the local filesystem adapter (the genuine gap; only memory ships
-   today).
+5. Verify the local filesystem adapter and injected filesystem boundary.
 6. Verify upload constraints (`maxSizeBytes`, required content type).
 7. Verify `StorageError`.
 8. Define the signed-URL contract (v0.3) and unsupported behavior for adapters

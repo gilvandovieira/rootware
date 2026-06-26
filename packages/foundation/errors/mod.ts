@@ -9,6 +9,17 @@ const DEFAULT_ERROR_MESSAGE = "An unexpected error occurred";
 const DEFAULT_ERROR_STATUS = 500;
 const DEFAULT_ERROR_SEVERITY: ErrorSeverity = "error";
 
+/**
+ * Depth at which cause-chain walking and serialization stop recursing.
+ *
+ * The serializer is also cycle-guarded; this bound additionally protects
+ * against very long (acyclic) cause chains becoming pathological payloads.
+ */
+const DEFAULT_MAX_CAUSE_DEPTH = 16;
+
+/** Default mask substituted for redacted values. */
+const DEFAULT_REDACTION_MASK = "[redacted]";
+
 export type ErrorSeverity = "debug" | "info" | "warn" | "error" | "fatal";
 
 export type RootwareErrorCode =
@@ -83,7 +94,9 @@ export class RootwareError extends Error {
 
   /** Returns a JSON-safe error payload that respects the `expose` flag. */
   toJSON(): RootwareErrorJson {
-    return serializeRootwareError(this, new Set<unknown>());
+    return serializeRootwareError(this, new Set<unknown>(), 0, {
+      maxDepth: DEFAULT_MAX_CAUSE_DEPTH,
+    });
   }
 
   /** Returns a copy of this error with new structured details. */
@@ -201,9 +214,65 @@ export function getErrorCause(value: unknown): unknown {
   return undefined;
 }
 
+/** Options accepted by {@link serializeError}. */
+export interface SerializeErrorOptions {
+  /**
+   * Extra redactor applied to each exposed error's `details`, after any
+   * {@link registerErrorRedactor globally registered redactors}.
+   */
+  readonly redact?: ErrorRedactor;
+  /**
+   * Maximum cause-chain depth to serialize. Beyond it, the remaining cause is
+   * replaced with a generic truncation marker. Defaults to `16`.
+   */
+  readonly maxDepth?: number;
+}
+
 /** Serializes any thrown value into a JSON-safe Rootware error payload. */
-export function serializeError(value: unknown): RootwareErrorJson {
-  return serializeRootwareError(toRootwareError(value), new Set<unknown>());
+export function serializeError(
+  value: unknown,
+  options: SerializeErrorOptions = {},
+): RootwareErrorJson {
+  return serializeRootwareError(toRootwareError(value), new Set<unknown>(), 0, {
+    redact: options.redact,
+    maxDepth: options.maxDepth ?? DEFAULT_MAX_CAUSE_DEPTH,
+  });
+}
+
+/** Options accepted by {@link getErrorChain}. */
+export interface ErrorChainOptions {
+  /** Maximum number of links to return. Defaults to `16`. */
+  readonly maxDepth?: number;
+}
+
+/**
+ * Walks a value's `cause` chain, converting each link to a {@link RootwareError}.
+ *
+ * The first element is `value` itself (converted via {@link toRootwareError});
+ * each subsequent element is the previous link's `cause`. The walk is
+ * cycle-safe and depth-limited, so a self-referential or very deep chain still
+ * terminates. Returns an empty array only for `null`/`undefined` input.
+ */
+export function getErrorChain(
+  value: unknown,
+  options: ErrorChainOptions = {},
+): RootwareError[] {
+  const maxDepth = options.maxDepth ?? DEFAULT_MAX_CAUSE_DEPTH;
+  const chain: RootwareError[] = [];
+  const seen = new Set<unknown>();
+
+  let current: unknown = value;
+  while (
+    current !== undefined && current !== null && chain.length < maxDepth &&
+    !seen.has(current)
+  ) {
+    seen.add(current);
+    const error = toRootwareError(current);
+    chain.push(error);
+    current = error.cause;
+  }
+
+  return chain;
 }
 
 /** Defines an application-specific error code while preserving string literals. */
@@ -226,29 +295,132 @@ export function createErrorFactory(
   };
 }
 
+/** Context passed to an {@link ErrorRedactor} for each serialized error. */
+export interface ErrorRedactionContext {
+  readonly code: RootwareErrorCode;
+  readonly expose: boolean;
+}
+
+/**
+ * Transforms an error's structured `details` before they are serialized.
+ *
+ * Redactors run on every serialization path ({@link RootwareError.toJSON} and
+ * {@link serializeError}) and act as a centralized safety net for secrets that
+ * may have been attached to `details`. A redactor must return a value without
+ * mutating its input; it only affects serialized output, never the live
+ * `error.details` property. If a redactor throws, the affected `details` are
+ * dropped from the payload rather than risking leaking unredacted values.
+ */
+export type ErrorRedactor = (
+  details: Readonly<Record<string, unknown>>,
+  context: ErrorRedactionContext,
+) => Record<string, unknown>;
+
+const redactors = new Set<ErrorRedactor>();
+
+/**
+ * Registers a global {@link ErrorRedactor}. Returns a function that
+ * unregisters it again — use it to scope redaction to a test or request.
+ */
+export function registerErrorRedactor(redactor: ErrorRedactor): () => void {
+  redactors.add(redactor);
+  return () => {
+    redactors.delete(redactor);
+  };
+}
+
+/** Removes every globally registered redactor. */
+export function clearErrorRedactors(): void {
+  redactors.clear();
+}
+
+/**
+ * Builds a redactor that replaces the given top-level `details` keys with a
+ * mask. Keys are matched case-insensitively; nested objects are not traversed.
+ */
+export function redactErrorKeys(
+  keys: Iterable<string>,
+  mask: string = DEFAULT_REDACTION_MASK,
+): ErrorRedactor {
+  const masked = new Set<string>();
+  for (const key of keys) {
+    masked.add(key.toLowerCase());
+  }
+
+  return (details) => {
+    let copy: Record<string, unknown> | undefined;
+    for (const key of Object.keys(details)) {
+      if (masked.has(key.toLowerCase())) {
+        copy ??= { ...details };
+        copy[key] = mask;
+      }
+    }
+    return copy ?? details;
+  };
+}
+
+function applyRedactors(
+  details: Record<string, unknown>,
+  context: ErrorRedactionContext,
+  extra?: ErrorRedactor,
+): Record<string, unknown> | undefined {
+  try {
+    let current: Record<string, unknown> = details;
+    for (const redactor of redactors) {
+      current = redactor(current, context);
+    }
+    if (extra) {
+      current = extra(current, context);
+    }
+    return current;
+  } catch {
+    // A buggy redactor must never cause unredacted details to leak.
+    return undefined;
+  }
+}
+
 function normalizeMessage(message: string): string {
   return message.trim().length > 0 ? message : DEFAULT_ERROR_MESSAGE;
+}
+
+interface SerializeContext {
+  readonly redact?: ErrorRedactor;
+  readonly maxDepth: number;
+}
+
+function truncatedErrorJson(): RootwareErrorJson {
+  return {
+    name: "RootwareError",
+    code: "ROOTWARE_INTERNAL_ERROR",
+    message: DEFAULT_ERROR_MESSAGE,
+    status: DEFAULT_ERROR_STATUS,
+    expose: false,
+    severity: DEFAULT_ERROR_SEVERITY,
+  };
 }
 
 function serializeRootwareError(
   error: RootwareError,
   seen: Set<unknown>,
+  depth: number,
+  context: SerializeContext,
 ): RootwareErrorJson {
-  if (seen.has(error)) {
-    return {
-      name: "RootwareError",
-      code: "ROOTWARE_INTERNAL_ERROR",
-      message: DEFAULT_ERROR_MESSAGE,
-      status: DEFAULT_ERROR_STATUS,
-      expose: false,
-      severity: DEFAULT_ERROR_SEVERITY,
-    };
+  if (seen.has(error) || depth > context.maxDepth) {
+    return truncatedErrorJson();
   }
 
   seen.add(error);
 
   const cause = error.expose
-    ? serializeErrorCause(error.cause, seen)
+    ? serializeErrorCause(error.cause, seen, depth + 1, context)
+    : undefined;
+
+  const details = error.expose && error.details !== undefined
+    ? applyRedactors(
+      error.details,
+      { code: error.code, expose: error.expose },
+      context.redact,
+    )
     : undefined;
 
   return {
@@ -258,9 +430,7 @@ function serializeRootwareError(
     status: error.status,
     expose: error.expose,
     severity: error.severity,
-    ...(error.expose && error.details !== undefined
-      ? { details: error.details }
-      : {}),
+    ...(details !== undefined ? { details } : {}),
     ...(cause !== undefined ? { cause } : {}),
   };
 }
@@ -268,17 +438,23 @@ function serializeRootwareError(
 function serializeErrorCause(
   cause: unknown,
   seen: Set<unknown>,
+  depth: number,
+  context: SerializeContext,
 ): RootwareErrorJson | undefined {
   if (cause === undefined) {
     return undefined;
   }
 
+  if (depth > context.maxDepth) {
+    return truncatedErrorJson();
+  }
+
   if (isRootwareError(cause)) {
-    return serializeRootwareError(cause, seen);
+    return serializeRootwareError(cause, seen, depth, context);
   }
 
   if (cause instanceof Error || typeof cause === "string") {
-    return serializeRootwareError(toRootwareError(cause), seen);
+    return serializeRootwareError(toRootwareError(cause), seen, depth, context);
   }
 
   return undefined;

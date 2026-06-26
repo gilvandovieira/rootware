@@ -174,3 +174,112 @@ Deno.test("@rootware/env - builder metadata is preserved", () => {
   assertEquals(definition.isSecret, true);
   assertExists(definition.required());
 });
+
+Deno.test("@rootware/env - invalid variable messages name the variable and expectation", () => {
+  const error = assertThrows(
+    () => validateEnv({ PORT: env.integer() }, { PORT: "abc" }),
+    EnvError,
+  ) as EnvError;
+
+  assertEquals(error.code, "ENV_INVALID_VARIABLE");
+  assert(error.message.includes("PORT"));
+  assert(error.message.includes("integer"));
+  assertEquals(error.details?.variable, "PORT");
+  assertEquals(error.details?.expected, "integer");
+  // Enum expectations spell out the allowed values.
+  const enumError = assertThrows(
+    () =>
+      validateEnv({ TIER: env.enum(["free", "pro"]) }, { TIER: "enterprise" }),
+    EnvError,
+  ) as EnvError;
+  assert(enumError.message.includes("one of: free, pro"));
+});
+
+Deno.test('@rootware/env - mode "test" requires an explicit source', () => {
+  const error = assertThrows(
+    () => defineEnv({ NAME: env.string() }, { mode: "test" }),
+    EnvError,
+  ) as EnvError;
+  assertEquals(error.code, "ENV_MODE_VIOLATION");
+  assertEquals(error.details?.mode, "test");
+
+  // With an explicit source, test mode validates normally.
+  const values = defineEnv(
+    { NAME: env.string() },
+    { mode: "test", source: { NAME: "fixture" } },
+  );
+  assertEquals(values.NAME, "fixture");
+});
+
+Deno.test("@rootware/env - strict modes ignore unsafe secret defaults", () => {
+  const schema = {
+    SESSION_SECRET: env.secret().default("dev-secret"),
+    PORT: env.integer().default(8000),
+  };
+
+  for (const mode of ["production", "test"] as const) {
+    const error = assertThrows(
+      () => validateEnv(schema, {}, { mode }),
+      EnvError,
+    ) as EnvError;
+    assertEquals(error.code, "ENV_MISSING_VARIABLE");
+    assertEquals(error.details?.reason, "unsafe-default");
+    assertEquals(error.details?.variable, "SESSION_SECRET");
+    assert(error.message.includes(mode));
+  }
+
+  // The non-secret default still applies once the secret is supplied.
+  const values = validateEnv(
+    schema,
+    { SESSION_SECRET: "real-secret" },
+    { mode: "production" },
+  );
+  assertEquals(values.SESSION_SECRET, "real-secret");
+  assertEquals(values.PORT, 8000);
+
+  // Development mode (and unset) keep the permissive default behavior.
+  assertEquals(
+    validateEnv(schema, {}, { mode: "development" }).SESSION_SECRET,
+    "dev-secret",
+  );
+  assertEquals(validateEnv(schema, {}).SESSION_SECRET, "dev-secret");
+});
+
+Deno.test("@rootware/env - secret-keyed names are strict even without env.secret()", () => {
+  // A key recognized by isSecretKey is treated as a secret in strict modes.
+  const schema = { API_KEY: env.string().default("dev-key") };
+  assertThrows(
+    () => validateEnv(schema, {}, { mode: "production" }),
+    EnvError,
+  );
+  assertEquals(validateEnv(schema, {}).API_KEY, "dev-key");
+});
+
+Deno.test("@rootware/env - prefix edge cases", () => {
+  const schema = {
+    PORT: env.integer().default(8000),
+    NOTE: env.string().optional(),
+  };
+
+  // An empty prefix is a no-op: keys map to themselves.
+  assertEquals(
+    validateEnv(schema, { PORT: "3000" }, { prefix: "" }).PORT,
+    3000,
+  );
+
+  // Optional variables stay undefined when the prefixed key is absent.
+  assertEquals(
+    validateEnv(schema, {}, { prefix: "APP_" }).NOTE,
+    undefined,
+  );
+
+  // Defaults still apply under a prefix when the prefixed key is absent.
+  assertEquals(validateEnv(schema, {}, { prefix: "APP_" }).PORT, 8000);
+
+  // Only the prefixed key is read; an unprefixed collision is ignored.
+  assertEquals(
+    validateEnv(schema, { PORT: "1111", APP_PORT: "2222" }, { prefix: "APP_" })
+      .PORT,
+    2222,
+  );
+});

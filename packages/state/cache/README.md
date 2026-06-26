@@ -33,10 +33,42 @@ const settings = await cache.get<{ theme: string }>("settings");
 - `normalizeCacheKey`
 - `joinCacheKey`
 - `jsonCacheSerializer` / `CacheSerializer`
+- `CacheStore` / `CacheLock` / `CacheLockOptions` (adapter contracts)
+- `RedisLikeClient` / `RedisCacheAdapterOptions`
+- `DenoKvLike` / `DenoKvCacheAdapterOptions`
 
 The memory store keeps raw values. Out-of-process adapters (Redis, KV) use a
 `CacheSerializer` — `jsonCacheSerializer()` is the default — to convert values
 to and from a string wire format.
+
+## Adapter readiness (`0.3`)
+
+An adapter implements `CacheStore`. The package ships the contracts a future
+Redis/KV/SQL adapter conforms to, so the wiring is settled even though the
+drivers (which need live services) are not bundled:
+
+- **Redis** — implement `CacheStore` over a `RedisLikeClient`
+  (`RedisCacheAdapterOptions`): store each entry as a serialized string with a
+  per-key `PX` expiry from `CacheEntry.ttlMs`; back `keys`/`clear` with `SCAN`
+  under `keyPrefix`.
+- **Deno KV** — implement `CacheStore` over a `DenoKvLike`
+  (`DenoKvCacheAdapterOptions`): map the cache key to a KV key tuple, use
+  `expireIn` for TTL, and `list({ prefix })` for `keys`/`clear`.
+- **Database-backed** — a SQL adapter stores `(key, value, expires_at)` rows.
+  Constraints: TTL is enforced by an `expires_at` filter on read **and** a
+  periodic sweep (the DB will not evict for you); `clear` is a prefix/`DELETE`;
+  reads must tolerate a value whose `expires_at` has passed between the filter
+  and the read (treat as a miss).
+
+### Distributed caveats
+
+The in-memory store is single-process and non-durable; `namespace` is a key
+prefix, not isolation. Across processes, `getOrSet`'s in-process dedup does
+**not** prevent a cache stampede. A store that can lock implements
+`acquireLock`, and `getOrSet({ lockTimeoutMs })` then takes the lock,
+double-checks the value, and computes at most once across nodes. `clear()` is
+global for the underlying store — it is not namespace-scoped until adapters
+expose prefix deletes.
 
 ## Security
 

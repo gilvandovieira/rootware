@@ -8,8 +8,8 @@ code in this repository.
 Rootware is a Deno 2.x / JSR workspace of small, independently published backend
 packages (`@rootware/*`). It is deliberately **not** a framework, runtime, or
 build system — there is no build step, and packages publish straight from source
-`mod.ts`. Each package is narrow, depends on as little as possible, and should
-be useful on its own.
+files. Each package is narrow, depends on as little as possible, and should be
+useful on its own.
 
 ## Commands
 
@@ -83,11 +83,14 @@ should make the next easier to build, not that imports flow along it.
 
 ## Conventions
 
-- **Package layout:** each `packages/<group>/<name>/` has `mod.ts` (sole public
-  entrypoint / JSR `exports`), `mod_test.ts` (tests live beside code),
+- **Package layout:** each `packages/<group>/<name>/` has `mod.ts` (root public
+  entrypoint / package-root JSR export), `mod_test.ts` (tests live beside code),
   `deno.json` (flat JSR package name + independent `version`), `README.md`, and
   `ROADMAP.md`. Filesystem groups are `foundation`, `data`, `web`, `state`, and
-  `async`; public package names remain flat `@rootware/<name>`.
+  `async`; public package names remain flat `@rootware/<name>`. New subpath
+  exports require real files and tests; the current implemented subpaths are
+  `@rootware/log/compat/pino`, `@rootware/orm/postgres`,
+  `@rootware/migrate/postgres`, and `@rootware/migrate/cli`.
 - **Errors:** throw `RootwareError` (from `@rootware/errors`) with a `code`,
   `status`, `severity`, and `expose` flag. `toJSON()`/`serializeError()` only
   reveal message/details/cause when `expose` is true — keep internal errors

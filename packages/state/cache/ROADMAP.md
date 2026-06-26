@@ -260,13 +260,27 @@ Use `RootwareError`.
 
 Test TTL, delete, clear, namespace, and get-or-set.
 
-## v0.3.0 — Adapter readiness
+## v0.3.0 — Adapter readiness — **done (`0.3.0`)**
 
-- Define Redis adapter contract.
-- Define Deno KV adapter contract.
-- Define database-backed adapter constraints.
-- Document distributed caveats.
-- Optional lock timeout semantics for stores that can support them.
+- **Redis adapter contract** — `RedisLikeClient` + `RedisCacheAdapterOptions`
+  (serialized string entries, per-key `PX` TTL, `SCAN` for keys/clear).
+- **Deno KV adapter contract** — `DenoKvLike` + `DenoKvCacheAdapterOptions`
+  (key-tuple mapping, `expireIn` TTL, `list({ prefix })`).
+- **Database-backed constraints** — documented in the README
+  (`(key, value,
+  expires_at)` rows, read-time filter + periodic sweep,
+  miss-on-expired race).
+- **Distributed caveats** — documented (single-process memory store,
+  namespace-as-prefix, stampede behavior, global `clear`).
+- **Optional lock timeout semantics** — `CacheStore.acquireLock` +
+  `CacheLock`/`CacheLockOptions` and `getOrSet({ lockTimeoutMs })`: a store that
+  can lock gets a double-checked, cross-process single-compute path; the
+  in-memory store omits it and keeps in-process dedup. Covered by tests with a
+  fake locking store.
+
+The concrete Redis/KV/SQL drivers stay deferred — they require live services and
+are not CI-testable under the no-network rule — but the contracts and the
+lock-aware `getOrSet` they plug into now ship.
 
 ## v0.4.0 — Rate-limit integration
 
