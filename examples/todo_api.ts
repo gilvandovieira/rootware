@@ -7,7 +7,13 @@ import {
   toRootwareError,
 } from "@rootware/errors";
 import { defineEnv, env, validateEnv } from "@rootware/env";
-import { createLogger, type Logger, memorySink } from "@rootware/log";
+import {
+  createLogger,
+  type Logger,
+  type MemoryLogSink,
+  memorySink,
+} from "@rootware/log";
+import { type ServeHandler, withRequestLogging } from "@rootware/log/http";
 import {
   assertValidSchemaSnapshot,
   deserializeSchemaSnapshot,
@@ -59,8 +65,18 @@ export interface CreateTodoApiOptions {
   readonly databasePath?: string;
 }
 
+/** Hono environment: a request-scoped child logger lives in `c.get("logger")`. */
+type TodoHonoEnv = { Variables: { logger: Logger } };
+
 export interface TodoApiResources {
-  readonly app: Hono;
+  readonly app: Hono<TodoHonoEnv>;
+  /**
+   * The server entrypoint: request-id injection → `@rootware/log/http` request
+   * logging → the Hono app. Used by both `Deno.serve` and the in-process tests.
+   */
+  readonly handler: ServeHandler;
+  /** In-memory log sink, exposed so the example can assert request-scoped logs. */
+  readonly logSink: MemoryLogSink;
   readonly config: TodoApiConfig;
   readonly close: () => Promise<void>;
 }
@@ -183,12 +199,13 @@ export async function createTodoApi(
   options: CreateTodoApiOptions = {},
 ): Promise<TodoApiResources> {
   const config = await resolveConfig(options);
+  const logSink = memorySink();
   const logger = createLogger({
     level: config.logLevel,
     name: "todo-api-example",
     base: { service: "rootware-todo-api" },
     redact: ["authorization", "cookie", "set-cookie"],
-  }, memorySink());
+  }, logSink);
 
   const db = await createSqliteDb({
     path: config.databasePath,
@@ -234,6 +251,15 @@ export async function createTodoApi(
     cacheTtlMs: config.cacheTtlMs,
   });
 
+  // Edge wiring for the errors+env+log+http slice: inject one request id at the
+  // boundary (so the request-logging wrapper and the Hono handler share it),
+  // then wrap the app with `@rootware/log/http` request logging. The boundary
+  // echoes the id onto the response; the Hono middleware reads it off the
+  // request — so generation must happen upstream of both.
+  const handler = withRequestId(
+    withRequestLogging((request) => app.fetch(request), { logger }),
+  );
+
   let closed = false;
   const close = async (): Promise<void> => {
     if (closed) {
@@ -257,7 +283,21 @@ export async function createTodoApi(
     "todo api ready",
   );
 
-  return { app, config, close };
+  return { app, handler, logSink, config, close };
+}
+
+/**
+ * Injects a single `x-request-id` at the very edge so both the request-logging
+ * boundary (which echoes it onto the response) and the inner Hono handler
+ * (which reads it off the request) observe the same id.
+ */
+function withRequestId(handler: ServeHandler): ServeHandler {
+  return (request, info) => {
+    const id = request.headers.get("x-request-id") ?? crypto.randomUUID();
+    const headers = new Headers(request.headers);
+    headers.set("x-request-id", id);
+    return handler(new Request(request, { headers }), info);
+  };
 }
 
 export async function runTodoApiExample(): Promise<void> {
@@ -278,9 +318,24 @@ export async function runTodoApiExample(): Promise<void> {
       },
     });
 
+    // Request ids flow boundary→handler: the same id appears on the response
+    // `x-request-id` header and in BOTH the `@rootware/log/http` boundary record
+    // and the in-request handler log. This is the regression guard for the
+    // slice's request logging.
+    const idResponse = await resources.handler(
+      new Request("http://todo.example.test/health"),
+    );
+    const requestId = idResponse.headers.get("x-request-id");
+    assertExists(requestId);
+    const slice = resources.logSink.records().filter(
+      (record) => record.requestId === requestId,
+    );
+    assert(slice.some((record) => record.event === "http.request.completed"));
+    assert(slice.some((record) => record.event === "todo.health.checked"));
+
     const fetch: FetchLike = (input, init) => {
       const request = new Request(input, init);
-      return Promise.resolve(resources!.app.fetch(request));
+      return Promise.resolve(resources!.handler(request));
     };
     const http = createHttpClient({
       baseUrl: "http://todo.example.test",
@@ -379,25 +434,21 @@ interface TodoAppServices {
   readonly cacheTtlMs: number;
 }
 
-function createApp(services: TodoAppServices): Hono {
-  const app = new Hono();
+function createApp(services: TodoAppServices): Hono<TodoHonoEnv> {
+  const app = new Hono<TodoHonoEnv>();
 
+  // Bind a request-scoped child logger. `withRequestId` guarantees the header is
+  // present, so the boundary record (from `@rootware/log/http`) and every
+  // in-request log share one `requestId`. Boundary timing/status logging is
+  // owned by `withRequestLogging`, so this middleware no longer logs it.
   app.use("*", async (context, next) => {
-    const startedAt = performance.now();
-    try {
-      await next();
-    } finally {
-      services.logger.info({
-        method: context.req.method,
-        path: new URL(context.req.url).pathname,
-        status: context.res.status,
-        durationMs: elapsedMs(startedAt),
-      }, "todo api request");
-    }
+    const requestId = context.req.header("x-request-id") ?? crypto.randomUUID();
+    context.set("logger", services.logger.child({ requestId }));
+    await next();
   });
 
-  app.onError((error) => {
-    services.logger.error(
+  app.onError((error, context) => {
+    context.get("logger").error(
       { error: serializeError(toRootwareError(error)) },
       "todo api request failed",
     );
@@ -408,7 +459,11 @@ function createApp(services: TodoAppServices): Hono {
     return errorResponse(todoNotFoundError("Route not found"));
   });
 
-  app.get("/health", () => {
+  app.get("/health", (context) => {
+    context.get("logger").info(
+      { event: "todo.health.checked" },
+      "health checked",
+    );
     return jsonResponse({ ok: true, service: "rootware-todo-api" });
   });
 
@@ -954,10 +1009,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function elapsedMs(startedAt: number): number {
-  return Math.round((performance.now() - startedAt) * 100) / 100;
-}
-
 async function removeIfExists(path: string): Promise<void> {
   try {
     await Deno.remove(path);
@@ -973,7 +1024,7 @@ if (import.meta.main) {
     const resources = await createTodoApi();
     const server = Deno.serve(
       { port: resources.config.port },
-      resources.app.fetch,
+      resources.handler,
     );
     console.log(
       `todo api listening on http://localhost:${resources.config.port}`,

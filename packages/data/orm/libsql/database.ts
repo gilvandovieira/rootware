@@ -1,3 +1,5 @@
+import { OrmError } from "../core/mod.ts";
+
 /** A libSQL result set (rows plus affected-row count). */
 export interface LibsqlResultSet {
   readonly rows: Record<string, unknown>[];
@@ -52,7 +54,11 @@ export async function openLibsqlClient(
   }
 
   if (options.url === undefined || options.url.trim().length === 0) {
-    throw new Error("libSQL connection url is required");
+    throw new OrmError("libSQL connection url is required", {
+      code: "ORM_DRIVER_MISSING",
+      status: 400,
+      details: { adapter: "libsql", field: "url" },
+    });
   }
 
   // deno-lint-ignore no-import-prefix

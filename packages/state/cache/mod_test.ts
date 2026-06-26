@@ -184,12 +184,44 @@ Deno.test("@rootware/cache - namespaces nest", async () => {
   assertEquals(await cache.get("users:sessions:u_123"), "ok");
 });
 
+Deno.test("@rootware/cache - namespaced clear deletes only that namespace", async () => {
+  const cache = createCache({ store: memoryCacheStore(), namespace: "app" });
+  const sessions = cache.namespace("sessions");
+  const otherSessions = cache.namespace("sessions-extra");
+
+  await cache.set("settings", "keep");
+  await sessions.set("s1", "delete");
+  await sessions.set("s2", "delete");
+  await otherSessions.set("s3", "keep");
+
+  await sessions.clear();
+
+  assertEquals(await sessions.get("s1"), undefined);
+  assertEquals(await sessions.get("s2"), undefined);
+  assertEquals(await cache.get("settings"), "keep");
+  assertEquals(await otherSessions.get("s3"), "keep");
+});
+
+Deno.test("@rootware/cache - deleteByPrefix deletes exact prefix and child keys", async () => {
+  const cache = createCache({ store: memoryCacheStore(), namespace: "app" });
+
+  await cache.set("user", "root");
+  await cache.set("user:1", "child");
+  await cache.set("userish", "keep");
+
+  assertEquals(await cache.deleteByPrefix("user"), 2);
+  assertEquals(await cache.get("user"), undefined);
+  assertEquals(await cache.get("user:1"), undefined);
+  assertEquals(await cache.get("userish"), "keep");
+});
+
 Deno.test("@rootware/cache - noopCache", async () => {
   const cache = noopCache();
 
   assertEquals(await cache.get("x"), undefined);
   assertEquals(await cache.has("x"), false);
   assertEquals(await cache.delete("x"), false);
+  assertEquals(await cache.deleteByPrefix("x"), 0);
   assertEquals(await cache.getOrSet("x", () => "fresh"), "fresh");
 
   await cache.set("x", "ignored");

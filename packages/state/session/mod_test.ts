@@ -110,6 +110,24 @@ Deno.test("@rootware/session - cache store works with cache memory store", async
   assertEquals(await store.delete("cached_1"), true);
 });
 
+Deno.test("@rootware/session - cache store clear deletes only its prefix", async () => {
+  const cache = createCache({ store: memoryCacheStore() });
+  const store = cacheSessionStore(cache, { prefix: "sess" });
+  const otherStore = cacheSessionStore(cache, { prefix: "other" });
+
+  await store.set(createSessionRecord({ id: "cached_1" }));
+  await store.set(createSessionRecord({ id: "cached_2" }));
+  await otherStore.set(createSessionRecord({ id: "cached_3" }));
+  await cache.set("unrelated", "keep");
+
+  await store.clear?.();
+
+  assertEquals(await store.get("cached_1"), undefined);
+  assertEquals(await store.get("cached_2"), undefined);
+  assertEquals((await otherStore.get("cached_3"))?.id, "cached_3");
+  assertEquals(await cache.get("unrelated"), "keep");
+});
+
 Deno.test("@rootware/session - cache store derives entry TTL from expiresAt", async () => {
   let lastSetTtlMs: number | undefined;
   const map = new Map<string, unknown>();
@@ -210,6 +228,21 @@ Deno.test("@rootware/session - cookie helpers are safe", () => {
 
   assertEquals(normalizeCookieOptions().name, "sid");
   assertThrows(() => serializeCookie("bad name", "x"), SessionError);
+  assertThrows(
+    () => serializeCookie("sid", "abc", { sameSite: "none" }),
+    SessionError,
+    "SameSite=None cookies must be Secure",
+  );
+  assertThrows(
+    () => normalizeCookieOptions({ sameSite: "none", secure: false }),
+    SessionError,
+    "SameSite=None cookies must be Secure",
+  );
+  assertThrows(
+    () => createCsrfCookieHeader("csrf", { sameSite: "none", secure: false }),
+    SessionError,
+    "SameSite=None cookies must be Secure",
+  );
 });
 
 Deno.test("@rootware/session - set-cookie uses secure defaults", () => {

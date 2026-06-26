@@ -456,7 +456,22 @@ Future packages:
 
 ### `@rootware/http`
 
-Current scope:
+Current scope (shipped — a client `fetch` wrapper):
+
+- `createHttpClient` over an injectable `fetch` (`FetchLike`)
+- retries with backoff, timeouts, and `Retry-After` handling
+- JSON request/response helpers and response-size limits
+- redaction of sensitive headers, URL credentials, and JSON body keys
+- request lifecycle hooks (`onRequest`/`onResponse`/`onRetry`/`onError`) and an
+  opt-in GET/HEAD response cache
+- `HttpError` and a mock-fetch test helper
+
+> The shipped package is **client-only**. The server-side request/response items
+> below are not part of `@rootware/http` today; server request logging currently
+> lives in `@rootware/log/http` (`withRequestLogging`), and the `todo_api.ts`
+> example wires request-scoped context locally rather than in a package.
+
+Future role (planned — not yet shipped):
 
 - server/request/response conventions
 - request IDs
@@ -467,9 +482,6 @@ Current scope:
 - status helpers
 - headers
 - testing utilities
-
-Future role:
-
 - bridge between context, errors, log, session, auth, framework adapters, and
   observability
 

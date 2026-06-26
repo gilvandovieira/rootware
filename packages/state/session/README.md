@@ -147,13 +147,16 @@ eviction (size/memory pressure), a flush, or a restarted in-memory backend all
 drop entries — so treat a missing session as logged-out and re-authenticate. Use
 a durable store (or a cache backed by durable storage) when sessions must
 survive. `namespace`/`prefix` is a key prefix, not isolation.
+`cacheSessionStore.clear()` deletes only sessions under its configured prefix,
+using the cache client's prefix-deletion support.
 
 ## Security
 
 Cookies store only the session id. Actor and session data stay server-side.
-Cookies are `HttpOnly`, `Secure`, and `SameSite=Lax` by default. Rotate the
-session id on login (`rotate`) to defend against fixation, and guard
-state-changing requests with `assertCsrf` (`0.4`).
+Cookies are `HttpOnly`, `Secure`, and `SameSite=Lax` by default. `SameSite=None`
+is rejected unless `Secure` is also enabled. Rotate the session id on login
+(`rotate`) to defend against fixation, and guard state-changing requests with
+`assertCsrf` (`0.4`).
 
 See [publishing](../../../docs/publishing.md) and
 [testing](../../../docs/testing.md).

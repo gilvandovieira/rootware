@@ -1,6 +1,6 @@
 # Release
 
-Rootware uses independent versioning per package.
+Rootware normally uses independent versioning per package.
 
 Examples:
 
@@ -11,6 +11,11 @@ Examples:
 
 Do not synchronize every package version automatically. Only bump and publish a
 package when that package changed.
+
+The v0.9 line is the exception: every package was intentionally aligned at
+`0.9.0` as a workspace-wide stabilization baseline before the v1.0 hardening
+pass. Future releases return to independent package versioning unless another
+workspace-wide baseline is explicitly planned.
 
 ## Versioning
 

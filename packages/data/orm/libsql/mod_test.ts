@@ -6,6 +6,7 @@ import {
   type LibsqlLikeTransaction,
   type LibsqlResultSet,
   type LibsqlStatement,
+  openLibsqlClient,
 } from "@rootware/orm/libsql";
 
 /** Fake libSQL client so the adapter is testable without `@libsql/client`. */
@@ -126,4 +127,16 @@ Deno.test("@rootware/orm/libsql - wraps query errors in OrmError", async () => {
     OrmError,
     "libSQL query failed",
   );
+});
+
+Deno.test("@rootware/orm/libsql - missing connection url is an OrmError", async () => {
+  const error = await assertRejects(
+    () => openLibsqlClient({ url: "" }),
+    OrmError,
+    "libSQL connection url is required",
+  ) as OrmError;
+
+  assertEquals(error.code, "ORM_DRIVER_MISSING");
+  assertEquals(error.status, 400);
+  assertEquals(error.details, { adapter: "libsql", field: "url" });
 });

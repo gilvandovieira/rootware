@@ -9,6 +9,7 @@ import {
   type LibsqlLikeTransaction,
   type LibsqlResultSet,
   type LibsqlStatement,
+  openLibsqlClient,
 } from "@rootware/migrate/libsql";
 
 /** Fake libSQL client simulating the migration history table (`?` params). */
@@ -117,6 +118,18 @@ Deno.test("@rootware/migrate/libsql - maps failures into MigrationError", async 
     MigrationError,
     "libSQL query failed",
   );
+});
+
+Deno.test("@rootware/migrate/libsql - missing connection url is a MigrationError", async () => {
+  const error = await assertRejects(
+    () => openLibsqlClient({ url: "" }),
+    MigrationError,
+    "libSQL connection url is required",
+  ) as MigrationError;
+
+  assertEquals(error.code, "MIGRATION_DRIVER_MISSING");
+  assertEquals(error.status, 400);
+  assertEquals(error.details, { adapter: "libsql", field: "url" });
 });
 
 Deno.test("@rootware/migrate/libsql - re-exports the SQLite DDL generators", () => {

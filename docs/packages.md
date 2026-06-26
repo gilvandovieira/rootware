@@ -61,9 +61,17 @@ subpath exports are:
 
 ```txt
 @rootware/log/compat/pino  -> packages/foundation/log/compat/pino
+@rootware/log/http         -> packages/foundation/log/http
 @rootware/orm/postgres     -> packages/data/orm/postgres
+@rootware/orm/sqlite       -> packages/data/orm/sqlite
+@rootware/orm/libsql       -> packages/data/orm/libsql
+@rootware/orm/turso        -> packages/data/orm/turso
 @rootware/migrate/postgres -> packages/data/migrate/postgres
+@rootware/migrate/sqlite   -> packages/data/migrate/sqlite
+@rootware/migrate/libsql   -> packages/data/migrate/libsql
+@rootware/migrate/turso    -> packages/data/migrate/turso
 @rootware/migrate/cli      -> packages/data/migrate/cli
+@rootware/jobs/postgres    -> packages/async/jobs/postgres
 ```
 
 Other planned subpaths remain roadmap-only until their source files, tests, and
