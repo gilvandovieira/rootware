@@ -12,10 +12,12 @@ import {
 } from "./executor.ts";
 import type { PgConnectionOptions } from "./pool.ts";
 
+/** Options for creating a PostgreSQL-backed ORM driver. */
 export interface PgOrmDriverOptions extends PgConnectionOptions {
   readonly executor?: PgSqlExecutor;
 }
 
+/** Creates an ORM driver backed by a PostgreSQL executor, pool, client, or URL. */
 export function createPgOrmDriver(options: PgOrmDriverOptions): OrmDriver {
   const executor = createPgExecutor(options);
 

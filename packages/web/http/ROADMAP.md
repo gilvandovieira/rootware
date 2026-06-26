@@ -281,12 +281,26 @@ Verify fake transport examples and tests (`createMockFetch`).
 - **Structured error response hardening** — error bodies are sanitized
   (sensitive keys redacted) **and** bounded by `maxResponseBytes`.
 
-## v0.4.0 — Integration hooks
+## v0.4.0 — Integration hooks — **done (`0.4.0`)**
 
-- Logger hooks.
-- OpenTelemetry hook contract.
-- Cache hook contract.
-- Provider adapter examples.
+- **Lifecycle hooks (`HttpHooks`)** — `onRequest`, `onResponse`, `onRetry`, and
+  `onError`, wired into the request loop and passed safe-by-default contexts
+  (`HttpRequestContext` and friends carry a stable `requestId`, the method, the
+  redacted URL, the attempt index, status/duration — never a body). Hooks are
+  awaited but isolated: a throwing or rejecting hook can never fail the request.
+- **OpenTelemetry / logger hook contract** — the same lifecycle is the seam a
+  tracing or metrics adapter builds on. `requestId` is stable across retries, so
+  an adapter can open a span on `onRequest` and close it on `onResponse`/
+  `onError`; the README shows a minimal span adapter. The internal redacted
+  logging stays as-is and runs alongside hooks.
+- **Cache hook contract (`HttpResponseCache`)** — an opt-in `cache` consulted
+  only for safe (`GET`/`HEAD`) requests, never for an `Authorization`-bearing
+  request; stores `2xx` responses (as clones) and serves hits without fetching
+  (`onResponse` reports `fromCache: true`). The implementation owns freshness/
+  TTL and storage — e.g. an `@rootware/cache` store — keeping HTTP core free of
+  cache policy. Read/write failures degrade to a normal request.
+- **Provider adapter examples** — README shows a span adapter and a cache-backed
+  client.
 
 ## v1.0.0 — Stable client contract
 

@@ -1,6 +1,7 @@
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 
+/** Error codes emitted by cache validation, serialization, and store failures. */
 export type CacheErrorCode =
   | "CACHE_INVALID_KEY"
   | "CACHE_GET_FAILED"
@@ -9,11 +10,14 @@ export type CacheErrorCode =
   | "CACHE_CLEAR_FAILED"
   | "CACHE_GET_OR_SET_FAILED"
   | "CACHE_SERIALIZATION_FAILED"
+  | "CACHE_RATE_LIMIT_INVALID"
   | "CACHE_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Logical cache key before any client namespace is applied. */
 export type CacheKey = string;
 
+/** Value shape accepted by the cache client and serializers. */
 export type CacheValue =
   | string
   | number
@@ -32,18 +36,22 @@ export interface CacheEntry<T = unknown> {
   ttlMs?: number;
 }
 
+/** Options for writing a cache value. */
 export interface CacheSetOptions {
   readonly ttlMs?: number;
 }
 
+/** Options for reading a cache value. */
 export interface CacheGetOptions {
   readonly allowExpired?: boolean;
 }
 
+/** Options for deleting a cache value. */
 export interface CacheDeleteOptions {
   readonly silent?: boolean;
 }
 
+/** Options for {@link CacheClient.getOrSet}. */
 export interface GetOrSetOptions extends CacheSetOptions {
   readonly forceRefresh?: boolean;
   /**
@@ -223,6 +231,7 @@ export interface MemoryCacheStoreOptions {
   readonly cloneValues?: boolean;
 }
 
+/** Options accepted when constructing a {@link CacheError}. */
 export interface CacheErrorOptions {
   readonly code?: CacheErrorCode;
   readonly status?: number;
@@ -612,6 +621,294 @@ export function noopCache(): CacheClient {
   };
 
   return cache;
+}
+
+/** Outcome of a rate-limit check, suitable for `RateLimit-*`/`Retry-After` headers. */
+export interface RateLimitResult {
+  /** Whether the request is permitted. */
+  readonly allowed: boolean;
+  /** The configured ceiling (window limit, or bucket capacity). */
+  readonly limit: number;
+  /** Units left before the next rejection. */
+  readonly remaining: number;
+  /** Epoch ms at which the budget is fully replenished. */
+  readonly resetAt: number;
+  /** Suggested wait before retrying, in ms (`0` when allowed). */
+  readonly retryAfterMs: number;
+}
+
+/**
+ * A counter-based rate limiter over a {@link CacheStore}. Operations on the same
+ * key are serialized in-process so concurrent `consume` calls are correct within
+ * one isolate; for cross-process correctness back it with an atomic store.
+ */
+export interface RateLimiter {
+  /** Consumes `cost` units (default `1`) for `key`. */
+  consume(key: CacheKey, cost?: number): Promise<RateLimitResult>;
+  /** Reports the current budget for `key` without consuming. */
+  peek(key: CacheKey): Promise<RateLimitResult>;
+  /** Clears the counter for `key`. */
+  reset(key: CacheKey): Promise<void>;
+}
+
+/** Options for {@link fixedWindowRateLimiter}. */
+export interface FixedWindowRateLimitOptions {
+  /** Backing store; defaults to an in-memory store. */
+  readonly store?: CacheStore;
+  /** Maximum units allowed per window. */
+  readonly limit: number;
+  /** Window length in milliseconds. */
+  readonly windowMs: number;
+  /** Key prefix; defaults to `"ratelimit:fixed"`. */
+  readonly namespace?: string;
+  /** Injectable clock for tests; defaults to `Date.now`. */
+  readonly now?: () => number;
+}
+
+/** Options for {@link tokenBucketRateLimiter}. */
+export interface TokenBucketRateLimitOptions {
+  /** Backing store; defaults to an in-memory store. */
+  readonly store?: CacheStore;
+  /** Bucket size (maximum burst). */
+  readonly capacity: number;
+  /** Tokens added per refill interval. */
+  readonly refillTokens: number;
+  /** Refill interval in milliseconds. */
+  readonly refillIntervalMs: number;
+  /** Key prefix; defaults to `"ratelimit:bucket"`. */
+  readonly namespace?: string;
+  /** Injectable clock for tests; defaults to `Date.now`. */
+  readonly now?: () => number;
+}
+
+interface FixedWindowState {
+  count: number;
+  windowStart: number;
+}
+
+interface TokenBucketState {
+  tokens: number;
+  updatedAt: number;
+}
+
+/**
+ * Creates a fixed-window rate limiter: at most `limit` units per `windowMs`,
+ * counted from the first request in each window. Simple and cheap, but allows
+ * up to `2 * limit` across a window boundary; use {@link tokenBucketRateLimiter}
+ * for smoother shaping.
+ */
+export function fixedWindowRateLimiter(
+  options: FixedWindowRateLimitOptions,
+): RateLimiter {
+  const limit = requirePositive(options.limit, "limit");
+  const windowMs = requirePositive(options.windowMs, "windowMs");
+  const store = options.store ?? memoryCacheStore();
+  const prefix = options.namespace ?? "ratelimit:fixed";
+  const clock = options.now ?? Date.now;
+  const lock = keyedMutex();
+
+  const evaluate = (
+    state: FixedWindowState | undefined,
+    now: number,
+  ): FixedWindowState => {
+    if (state === undefined || now - state.windowStart >= windowMs) {
+      return { count: 0, windowStart: now };
+    }
+    return state;
+  };
+
+  const toResult = (
+    state: FixedWindowState,
+    now: number,
+    allowed: boolean,
+  ): RateLimitResult => {
+    const resetAt = state.windowStart + windowMs;
+    const remaining = Math.max(0, limit - state.count);
+    return {
+      allowed,
+      limit,
+      remaining,
+      resetAt,
+      retryAfterMs: allowed ? 0 : Math.max(0, resetAt - now),
+    };
+  };
+
+  return {
+    consume(key: CacheKey, cost = 1): Promise<RateLimitResult> {
+      const units = requirePositive(cost, "cost");
+      const fullKey = joinCacheKey([prefix, key]);
+
+      return lock(fullKey, async () => {
+        const now = clock();
+        const entry = await store.get<FixedWindowState>(fullKey);
+        const state = evaluate(entry?.value, now);
+
+        if (state.count + units > limit) {
+          return toResult(state, now, false);
+        }
+
+        const next: FixedWindowState = {
+          count: state.count + units,
+          windowStart: state.windowStart,
+        };
+        const ttlMs = Math.max(1, next.windowStart + windowMs - now);
+        await store.set(fullKey, createCacheEntry(next, { ttlMs }), { ttlMs });
+        return toResult(next, now, true);
+      });
+    },
+
+    peek(key: CacheKey): Promise<RateLimitResult> {
+      const fullKey = joinCacheKey([prefix, key]);
+      return lock(fullKey, async () => {
+        const now = clock();
+        const entry = await store.get<FixedWindowState>(fullKey);
+        const state = evaluate(entry?.value, now);
+        return toResult(state, now, state.count < limit);
+      });
+    },
+
+    reset(key: CacheKey): Promise<void> {
+      const fullKey = joinCacheKey([prefix, key]);
+      return lock(fullKey, async () => {
+        await store.delete(fullKey, { silent: true });
+      });
+    },
+  };
+}
+
+/**
+ * Creates a token-bucket rate limiter: a bucket of `capacity` tokens that
+ * refills `refillTokens` every `refillIntervalMs`. Permits short bursts up to
+ * `capacity` while enforcing the average rate, and reports a precise
+ * `retryAfterMs` when a request is starved.
+ */
+export function tokenBucketRateLimiter(
+  options: TokenBucketRateLimitOptions,
+): RateLimiter {
+  const capacity = requirePositive(options.capacity, "capacity");
+  const refillTokens = requirePositive(options.refillTokens, "refillTokens");
+  const refillIntervalMs = requirePositive(
+    options.refillIntervalMs,
+    "refillIntervalMs",
+  );
+  const store = options.store ?? memoryCacheStore();
+  const prefix = options.namespace ?? "ratelimit:bucket";
+  const clock = options.now ?? Date.now;
+  const lock = keyedMutex();
+  const ratePerMs = refillTokens / refillIntervalMs;
+  // TTL long enough for an empty bucket to refill completely, so idle keys drop.
+  const fullRefillMs = Math.ceil(capacity / ratePerMs);
+
+  const currentTokens = (
+    state: TokenBucketState | undefined,
+    now: number,
+  ): number => {
+    if (state === undefined) {
+      return capacity;
+    }
+    const refilled = state.tokens + Math.max(0, now - state.updatedAt) *
+        ratePerMs;
+    return Math.min(capacity, refilled);
+  };
+
+  const toResult = (
+    tokens: number,
+    now: number,
+    allowed: boolean,
+  ): RateLimitResult => {
+    const deficit = capacity - tokens;
+    return {
+      allowed,
+      limit: capacity,
+      remaining: Math.floor(tokens),
+      resetAt: now + Math.ceil(deficit / ratePerMs),
+      retryAfterMs: allowed ? 0 : Math.max(1, Math.ceil(1 / ratePerMs)),
+    };
+  };
+
+  return {
+    consume(key: CacheKey, cost = 1): Promise<RateLimitResult> {
+      const units = requirePositive(cost, "cost");
+      const fullKey = joinCacheKey([prefix, key]);
+
+      return lock(fullKey, async () => {
+        const now = clock();
+        const entry = await store.get<TokenBucketState>(fullKey);
+        const tokens = currentTokens(entry?.value, now);
+
+        if (tokens < units) {
+          const next: TokenBucketState = { tokens, updatedAt: now };
+          await store.set(
+            fullKey,
+            createCacheEntry(next, {
+              ttlMs: fullRefillMs,
+            }),
+            { ttlMs: fullRefillMs },
+          );
+          const retryAfterMs = Math.ceil((units - tokens) / ratePerMs);
+          return { ...toResult(tokens, now, false), retryAfterMs };
+        }
+
+        const next: TokenBucketState = {
+          tokens: tokens - units,
+          updatedAt: now,
+        };
+        await store.set(
+          fullKey,
+          createCacheEntry(next, {
+            ttlMs: fullRefillMs,
+          }),
+          { ttlMs: fullRefillMs },
+        );
+        return toResult(next.tokens, now, true);
+      });
+    },
+
+    peek(key: CacheKey): Promise<RateLimitResult> {
+      const fullKey = joinCacheKey([prefix, key]);
+      return lock(fullKey, async () => {
+        const now = clock();
+        const entry = await store.get<TokenBucketState>(fullKey);
+        const tokens = currentTokens(entry?.value, now);
+        return toResult(tokens, now, tokens >= 1);
+      });
+    },
+
+    reset(key: CacheKey): Promise<void> {
+      const fullKey = joinCacheKey([prefix, key]);
+      return lock(fullKey, async () => {
+        await store.delete(fullKey, { silent: true });
+      });
+    },
+  };
+}
+
+function requirePositive(value: number, option: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new CacheError(`Rate limit ${option} must be greater than zero`, {
+      code: "CACHE_RATE_LIMIT_INVALID",
+      details: { option },
+    });
+  }
+  return value;
+}
+
+/** Serializes async operations per key so same-key work never interleaves. */
+function keyedMutex(): <T>(key: string, fn: () => Promise<T>) => Promise<T> {
+  const tails = new Map<string, Promise<unknown>>();
+
+  return <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const prev = tails.get(key) ?? Promise.resolve();
+    const result = prev.then(fn, fn);
+    const tail = result.then(() => {}, () => {});
+    tails.set(key, tail);
+    tail.then(() => {
+      if (tails.get(key) === tail) {
+        tails.delete(key);
+      }
+    });
+    return result;
+  };
 }
 
 interface RootwareCacheClientOptions {

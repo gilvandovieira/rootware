@@ -27,6 +27,26 @@ const DEFAULT_REDIS_TARGETS: readonly DbTarget[] = [
   { label: "redis-8.8", url: redisUrl(6308) },
 ];
 
+/** Connection settings for the RustFS (S3-compatible) target. */
+export interface S3Target {
+  readonly endpoint: string;
+  readonly region: string;
+  readonly bucket: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+}
+
+/** S3/RustFS target, from `RW_S3_*` env vars or the compose defaults. */
+export function s3Target(): S3Target {
+  return {
+    endpoint: readEnv("RW_S3_ENDPOINT") ?? "http://localhost:9000",
+    region: readEnv("RW_S3_REGION") ?? "us-east-1",
+    bucket: readEnv("RW_S3_BUCKET") ?? "rootware-test",
+    accessKeyId: readEnv("RW_S3_ACCESS_KEY_ID") ?? "rootware",
+    secretAccessKey: readEnv("RW_S3_SECRET_ACCESS_KEY") ?? "rootware-secret",
+  };
+}
+
 /** PostgreSQL targets, from `RW_PG_URLS` or the compose defaults. */
 export function pgTargets(): readonly DbTarget[] {
   return targetsFromEnv("RW_PG_URLS", DEFAULT_PG_TARGETS);

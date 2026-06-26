@@ -37,13 +37,52 @@ sessions.commit(headers, session);
 
 ## API
 
-- `createSessionManager`
+- `createSessionManager` (`create`, `get`, `update`, `rotate`, `destroy`,
+  `requireActor`, `commit`, …)
 - `memorySessionStore`
 - `cacheSessionStore`
 - `createSessionId`
 - `parseCookieHeader`
 - `serializeCookie`
 - `noopSessionManager`
+- CSRF: `createCsrfToken`, `createCsrfCookieHeader`, `verifyCsrf`, `assertCsrf`,
+  `isSameOriginRequest`
+- Authorization: `actorHasRole`, `actorHasAnyRole`, `actorHasPermission`,
+  `actorHasAllPermissions`, `assertActorRole`, `assertActorPermission`
+
+## Rotation, CSRF, and authorization (`0.4`)
+
+**Rotate the session id on login and privilege change** (session-fixation
+defense). `rotate` issues a new id, persists the record under it, deletes the
+old id, and can attach the authenticated actor in the same step:
+
+```ts
+const loggedIn = await sessions.rotate(session, {
+  actor: { id: user.id, roles: user.roles },
+});
+sessions.commit(responseHeaders, loggedIn); // sets the new cookie
+```
+
+**CSRF** uses origin validation plus a double-submit cookie token. Issue the
+token cookie (non-`HttpOnly` so the client can echo it) and verify unsafe
+requests:
+
+```ts
+const token = createCsrfToken();
+appendSetCookie(responseHeaders, createCsrfCookieHeader(token));
+
+// On a POST/PUT/PATCH/DELETE: throws SESSION_CSRF_INVALID (403) on failure.
+assertCsrf(request); // checks Origin/Sec-Fetch-Site + cookie vs x-csrf-token
+```
+
+**Authorization** reads the actor's `roles`/`permissions` — predicates plus
+throwing guards (`SESSION_FORBIDDEN`, 403), not a policy engine:
+
+```ts
+const actor = await sessions.requireActor(request);
+assertActorPermission(actor, "invoice:write");
+if (actorHasRole(actor, "admin")) { /* … */ }
+```
 
 ## Cache-backed sessions (`0.3`)
 
@@ -85,7 +124,9 @@ survive. `namespace`/`prefix` is a key prefix, not isolation.
 ## Security
 
 Cookies store only the session id. Actor and session data stay server-side.
-Cookies are `HttpOnly`, `Secure`, and `SameSite=Lax` by default.
+Cookies are `HttpOnly`, `Secure`, and `SameSite=Lax` by default. Rotate the
+session id on login (`rotate`) to defend against fixation, and guard
+state-changing requests with `assertCsrf` (`0.4`).
 
 See [publishing](../../../docs/publishing.md) and
 [testing](../../../docs/testing.md).
@@ -93,7 +134,9 @@ See [publishing](../../../docs/publishing.md) and
 ## Limitations
 
 This package is not a full authentication provider. It does not implement OAuth,
-JWT, encrypted cookies, CSRF, RBAC, or framework middleware yet.
+JWT, encrypted cookies, or a policy/RBAC engine. CSRF defense (origin +
+double-submit token) and actor role/permission checks ship in `0.4`; framework
+middleware lives in the dedicated adapter packages.
 
 ## Status
 

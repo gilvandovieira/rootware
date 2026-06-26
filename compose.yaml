@@ -95,3 +95,33 @@ services:
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports: ["6308:6379"]
     healthcheck: *redis-healthcheck
+
+  # S3-compatible object storage for the @rootware/storage integration tests.
+  # RustFS (MinIO is no longer maintained) speaks the S3 API on port 9000.
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: rootware
+      RUSTFS_SECRET_KEY: rootware-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+    ports:
+      - "9000:9000"
+    tmpfs: ["/data"]
+
+  # One-shot: wait for RustFS, then create the bucket the test expects. Uses the
+  # generic AWS CLI (provider-agnostic S3), so it works against any S3 endpoint.
+  rustfs-init:
+    image: amazon/aws-cli
+    depends_on:
+      - rustfs
+    environment:
+      AWS_ACCESS_KEY_ID: rootware
+      AWS_SECRET_ACCESS_KEY: rootware-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+          until aws --endpoint-url http://rustfs:9000 s3 ls >/dev/null 2>&1; do
+          echo "waiting for rustfs..."; sleep 2; done;
+          aws --endpoint-url http://rustfs:9000 s3 mb s3://rootware-test || true

@@ -7,8 +7,10 @@ import { MigrationError } from "../core/mod.ts";
 
 import type { QueryResult, SqlExecutor } from "./executor.ts";
 
+/** Default PostgreSQL table used to store applied migration history. */
 export const DEFAULT_PG_MIGRATION_TABLE = "rootware_migrations";
 
+/** Options for creating a PostgreSQL-backed migration history store. */
 export interface PgMigrationHistoryStoreOptions {
   readonly executor: SqlExecutor;
   readonly tableName?: string;
@@ -24,6 +26,7 @@ interface AppliedMigrationRow {
   readonly execution_ms?: unknown;
 }
 
+/** Creates a migration history store persisted in a PostgreSQL table. */
 export function createPgMigrationHistoryStore(
   options: PgMigrationHistoryStoreOptions,
 ): MigrationStore {

@@ -70,6 +70,50 @@ redaction, error-body key redaction, and the `redactHttpHeaders` /
 `redactHttpUrl` / `redactHttpJson` helpers you can call before logging your own
 fields. Request bodies are never logged.
 
+## Integration hooks (`0.4`)
+
+`hooks` observe the request lifecycle without touching the request. They are
+awaited but isolated — a throwing or rejecting hook can never fail the request —
+and receive only safe metadata (a stable `requestId`, method, redacted URL,
+attempt, status, duration; never a body). This is the seam tracing, metrics, and
+audit adapters build on:
+
+```ts
+// OpenTelemetry-style span adapter (sketch).
+const spans = new Map<string, Span>();
+const api = createHttpClient({
+  baseUrl: "https://api.example.com",
+  hooks: {
+    onRequest: (c) => spans.set(c.requestId, tracer.startSpan(c.method, c.url)),
+    onResponse: (c) => spans.get(c.requestId)?.end({ status: c.status }),
+    onError: (c) => spans.get(c.requestId)?.recordError(c.error),
+  },
+});
+```
+
+`requestId` is stable across retries, so one span covers a logical request.
+
+### Response cache hook (`0.4`)
+
+Pass a `cache` implementing `HttpResponseCache` to short-circuit safe requests.
+The HTTP client consults it for `GET`/`HEAD` only, never caches an
+`Authorization`-bearing request, and stores only `2xx` responses — the cache
+owns freshness/TTL and storage (wire it to an `@rootware/cache` store):
+
+```ts
+const store = new Map<string, Response>();
+const api = createHttpClient({
+  baseUrl: "https://api.example.com",
+  cache: {
+    get: (key) => store.get(key),
+    set: (key, res) => void store.set(key, res),
+  },
+});
+// A cache hit is reported to onResponse with `fromCache: true` and skips fetch.
+```
+
+Cache read/write failures degrade gracefully to a normal request.
+
 ## API
 
 - `createHttpClient`
@@ -81,6 +125,8 @@ fields. Request bodies are never logged.
 - `redactHttpHeaders`, `redactHttpUrl`, `redactHttpJson`, `isSensitiveHttpName`
 - `createMockFetch`
 - `createJsonResponse`
+- Types: `HttpHooks`, `HttpRequestContext`, `HttpResponseContext`,
+  `HttpRetryContext`, `HttpErrorContext`, `HttpResponseCache`
 
 ## Security
 
@@ -92,8 +138,9 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package does not implement interceptors, OAuth, cookie jars, circuit
-breakers, or OpenTelemetry yet.
+This package does not implement OAuth, cookie jars, or circuit breakers. It does
+not ship an OpenTelemetry exporter — instead it exposes `hooks` (`0.4`) as the
+contract a tracing/metrics adapter plugs into.
 
 ## Status
 

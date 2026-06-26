@@ -43,6 +43,8 @@ await queue.processNext();
 - `queue.deadLetter()` — inspect dead-lettered jobs
 - Recurrence — `RecurrenceRule`, `nextRecurrenceAt`, `parseCronExpression`,
   `cronMatches`, `nextCronRun`
+- Durable adapters (`0.4`) — `DurableJobStore`, `JobClaimOptions`,
+  `jobsTableDdl`, `JOB_TABLE_COLUMNS`, `DEFAULT_JOBS_TABLE`
 
 ## Recurring scheduling (`0.3`)
 
@@ -71,6 +73,33 @@ await queue.enqueue("nightly-report", payload, { runAt: at });
 - **Dead-letter** — exhausted jobs become status `"dead"`; inspect them with
   `queue.deadLetter()` and requeue with `queue.retry(id)`.
 
+## Durable adapters (`0.4`)
+
+The in-memory store is single-process. A durable, multi-worker queue implements
+`DurableJobStore` — the contract that makes delivery **at-least-once** across
+crashes:
+
+- **Atomic claim with a lease** — `claimNext({ workerId, leaseMs })` marks one
+  due job `running` in a transaction (Postgres `... FOR UPDATE SKIP LOCKED`;
+  SQLite under its single-writer lock) and stamps `lease_expires_at`.
+- **Heartbeats** — a long handler calls `heartbeat(id, leaseMs)`; it returns
+  `false` if the lease was already reclaimed, so the worker can abort.
+- **Crash recovery** — `reclaimExpired()` returns expired-lease `running` jobs
+  to `queued` for another worker.
+
+Because delivery is at-least-once, handlers should be idempotent — pair with
+`enqueue(..., { idempotencyKey })`.
+
+The table requirements ship as pure DDL so the app wires them into
+`@rootware/migrate` itself (jobs never imports migrate):
+
+```ts
+import { jobsTableDdl } from "jsr:@rootware/jobs";
+
+const { statements } = jobsTableDdl({ dialect: "postgres" }); // or "sqlite"
+// feed `statements` (CREATE TABLE + claim/lease/idempotency indexes) to migrate
+```
+
 ## Security
 
 Jobs never log payloads, outputs, or full metadata by default. Memory storage is
@@ -81,8 +110,10 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package does not implement distributed workers, Redis, Deno KV, SQL queue
-adapters, cron parsing, dashboards, or OpenTelemetry yet.
+This package ships the in-memory store and the **durable adapter contract**
+(`DurableJobStore`) plus its table DDL (`0.4`); the concrete Postgres/SQLite
+queue implementations, Redis/Deno KV adapters, dashboards, and OpenTelemetry are
+still future work.
 
 ## Status
 

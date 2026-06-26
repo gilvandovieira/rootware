@@ -11,14 +11,24 @@ import {
   memoryCacheStore,
 } from "@rootware/cache";
 import {
+  actorHasAllPermissions,
+  actorHasAnyRole,
+  actorHasPermission,
+  actorHasRole,
   appendSetCookie,
+  assertActorPermission,
+  assertActorRole,
+  assertCsrf,
   cacheSessionStore,
   createClearCookieHeader,
+  createCsrfCookieHeader,
+  createCsrfToken,
   createSessionId,
   createSessionManager,
   createSessionRecord,
   createSetCookieHeader,
   getCookie,
+  isSameOriginRequest,
   isSessionExpired,
   memorySessionStore,
   noopSessionManager,
@@ -28,6 +38,7 @@ import {
   safeSessionInfo,
   serializeCookie,
   SessionError,
+  verifyCsrf,
 } from "./mod.ts";
 
 Deno.test("@rootware/session - ids records expiry and refresh", () => {
@@ -258,4 +269,114 @@ Deno.test("@rootware/session - safe info and noop manager", async () => {
   assertEquals(noop.cookieName(), "sid");
   assertEquals(await noop.get(new Headers()), undefined);
   await assertRejects(() => noop.requireActor(new Headers()), SessionError);
+});
+
+Deno.test("@rootware/session - rotate issues a new id and invalidates the old one", async () => {
+  const store = memorySessionStore();
+  const sessions = createSessionManager({ store });
+
+  const anon = await sessions.create({ data: { cart: ["a"] } });
+  const oldId = anon.id;
+
+  // On login: rotate the id and attach the authenticated actor.
+  const loggedIn = await sessions.rotate(anon, {
+    actor: { id: "u_1", roles: ["member"] },
+  });
+
+  assert(loggedIn.id !== oldId);
+  assertEquals(loggedIn.actor?.id, "u_1");
+  assertEquals(loggedIn.data.cart, ["a"]); // data is preserved
+
+  // The old id no longer resolves; the new one does.
+  assertEquals(await sessions.getById(oldId), undefined);
+  assertExists(await sessions.getById(loggedIn.id));
+});
+
+Deno.test("@rootware/session - createCsrfToken and double-submit verifyCsrf", () => {
+  const token = createCsrfToken();
+  assertEquals(token.length, 64); // 32 bytes hex
+  assert(createCsrfCookieHeader(token).includes("csrf="));
+  assert(!createCsrfCookieHeader(token).includes("HttpOnly"));
+
+  const make = (init: RequestInit & { token?: string; cookie?: string }) =>
+    new Request("https://app.example.com/transfer", {
+      method: "POST",
+      headers: {
+        origin: "https://app.example.com",
+        ...(init.cookie === undefined ? {} : { cookie: init.cookie }),
+        ...(init.token === undefined ? {} : { "x-csrf-token": init.token }),
+      },
+    });
+
+  // Matching cookie + header passes.
+  assertEquals(
+    verifyCsrf(make({ cookie: `csrf=${token}`, token })),
+    { ok: true },
+  );
+
+  // Mismatched token fails.
+  assertEquals(
+    verifyCsrf(make({ cookie: `csrf=${token}`, token: "deadbeef" })),
+    { ok: false, reason: "token-mismatch" },
+  );
+
+  // Missing header token fails.
+  assertEquals(
+    verifyCsrf(make({ cookie: `csrf=${token}` })),
+    { ok: false, reason: "missing-token" },
+  );
+
+  // Safe methods skip the check.
+  assertEquals(
+    verifyCsrf(new Request("https://app.example.com/", { method: "GET" })),
+    { ok: true },
+  );
+});
+
+Deno.test("@rootware/session - verifyCsrf rejects a cross-origin request", () => {
+  const token = createCsrfToken();
+  const crossOrigin = new Request("https://app.example.com/transfer", {
+    method: "POST",
+    headers: {
+      origin: "https://evil.example.com",
+      cookie: `csrf=${token}`,
+      "x-csrf-token": token,
+    },
+  });
+
+  assertEquals(verifyCsrf(crossOrigin), {
+    ok: false,
+    reason: "origin-mismatch",
+  });
+  assert(
+    !isSameOriginRequest(crossOrigin),
+  );
+  assertThrows(() => assertCsrf(crossOrigin), SessionError);
+
+  // An allow-listed cross origin passes the origin gate.
+  assert(isSameOriginRequest(crossOrigin, ["https://evil.example.com"]));
+});
+
+Deno.test("@rootware/session - actor role and permission helpers", () => {
+  const actor = {
+    id: "u_1",
+    roles: ["member", "billing"],
+    permissions: ["invoice:read", "invoice:write"],
+  };
+
+  assert(actorHasRole(actor, "billing"));
+  assert(!actorHasRole(actor, "admin"));
+  assert(actorHasAnyRole(actor, ["admin", "member"]));
+  assert(actorHasPermission(actor, "invoice:read"));
+  assert(actorHasAllPermissions(actor, ["invoice:read", "invoice:write"]));
+  assert(!actorHasAllPermissions(actor, ["invoice:read", "invoice:delete"]));
+
+  assertActorRole(actor, "member");
+  assertActorPermission(actor, "invoice:write");
+
+  const forbidden = assertThrows(
+    () => assertActorPermission(actor, "invoice:delete"),
+    SessionError,
+  ) as SessionError;
+  assertEquals(forbidden.status, 403);
 });

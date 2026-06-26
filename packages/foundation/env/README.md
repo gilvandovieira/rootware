@@ -88,6 +88,31 @@ logger.info("configuration loaded", { env: redactEnv(config, schema) });
 // SESSION_SECRET and DATABASE_URL are replaced with "[REDACTED]".
 ```
 
+## Loading `.env` files (`0.4`)
+
+`loadEnvFiles` merges conventional `.env` files into a source you pass to
+`defineEnv` — config still validates once at startup. Files are merged
+last-wins: `.env` → `.env.<mode>` → `.env.local` → `.env.<mode>.local`, and
+`*.local` files are skipped in `test` mode so tests stay deterministic.
+
+```ts
+import { defineEnv, env, loadEnvFiles } from "jsr:@rootware/env";
+
+// Needs --allow-read for the .env files (default reader uses Deno).
+export const config = defineEnv(schema, {
+  source: loadEnvFiles({ mode: "development" }),
+  mode: "development",
+});
+```
+
+`loadEnvFiles` takes an injectable `reader` (default `denoEnvFileReader`), so
+loaders are testable without touching disk; `parseEnvFile` is the pure parser
+(comments, `export` prefix, single/double quotes, no new dependency on
+`@std/dotenv`).
+
+**Do not load `.env` files in production** — production should inject real
+environment variables; reserve file loading for local development and tests.
+
 ## Security
 
 Secrets are redacted by definition type and by common key names such as

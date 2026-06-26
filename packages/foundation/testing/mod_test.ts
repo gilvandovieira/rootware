@@ -12,6 +12,7 @@ import {
   assertRootwareError,
   assertThrows as rootAssertThrows,
   assertThrowsRootwareError,
+  callHandler,
   captureAsyncError,
   captureError,
   createCleanupStack,
@@ -20,8 +21,10 @@ import {
   createTestContext,
   fail,
   noop,
+  type ServeHandler,
   testEnv,
   testLogger,
+  testRequest,
   useFixture,
   wait,
   withEnvSource,
@@ -268,5 +271,69 @@ Deno.test("@rootware/testing - std assertRejects still checks package errors", a
       }),
       () => undefined,
     );
+  });
+});
+
+Deno.test("@rootware/testing - testRequest builds requests", async () => {
+  const get = testRequest("/health");
+  rootAssertEquals(get.method, "GET");
+  rootAssertEquals(new URL(get.url).pathname, "/health");
+
+  const withQuery = testRequest("/search", { query: { q: "deno", page: 2 } });
+  const url = new URL(withQuery.url);
+  rootAssertEquals(url.searchParams.get("q"), "deno");
+  rootAssertEquals(url.searchParams.get("page"), "2");
+
+  const json = testRequest("/users", { json: { name: "ada" } });
+  rootAssertEquals(json.method, "POST");
+  rootAssertEquals(json.headers.get("content-type"), "application/json");
+  rootAssertEquals(await json.json(), { name: "ada" });
+
+  rootAssertThrows(() => testRequest("/users", { json: { a: 1 }, body: "x" }));
+});
+
+Deno.test("@rootware/testing - callHandler invokes a Deno.serve handler", async () => {
+  const handler: ServeHandler = async (request) => {
+    if (request.method === "POST") {
+      const body = await request.json();
+      return Response.json({ created: body.name }, {
+        status: 201,
+        headers: { "x-trace": "abc" },
+      });
+    }
+    return new Response("ok", { headers: { "content-type": "text/plain" } });
+  };
+
+  const created = await callHandler(handler, "/users", {
+    json: { name: "ada" },
+  });
+  created
+    .assertStatus(201)
+    .assertOk()
+    .assertHeader("x-trace", "abc")
+    .assertJson({ created: "ada" });
+
+  const root = await callHandler(handler, "/");
+  root.assertOk().assertBodyIncludes("ok");
+  rootAssertEquals(root.text(), "ok");
+});
+
+Deno.test("@rootware/testing - callHandler passes remoteAddr and reports throws", async () => {
+  const echoAddr: ServeHandler = (_request, info) =>
+    Response.json({
+      host: info.remoteAddr.hostname,
+      port: info.remoteAddr.port,
+    });
+
+  const res = await callHandler(echoAddr, "/whoami", {
+    remoteAddr: { hostname: "10.0.0.1", port: 5555 },
+  });
+  res.assertJson({ host: "10.0.0.1", port: 5555 });
+
+  const boom: ServeHandler = () => {
+    throw new Error("handler exploded");
+  };
+  await assertThrowsRootwareError(() => callHandler(boom, "/boom"), {
+    code: "TEST_HANDLER_FAILED",
   });
 });

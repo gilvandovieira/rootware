@@ -27,6 +27,7 @@ const SENSITIVE_NAME_PARTS = [
   "apikey",
 ] as const;
 
+/** HTTP methods supported by the typed client and retry rules. */
 export type HttpMethod =
   | "GET"
   | "POST"
@@ -36,6 +37,7 @@ export type HttpMethod =
   | "HEAD"
   | "OPTIONS";
 
+/** Error codes emitted by URL, timeout, network, response, and parse failures. */
 export type HttpErrorCode =
   | "HTTP_INVALID_URL"
   | "HTTP_TIMEOUT"
@@ -48,20 +50,25 @@ export type HttpErrorCode =
   | "HTTP_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Header input accepted by request and client options. */
 export type HttpHeaders = HeadersInit;
 
+/** Primitive value accepted in an HTTP query parameter. */
 export type HttpQueryValue = string | number | boolean | null | undefined;
 
+/** Query object serialized onto a request URL. */
 export type HttpQuery = Record<
   string,
   HttpQueryValue | HttpQueryValue[]
 >;
 
+/** Fetch-compatible function used by the HTTP client. */
 export type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
+/** Parsed response body shape attached to HTTP response errors. */
 export type HttpResponseErrorBody =
   | Record<string, unknown>
   | readonly unknown[]
@@ -84,6 +91,7 @@ export interface RetryOptions {
   readonly respectRetryAfter?: boolean;
 }
 
+/** Fully resolved retry configuration used by retry decision helpers. */
 export interface RequiredRetryOptions {
   readonly attempts: number;
   readonly backoffMs: number;
@@ -103,6 +111,69 @@ export interface RetryContext {
   readonly options: RequiredRetryOptions;
 }
 
+/**
+ * A point-in-time view of a logical request passed to {@link HttpHooks}. The
+ * `requestId` is stable across retry attempts so adapters can correlate the
+ * lifecycle of one logical request (e.g. an OpenTelemetry span).
+ */
+export interface HttpRequestContext {
+  readonly requestId: string;
+  readonly method: HttpMethod;
+  /** Credential- and sensitive-query-redacted URL string. */
+  readonly url: string;
+  /** 0-based attempt index (`0` = first try). */
+  readonly attempt: number;
+}
+
+/** Context for a completed response (success path, or any when `expectOk` is false). */
+export interface HttpResponseContext extends HttpRequestContext {
+  readonly status: number;
+  readonly response: Response;
+  readonly durationMs: number;
+  /** True when an {@link HttpResponseCache} served the response without fetching. */
+  readonly fromCache: boolean;
+}
+
+/** Context for a retry about to be scheduled. */
+export interface HttpRetryContext extends HttpRequestContext {
+  readonly delayMs: number;
+  readonly status?: number;
+  readonly error?: unknown;
+}
+
+/** Context for a request that ultimately failed with an {@link HttpError}. */
+export interface HttpErrorContext extends HttpRequestContext {
+  readonly error: HttpError;
+  readonly durationMs: number;
+}
+
+/**
+ * Lifecycle hooks invoked around each request. Hooks are awaited but isolated:
+ * a hook that throws or rejects can never fail the request (the rejection is
+ * swallowed), mirroring the logger contract. They receive only safe metadata —
+ * never the request or response body — and are the seam tracing
+ * (OpenTelemetry), metrics, and audit adapters build on.
+ */
+export interface HttpHooks {
+  onRequest?(context: HttpRequestContext): void | Promise<void>;
+  onResponse?(context: HttpResponseContext): void | Promise<void>;
+  onRetry?(context: HttpRetryContext): void | Promise<void>;
+  onError?(context: HttpErrorContext): void | Promise<void>;
+}
+
+/**
+ * Pluggable response-cache contract. The implementation owns freshness/TTL and
+ * storage (e.g. an `@rootware/cache` store); the HTTP client only consults the
+ * cache for safe (`GET`/`HEAD`) requests, stores `2xx` responses, and never
+ * caches a request carrying an `Authorization` header.
+ */
+export interface HttpResponseCache {
+  /** Derives the cache key; defaults to `"<METHOD> <safe-url>"` when omitted. */
+  key?(context: HttpRequestContext): string;
+  get(key: string): Response | undefined | Promise<Response | undefined>;
+  set(key: string, response: Response): void | Promise<void>;
+}
+
 /** Options used when creating an HTTP client. */
 export interface HttpClientOptions {
   readonly baseUrl?: string | URL;
@@ -112,6 +183,10 @@ export interface HttpClientOptions {
   readonly fetch?: FetchLike;
   readonly logger?: Logger;
   readonly userAgent?: string;
+  /** Lifecycle hooks for tracing, metrics, and audit integrations. */
+  readonly hooks?: HttpHooks;
+  /** Optional response cache consulted for safe (`GET`/`HEAD`) requests. */
+  readonly cache?: HttpResponseCache;
   /**
    * Maximum response body size, in bytes, accepted when reading a JSON or error
    * body. A larger body fails with `HTTP_RESPONSE_TOO_LARGE` instead of being
@@ -199,10 +274,12 @@ export interface MockRoute {
   readonly handler: MockRouteHandler;
 }
 
+/** Handler used by {@link createMockFetch} for a matching mock route. */
 export type MockRouteHandler = (
   request: Request,
 ) => Response | Promise<Response>;
 
+/** Options accepted when constructing an {@link HttpError}. */
 export interface HttpErrorOptions {
   readonly code?: HttpErrorCode;
   readonly status?: number;
@@ -241,6 +318,8 @@ export function createHttpClient(
   const retry = options.retry;
   const fetchFn = options.fetch ?? getGlobalFetch();
   const logger = options.logger;
+  const hooks = options.hooks;
+  const cache = options.cache;
   const defaultMaxResponseBytes = options.maxResponseBytes;
 
   const send = (
@@ -254,6 +333,8 @@ export function createHttpClient(
       defaultRetry: retry,
       fetch: fetchFn,
       logger,
+      hooks,
+      cache,
       path,
       options: requestOptions,
       maxResponseBytes: requestOptions.maxResponseBytes ??
@@ -798,6 +879,8 @@ interface ExecuteRequestOptions {
   readonly defaultRetry?: RetryOptions;
   readonly fetch: FetchLike;
   readonly logger?: Logger;
+  readonly hooks?: HttpHooks;
+  readonly cache?: HttpResponseCache;
   readonly path: string;
   readonly options: HttpRequestOptions;
   readonly maxResponseBytes?: number;
@@ -822,12 +905,51 @@ async function executeRequest(
   let attempt = 0;
   let lastError: unknown;
   const safeUrl = safeUrlString(url);
+  const requestId = randomRequestId();
+  const headersInstance = mergeHeaders(headers);
 
   logDebug(
     context.logger,
-    { method, url: safeUrl },
+    { requestId, method, url: safeUrl },
     "http request started",
   );
+
+  await invokeHook(context.hooks?.onRequest, {
+    requestId,
+    method,
+    url: safeUrl,
+    attempt,
+  });
+
+  const cache = context.cache;
+  const cacheable = cache !== undefined && isCacheableMethod(method) &&
+    !headersInstance.has("authorization");
+  const cacheKey = cacheable
+    ? cache.key?.({ requestId, method, url: safeUrl, attempt: 0 }) ??
+      `${method} ${safeUrl}`
+    : undefined;
+
+  if (cache !== undefined && cacheKey !== undefined) {
+    const cached = await readCache(cache, cacheKey);
+    if (cached !== undefined) {
+      logDebug(
+        context.logger,
+        { requestId, method, url: safeUrl, status: cached.status },
+        "http request served from cache",
+      );
+      await invokeHook(context.hooks?.onResponse, {
+        requestId,
+        method,
+        url: safeUrl,
+        attempt: 0,
+        status: cached.status,
+        response: cached,
+        durationMs: Date.now() - startedAt,
+        fromCache: true,
+      });
+      return cached.clone();
+    }
+  }
 
   while (true) {
     const requestController = createRequestController(context.options.signal);
@@ -863,6 +985,7 @@ async function executeRequest(
         logWarn(
           context.logger,
           {
+            requestId,
             method,
             url: safeUrl,
             attempt,
@@ -871,6 +994,14 @@ async function executeRequest(
           },
           "http request retrying",
         );
+        await invokeHook(context.hooks?.onRetry, {
+          requestId,
+          method,
+          url: safeUrl,
+          attempt,
+          status: response.status,
+          delayMs,
+        });
         await wait(delayMs);
         continue;
       }
@@ -884,9 +1015,14 @@ async function executeRequest(
         );
       }
 
+      if (cache !== undefined && cacheKey !== undefined && response.ok) {
+        await writeCache(cache, cacheKey, response.clone());
+      }
+
       logDebug(
         context.logger,
         {
+          requestId,
           method,
           url: safeUrl,
           status: response.status,
@@ -894,6 +1030,17 @@ async function executeRequest(
         },
         "http request completed",
       );
+
+      await invokeHook(context.hooks?.onResponse, {
+        requestId,
+        method,
+        url: safeUrl,
+        attempt,
+        status: response.status,
+        response,
+        durationMs: Date.now() - startedAt,
+        fromCache: false,
+      });
 
       return response;
     } catch (cause) {
@@ -914,6 +1061,7 @@ async function executeRequest(
         logWarn(
           context.logger,
           {
+            requestId,
             method,
             url: safeUrl,
             attempt,
@@ -921,6 +1069,14 @@ async function executeRequest(
           },
           "http request retrying",
         );
+        await invokeHook(context.hooks?.onRetry, {
+          requestId,
+          method,
+          url: safeUrl,
+          attempt,
+          delayMs,
+          error,
+        });
         await wait(delayMs);
         continue;
       }
@@ -928,12 +1084,22 @@ async function executeRequest(
       logError(
         context.logger,
         {
+          requestId,
           method,
           url: safeUrl,
           durationMs: Date.now() - startedAt,
         },
         "http request failed",
       );
+
+      await invokeHook(context.hooks?.onError, {
+        requestId,
+        method,
+        url: safeUrl,
+        attempt,
+        error,
+        durationMs: Date.now() - startedAt,
+      });
 
       if (
         retryOptions !== undefined &&
@@ -1096,6 +1262,58 @@ export function isSensitiveHttpName(name: string): boolean {
 
 function methodAllowsBody(method: HttpMethod): boolean {
   return method !== "GET" && method !== "HEAD";
+}
+
+function isCacheableMethod(method: HttpMethod): boolean {
+  return method === "GET" || method === "HEAD";
+}
+
+/** Invokes a lifecycle hook, swallowing any failure so it never affects the request. */
+async function invokeHook<C>(
+  hook: ((context: C) => void | Promise<void>) | undefined,
+  context: C,
+): Promise<void> {
+  if (hook === undefined) {
+    return;
+  }
+
+  try {
+    await hook(context);
+  } catch {
+    // Hooks must never affect the request.
+  }
+}
+
+async function readCache(
+  cache: HttpResponseCache,
+  key: string,
+): Promise<Response | undefined> {
+  try {
+    return (await cache.get(key)) ?? undefined;
+  } catch {
+    // A cache read failure degrades to a normal request.
+    return undefined;
+  }
+}
+
+async function writeCache(
+  cache: HttpResponseCache,
+  key: string,
+  response: Response,
+): Promise<void> {
+  try {
+    await cache.set(key, response);
+  } catch {
+    // A cache write failure must not affect the response.
+  }
+}
+
+function randomRequestId(): string {
+  if (typeof crypto?.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `req_${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
 function getGlobalFetch(): FetchLike {

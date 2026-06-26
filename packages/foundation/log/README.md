@@ -87,12 +87,65 @@ The `time` field is always emitted (ISO by default; pass a `timestamp` function
 for a custom format). Transports, worker threads, `pino-pretty`, and Pino symbol
 internals are deliberately out of scope.
 
+## Sinks (`0.4`)
+
+Sinks are composable. Beyond `stdoutSink`/`stderrSink`/`memorySink` and the
+`bufferedSink`/`unbufferedSink` wrappers, `0.4` adds:
+
+```ts
+import {
+  createLogger,
+  failoverSink,
+  fanoutSink,
+  fileSink,
+  filterSink,
+  levelSink,
+  stdoutSink,
+  writableStreamSink,
+} from "jsr:@rootware/log";
+
+// Tee one logger to several destinations.
+const logger = createLogger(
+  { level: "info" },
+  fanoutSink(
+    stdoutSink(),
+    fileSink("./app.log"), // append-by-default; needs --allow-write
+    levelSink(stderrSink(), "error"), // only error/fatal reach stderr
+  ),
+);
+
+// Route around a flaky primary.
+const resilient = failoverSink(remoteSink, fileSink("./fallback.log"));
+
+// Drop records that fail a predicate (unparseable lines pass through).
+const tenantOnly = filterSink(stdoutSink(), (record) => record.tenant === "a");
+
+// Adapt any web WritableStream<Uint8Array> (e.g. a compression/transform stream).
+const streamed = writableStreamSink(someWritableStream);
+```
+
+- **`fileSink(path, { append })`** is Deno-native and permission-minimal (only
+  `--allow-write` for the target path); it appends by default, or truncates with
+  `{ append: false }`.
+- **`fanoutSink(...sinks)`** writes every line to all sinks and aggregates their
+  flush/close.
+- **`filterSink` / `levelSink`** decode each JSON line to decide whether to
+  forward it.
+- **`failoverSink(primary, fallback)`** forwards to `fallback` when the primary
+  `write` throws or rejects.
+
 ## API
 
 - `createLogger`
 - `memorySink`
 - `bufferedSink`
 - `unbufferedSink`
+- `fileSink`
+- `writableStreamSink`
+- `fanoutSink`
+- `filterSink`
+- `levelSink`
+- `failoverSink`
 - `createNoopLogger`
 - `serializeErrorForLog`
 - `pino` (from `@rootware/log/compat/pino`)
@@ -113,8 +166,9 @@ See [publishing](../../../docs/publishing.md) and
 
 ## Limitations
 
-This package does not include pretty printing, file transports, or OpenTelemetry
-integration yet.
+This package does not include pretty printing or OpenTelemetry integration yet.
+File logging is available through `fileSink` (`0.4`), but there is no rotating
+file transport.
 
 ## Status
 

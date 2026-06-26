@@ -7,6 +7,7 @@ import {
   type RootwareSchemaSnapshot,
 } from "@rootware/schema";
 
+/** Error codes emitted by ORM schema, SQL, driver, and transaction helpers. */
 export type OrmErrorCode =
   | "ORM_INVALID_TABLE"
   | "ORM_INVALID_COLUMN"
@@ -19,10 +20,13 @@ export type OrmErrorCode =
   | "ORM_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Normalized table name, optionally including a validated schema path. */
 export type TableName = string;
 
+/** Normalized simple column name. */
 export type ColumnName = string;
 
+/** Column data types supported by the built-in column builder factory. */
 export type ColumnDataType =
   | "text"
   | "varchar"
@@ -37,6 +41,7 @@ export type ColumnDataType =
   | "timestamptz"
   | "uuid";
 
+/** JavaScript runtime value types represented by ORM columns. */
 export type ColumnRuntimeType =
   | string
   | number
@@ -85,11 +90,13 @@ export interface ColumnBuilder<
   ): ColumnBuilder<T, TOptional, THasDefault>;
 }
 
+/** Column builder map passed to {@link defineTable}. */
 export type TableColumns = Record<
   string,
   ColumnBuilder<unknown, boolean, boolean>
 >;
 
+/** Materialized column metadata inferred from a {@link ColumnBuilder}. */
 export type ColumnDefinitionFromBuilder<TBuilder> = TBuilder extends
   ColumnBuilder<infer TValue, infer TOptional, infer THasDefault>
   ? Omit<ColumnDefinition<TValue>, "name"> & {
@@ -138,12 +145,14 @@ type OptionalInsertKeys<TColumns extends TableColumns> = {
     : never;
 }[keyof TColumns];
 
+/** Infers the row shape returned when selecting from a table. */
 export type InferSelect<TTable> = TTable extends TableDefinition<infer TColumns>
   ? {
     readonly [K in keyof TColumns]: ColumnValueFromBuilder<TColumns[K]>;
   }
   : never;
 
+/** Infers the accepted insert shape for a table, honoring defaults and optional fields. */
 export type InferInsert<TTable> = TTable extends TableDefinition<infer TColumns>
   ?
     & {
@@ -158,8 +167,10 @@ export type InferInsert<TTable> = TTable extends TableDefinition<infer TColumns>
     }
   : never;
 
+/** SQL dialect names supported by SQL rendering helpers. */
 export type SqlDialect = "postgres" | "sqlite" | "mysql" | "generic";
 
+/** Parameter value shape accepted by rendered SQL queries. */
 export type SqlParameter =
   | string
   | number
@@ -170,11 +181,13 @@ export type SqlParameter =
   | Record<string, unknown>
   | unknown[];
 
+/** Driver-ready SQL text and parameter array. */
 export interface SqlQuery {
   readonly text: string;
   readonly params: readonly SqlParameter[];
 }
 
+/** Any SQL input accepted by database execution methods. */
 export type SqlInput = Sql | SqlQuery | string;
 
 /** SQL fragment made from safe chunks and separate parameters. */
@@ -183,6 +196,7 @@ export interface Sql {
   readonly chunks: readonly SqlChunk[];
 }
 
+/** Internal chunk representation used by parameterized SQL fragments. */
 export type SqlChunk =
   | { readonly kind: "text"; readonly value: string }
   | { readonly kind: "param"; readonly value: SqlParameter }
@@ -196,6 +210,7 @@ export interface Condition {
   readonly sql: Sql;
 }
 
+/** Result returned by ORM drivers and database execution methods. */
 export interface OrmQueryResult<T = unknown> {
   readonly rows: T[];
   readonly rowCount?: number;
@@ -218,6 +233,7 @@ export interface OrmDriver {
   close?(): Promise<void>;
 }
 
+/** Driver transaction facade exposed to transaction callbacks. */
 export interface OrmTransaction {
   query<T = unknown>(query: SqlQuery): Promise<OrmQueryResult<T>>;
   execute(query: SqlQuery): Promise<OrmQueryResult>;
@@ -261,6 +277,7 @@ export interface Database {
   close(): Promise<void>;
 }
 
+/** Options for creating a {@link Database}. */
 export interface DatabaseOptions {
   readonly driver?: OrmDriver;
   readonly dialect?: SqlDialect;
@@ -288,6 +305,7 @@ export type InferProjection<TProjection extends SelectProjection> = {
   readonly [K in keyof TProjection]: ProjectionColumnValue<TProjection[K]>;
 };
 
+/** Fluent builder for `SELECT` queries. */
 export interface SelectBuilder<TTable, TResult> {
   from<TNewTable extends TableDefinition>(
     table: TNewTable,
@@ -322,6 +340,7 @@ export interface SelectBuilder<TTable, TResult> {
   execute(): Promise<TResult[]>;
 }
 
+/** Fluent builder for `INSERT` queries. */
 export interface InsertBuilder<
   TTable extends TableDefinition,
   TReturn = InferSelect<TTable>,
@@ -340,6 +359,7 @@ export interface InsertBuilder<
   execute(): Promise<OrmQueryResult<TReturn>>;
 }
 
+/** Fluent builder for `UPDATE` queries. */
 export interface UpdateBuilder<
   TTable extends TableDefinition,
   TReturn = InferSelect<TTable>,
@@ -362,6 +382,7 @@ export interface UpdateBuilder<
   execute(): Promise<OrmQueryResult<TReturn>>;
 }
 
+/** Fluent builder for `DELETE` queries. */
 export interface DeleteBuilder<
   TTable extends TableDefinition,
   TReturn = InferSelect<TTable>,
@@ -380,19 +401,23 @@ export interface DeleteBuilder<
   execute(): Promise<OrmQueryResult<TReturn>>;
 }
 
+/** Options for the in-memory ORM driver. */
 export interface MemoryOrmDriverOptions {
   readonly tables?: Record<string, Array<Record<string, unknown>>>;
 }
 
+/** Options applied when building a schema snapshot from ORM tables. */
 export interface CreateSchemaSnapshotOptions {
   readonly dialect?: RootwareDialectName;
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Input accepted by {@link createSchemaSnapshot}. */
 export interface CreateSchemaSnapshotInput extends CreateSchemaSnapshotOptions {
   readonly tables: readonly TableDefinition[] | Record<string, TableDefinition>;
 }
 
+/** Options accepted when constructing an {@link OrmError}. */
 export interface OrmErrorOptions {
   readonly code?: OrmErrorCode;
   readonly status?: number;
@@ -706,30 +731,37 @@ export function quoteIdentifier(
     .join(".");
 }
 
+/** `column = value` SQL condition. */
 export function eq(column: unknown, value: unknown): Condition {
   return binaryCondition(column, "=", value);
 }
 
+/** `column <> value` SQL condition. */
 export function ne(column: unknown, value: unknown): Condition {
   return binaryCondition(column, "<>", value);
 }
 
+/** `column > value` SQL condition. */
 export function gt(column: unknown, value: unknown): Condition {
   return binaryCondition(column, ">", value);
 }
 
+/** `column >= value` SQL condition. */
 export function gte(column: unknown, value: unknown): Condition {
   return binaryCondition(column, ">=", value);
 }
 
+/** `column < value` SQL condition. */
 export function lt(column: unknown, value: unknown): Condition {
   return binaryCondition(column, "<", value);
 }
 
+/** `column <= value` SQL condition. */
 export function lte(column: unknown, value: unknown): Condition {
   return binaryCondition(column, "<=", value);
 }
 
+/** `column LIKE value` SQL condition. */
 export function like(column: unknown, value: unknown): Condition {
   return binaryCondition(column, "like", value);
 }
@@ -759,26 +791,31 @@ export function notInArray(
   return inArrayCondition(column, values, true);
 }
 
+/** `column IS NULL` SQL condition. */
 export function isNull(column: unknown): Condition {
   return createCondition(sql`${columnToSql(column)} is null`);
 }
 
+/** `column IS NOT NULL` SQL condition. */
 export function isNotNull(column: unknown): Condition {
   return createCondition(sql`${columnToSql(column)} is not null`);
 }
 
+/** Combines conditions with SQL `AND`, ignoring nullish values. */
 export function and(
   ...conditions: Array<Condition | null | undefined>
 ): Condition {
   return combineConditions("and", conditions);
 }
 
+/** Combines conditions with SQL `OR`, ignoring nullish values. */
 export function or(
   ...conditions: Array<Condition | null | undefined>
 ): Condition {
   return combineConditions("or", conditions);
 }
 
+/** Negates a SQL condition with `NOT (...)`. */
 export function not(condition: Condition): Condition {
   assertCondition(condition);
   return createCondition(sql`not (${condition.sql})`);
@@ -902,12 +939,14 @@ export function getTableName(table: TableDefinition): TableName {
   return table.name;
 }
 
+/** Returns true when a value has the public table definition shape. */
 export function isTable(value: unknown): value is TableDefinition {
   return isRecord(value) && value.kind === "table" &&
     typeof value.name === "string" &&
     isRecord(value.columns);
 }
 
+/** Returns true when a value has the public column definition shape. */
 export function isColumn(
   value: unknown,
 ): value is ColumnDefinition<unknown> & {
@@ -921,10 +960,12 @@ export function isColumn(
     typeof value.dataType === "string";
 }
 
+/** Returns true when a value is a Rootware SQL fragment. */
 export function isSql(value: unknown): value is Sql {
   return isRecord(value) && value.kind === "sql" && Array.isArray(value.chunks);
 }
 
+/** Returns true when a value is driver-ready SQL text and parameters. */
 export function isSqlQuery(value: unknown): value is SqlQuery {
   return isRecord(value) && typeof value.text === "string" &&
     Array.isArray(value.params);

@@ -19,26 +19,32 @@ import { createPgExecutor, type SqlExecutor } from "./executor.ts";
 import { createPgMigrationHistoryStore } from "./history.ts";
 import type { PgConnectionOptions } from "./pool.ts";
 
+/** PostgreSQL convenience migration definition with inferred programmatic kind. */
 export interface PgMigrationDefinition extends MigrationBase {
   readonly kind?: never;
   readonly up: MigrationStep;
   readonly down?: MigrationStep;
 }
 
+/** Migration input accepted by the PostgreSQL migrator facade. */
 export type PgMigrationInput = Migration | PgMigrationDefinition;
 
+/** Options for applying pending PostgreSQL migrations. */
 export interface PgMigrateOptions extends MigrationRunOptions {
   readonly migrations: readonly PgMigrationInput[];
 }
 
+/** Options for rolling back PostgreSQL migrations. */
 export interface PgRollbackOptions extends MigrationDownOptions {
   readonly migrations: readonly PgMigrationInput[];
 }
 
+/** Options for planning PostgreSQL migrations without executing them. */
 export interface PgMigrationPlanOptions {
   readonly migrations: readonly PgMigrationInput[];
 }
 
+/** PostgreSQL migration facade backed by the core migrator. */
 export interface PgMigrator {
   migrate(options: PgMigrateOptions): Promise<MigrationResult>;
   rollback(options: PgRollbackOptions): Promise<MigrationResult>;
@@ -47,6 +53,7 @@ export interface PgMigrator {
   close(): Promise<void>;
 }
 
+/** Options for creating a PostgreSQL migration facade. */
 export interface CreatePgMigratorOptions extends PgConnectionOptions {
   readonly executor?: SqlExecutor;
   readonly logger?: Logger;
@@ -54,6 +61,7 @@ export interface CreatePgMigratorOptions extends PgConnectionOptions {
   readonly useTransaction?: boolean;
 }
 
+/** Creates a PostgreSQL migration facade with a database-backed history store. */
 export function createPgMigrator(
   options: CreatePgMigratorOptions,
 ): Promise<PgMigrator> {

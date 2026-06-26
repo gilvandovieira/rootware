@@ -293,19 +293,27 @@ and hardening, not new construction:
   `maxEntries` cache resolves to a miss, and an already-expired session the
   cache still holds is resolved to `undefined` by the manager.
 
-## v0.4.0 — Rotation, fixation, and CSRF (the real security gap)
+## v0.4.0 — Rotation, fixation, and CSRF — **done (`0.4.0`)**
 
-`requireActor` and the actor contract already ship, so this milestone is
-retargeted to the two genuine gaps:
+`requireActor` and the actor contract already shipped, so this milestone closed
+the genuine gaps:
 
-- Session id rotation on login / privilege change (fixation defense).
-- A CSRF defense: choose double-submit cookie token or origin / `Sec-Fetch-Site`
-  validation, document the threat model, and make it the default for cookie
-  sessions.
-- Role/permission metadata shape on the actor, without a full policy engine.
-
-Until this milestone lands, the security model above documents the interim
-guidance (no state-changing GETs; framework-level CSRF check).
+- **Session id rotation** — `SessionManager.rotate(session, options?)` mints a
+  fresh id, persists the record under it, and deletes the old id (so a fixed id
+  is invalidated). It optionally applies actor/data/maxAge updates in the same
+  step and takes an `idPrefix`; data is preserved by default. Call it on login
+  and privilege change, then re-`commit` to set the new cookie.
+- **CSRF defense (default for cookie sessions)** — origin validation **plus** a
+  double-submit cookie token: `createCsrfToken()`, `createCsrfCookieHeader()`
+  (deliberately non-`HttpOnly` so the client can echo it), `verifyCsrf(request)`
+  / `assertCsrf(request)`, and `isSameOriginRequest()`. Safe methods pass;
+  unsafe methods require a same-origin (or allow-listed)
+  `Origin`/`Sec-Fetch-Site` and a cookie/header token match compared in constant
+  time. Failures raise `SESSION_CSRF_INVALID` (403, exposed) with the reason.
+- **Role/permission metadata** — predicates `actorHasRole`/`actorHasAnyRole`/
+  `actorHasPermission`/`actorHasAllPermissions` and guards `assertActorRole`/
+  `assertActorPermission` (throw `SESSION_FORBIDDEN`, 403) over the existing
+  actor `roles`/`permissions` shape — no policy engine.
 
 ## v0.5.0 — Provider adapters
 

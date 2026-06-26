@@ -12,6 +12,7 @@ export * from "./workflow.ts";
 
 const DEFAULT_LOCK_ID = "rootware:migrate";
 
+/** Error codes emitted by migration validation, planning, locking, and execution. */
 export type MigrationErrorCode =
   | "MIGRATION_INVALID"
   | "MIGRATION_DUPLICATE_ID"
@@ -27,10 +28,13 @@ export type MigrationErrorCode =
   | "MIGRATION_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Stable migration identifier, usually derived from a migration file name. */
 export type MigrationId = string;
 
+/** Direction a migration runner is executing. */
 export type MigrationDirection = "up" | "down";
 
+/** Planning or execution status for a migration. */
 export type MigrationStatus =
   | "pending"
   | "applied"
@@ -38,8 +42,10 @@ export type MigrationStatus =
   | "failed"
   | "skipped";
 
+/** Supported migration definition shapes. */
 export type MigrationKind = "sql" | "programmatic";
 
+/** Deterministic checksum used to detect edited migrations. */
 export type MigrationChecksum = string;
 
 /** Context passed to programmatic migrations. */
@@ -61,11 +67,13 @@ export interface MigrationDriver {
   close?(): Promise<void>;
 }
 
+/** Executable migration step, either SQL text or a programmatic callback. */
 export type MigrationStep =
   | string
   | readonly string[]
   | ((ctx: MigrationContext) => void | Promise<void>);
 
+/** Common metadata shared by all migration definitions. */
 export interface MigrationBase {
   readonly id: MigrationId;
   readonly description?: string;
@@ -87,6 +95,7 @@ export interface ProgrammaticMigration extends MigrationBase {
   readonly down?: MigrationStep;
 }
 
+/** Any migration definition accepted by a Rootware migrator. */
 export type Migration = SqlMigration | ProgrammaticMigration;
 
 /** Applied migration history record. */
@@ -98,6 +107,7 @@ export interface AppliedMigration {
   readonly description?: string;
 }
 
+/** One migration's status inside a generated migration plan. */
 export interface MigrationPlanItem {
   readonly migration: Migration;
   readonly status: MigrationStatus;
@@ -106,6 +116,7 @@ export interface MigrationPlanItem {
   readonly reason?: string;
 }
 
+/** Full migration plan grouped by pending, applied, and mismatched entries. */
 export interface MigrationPlan {
   readonly items: MigrationPlanItem[];
   readonly pending: MigrationPlanItem[];
@@ -115,6 +126,7 @@ export interface MigrationPlan {
   readonly hasChecksumMismatches: boolean;
 }
 
+/** Result returned after applying or rolling back migrations. */
 export interface MigrationResult {
   readonly direction: MigrationDirection;
   readonly dryRun: boolean;
@@ -127,12 +139,14 @@ export interface MigrationResult {
   readonly executionMs: number;
 }
 
+/** Options for applying pending migrations. */
 export interface MigrationRunOptions {
   readonly dryRun?: boolean;
   readonly steps?: number;
   readonly allowDirty?: boolean;
 }
 
+/** Options for rolling back applied migrations. */
 export interface MigrationDownOptions extends MigrationRunOptions {
   readonly to?: MigrationId;
 }
@@ -185,6 +199,7 @@ export interface Migrator {
   close(): Promise<void>;
 }
 
+/** Options for creating a core {@link Migrator}. */
 export interface MigratorOptions {
   readonly migrations: Migration[];
   readonly store?: MigrationStore;
@@ -194,22 +209,26 @@ export interface MigratorOptions {
   readonly useTransaction?: boolean;
 }
 
+/** Input snapshots for creating a schema migration plan. */
 export interface SchemaMigrationPlanInput {
   readonly from?: RootwareSchemaSnapshot;
   readonly to: RootwareSchemaSnapshot;
 }
 
+/** Normalized schema migration plan snapshot pair. */
 export interface SchemaMigrationPlan {
   readonly from?: RootwareSchemaSnapshot;
   readonly to: RootwareSchemaSnapshot;
 }
 
+/** Options for the in-memory migration history store. */
 export interface MemoryMigrationStoreOptions {
   readonly applied?: AppliedMigration[];
   readonly locked?: boolean;
   readonly cloneValues?: boolean;
 }
 
+/** Options accepted when constructing a {@link MigrationError}. */
 export interface MigrationErrorOptions {
   readonly code?: MigrationErrorCode;
   readonly status?: number;

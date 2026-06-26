@@ -888,9 +888,34 @@ Acceptance:
 
 - Generated migration names are predictable and useful.
 
-## v0.4 — SQLite local migrations
+## v0.4 — SQLite local migrations — **done (`0.4.0`)**
 
 Goal: support local SQLite apps and test databases.
+
+Shipped in `0.4.0` (the `@rootware/migrate/sqlite` subpath):
+
+- **SQLite DDL generator** (pure, CI-tested) — `generateSqliteCreateTable`,
+  `generateSqliteColumnDefinition`/`generateSqliteColumnType` (snapshot kind →
+  SQLite affinity: `TEXT`/`INTEGER`/`REAL`/`BLOB`; booleans as `INTEGER`,
+  boolean defaults as `0`/`1`), `generateSqliteAddColumn`, and
+  `generateSqliteUpStatements`. Like the Postgres generator, only additive
+  changes (`CREATE TABLE`, `ADD COLUMN`) are emitted; destructive changes are
+  withheld and returned separately (SQLite's `ALTER TABLE` is limited).
+- **SQLite migration runner** —
+  `createSqliteMigrator({ path | database |
+  executor })` over the core
+  migrator, with a SQLite-backed history store (`?` placeholders; `applied_at`
+  as `TEXT`, `execution_ms` as `REAL`), single-connection
+  `BEGIN`/`COMMIT`/`ROLLBACK`, idempotent re-runs, and rollback. `@db/sqlite` is
+  imported lazily, so the package's fake-backed unit tests stay permission-free;
+  real execution runs in the integration suite
+  (`integration/migrate_sqlite_test.ts`) under `--allow-ffi`/`--allow-net`.
+- **Snapshot reuse** — the shared `@rootware/schema` snapshot type drives both
+  the Postgres and SQLite generators; `migrate` still never imports `orm`.
+
+SQLite limitations (documented): no in-place column type changes or drops via
+`ALTER TABLE` — those need the 12-step table rebuild and surface as
+`destructive` changes rather than auto-generated SQL.
 
 ### Chunk 25 — SQLite snapshot support
 

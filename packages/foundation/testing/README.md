@@ -62,6 +62,31 @@ export const memoryCacheFixture = () =>
 const cache = await ctx.use(memoryCacheFixture());
 ```
 
+## Testing `Deno.serve` handlers (`0.4`)
+
+Exercise a fetch-style handler with no server, network, or permissions.
+`testRequest` builds a `Request`; `callHandler` invokes a `Deno.serve`-style
+handler and buffers the response body so it can be asserted (chainably):
+
+```ts
+import { callHandler, testRequest } from "jsr:@rootware/testing";
+
+const handler = (request: Request) =>
+  request.method === "POST"
+    ? Response.json({ ok: true }, { status: 201 })
+    : new Response("home");
+
+const res = await callHandler(handler, "/users", { json: { name: "ada" } });
+res.assertStatus(201).assertOk().assertJson({ ok: true });
+
+// Or build a request yourself and call the handler directly:
+const req = testRequest("/search", { query: { q: "deno" } });
+```
+
+`callHandler` accepts everything `testRequest` does plus `remoteAddr` to
+override the synthetic `ServeHandlerInfo`. A handler that throws surfaces as a
+`TestError` (`TEST_HANDLER_FAILED`).
+
 ## API
 
 - `assert`, `assertEquals`, `assertThrows`, `assertRejects`
@@ -70,6 +95,8 @@ const cache = await ctx.use(memoryCacheFixture());
 - `testLogger`
 - `assertLog` (`hasMessage`, `hasMessageMatching`, `hasField`, `hasRecord`,
   `hasNoRecord`, `isEmpty`, `messages`, `last`, `count`)
+- `testRequest`, `callHandler` → `TestResponse` (`assertStatus`, `assertOk`,
+  `assertHeader`, `assertJson`, `assertBodyIncludes`, `text`, `json`, `header`)
 - `createFakeClock`
 - `createFixture`, `useFixture`
 - `createTestContext` (`use`, `cleanup`, `runCleanup`)

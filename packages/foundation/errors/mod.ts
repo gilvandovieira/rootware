@@ -20,8 +20,10 @@ const DEFAULT_MAX_CAUSE_DEPTH = 16;
 /** Default mask substituted for redacted values. */
 const DEFAULT_REDACTION_MASK = "[redacted]";
 
+/** Severity labels used to classify Rootware errors for logging and handling. */
 export type ErrorSeverity = "debug" | "info" | "warn" | "error" | "fatal";
 
+/** Standard Rootware error codes, plus package-specific string extensions. */
 export type RootwareErrorCode =
   | "ROOTWARE_UNKNOWN_ERROR"
   | "ROOTWARE_INVALID_ARGUMENT"
@@ -61,6 +63,7 @@ export interface RootwareErrorJson {
   readonly cause?: RootwareErrorJson;
 }
 
+/** Factory signature for creating specialized Rootware errors. */
 export type RootwareErrorFactory = (
   message?: string,
   options?: RootwareErrorOptions,
@@ -278,6 +281,37 @@ export function getErrorChain(
 /** Defines an application-specific error code while preserving string literals. */
 export function defineErrorCode(code: string): RootwareErrorCode {
   return code as RootwareErrorCode;
+}
+
+/**
+ * Builds a convention-following error code from a package namespace and a name,
+ * e.g. `namespacedErrorCode("CACHE", "get_failed")` → `"CACHE_GET_FAILED"`.
+ *
+ * Rootware error codes are `SCREAMING_SNAKE_CASE`. The base package owns the
+ * `ROOTWARE_*` namespace; every other package prefixes its codes with its own
+ * uppercase name (`ENV_*`, `LOG_*`, `HTTP_*`, `CACHE_*`, …). Throws when the
+ * resulting code is not a non-empty `[A-Z][A-Z0-9_]*`.
+ */
+export function namespacedErrorCode(
+  namespace: string,
+  name: string,
+): RootwareErrorCode {
+  const code = `${normalizeCodePart(namespace)}_${normalizeCodePart(name)}`;
+
+  if (!/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code)) {
+    throw new RootwareError("Invalid Rootware error code", {
+      code: "ROOTWARE_INVALID_ARGUMENT",
+      status: 400,
+      details: { code },
+    });
+  }
+
+  return code as RootwareErrorCode;
+}
+
+function normalizeCodePart(value: string): string {
+  return value.trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 /** Creates a small factory for specialized Rootware errors. */

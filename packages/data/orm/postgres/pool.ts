@@ -3,11 +3,13 @@ import { Pool } from "jsr:@db/postgres@^0.19.5";
 
 import { OrmError } from "../core/mod.ts";
 
+/** Result shape returned by the underlying PostgreSQL client. */
 export interface PgDriverResult<Row = Record<string, unknown>> {
   readonly rows: Row[];
   readonly rowCount?: number;
 }
 
+/** Minimal PostgreSQL client surface used by the ORM adapter. */
 export interface PgClient {
   queryObject<Row = Record<string, unknown>>(
     query: string,
@@ -18,11 +20,13 @@ export interface PgClient {
   end?(): Promise<void>;
 }
 
+/** Minimal PostgreSQL pool surface used by the ORM adapter. */
 export interface PgPool {
   connect(): Promise<PgClient>;
   end?(): Promise<void>;
 }
 
+/** Connection options accepted by PostgreSQL ORM adapter factories. */
 export interface PgConnectionOptions {
   readonly url?: string;
   readonly pool?: PgPool;
@@ -31,6 +35,7 @@ export interface PgConnectionOptions {
   readonly lazy?: boolean;
 }
 
+/** Resolved PostgreSQL connection source with ownership metadata. */
 export interface PgConnectionSource {
   readonly pool?: PgPool;
   readonly client?: PgClient;
@@ -38,6 +43,7 @@ export interface PgConnectionSource {
   readonly ownsClient: boolean;
 }
 
+/** Creates a PostgreSQL pool using the bundled `@db/postgres` driver. */
 export function createPgPool(options: {
   readonly url: string;
   readonly poolSize?: number;
@@ -46,6 +52,7 @@ export function createPgPool(options: {
   return new Pool(options.url, options.poolSize ?? 5, options.lazy ?? true);
 }
 
+/** Resolves a PostgreSQL pool, client, or URL into a connection source. */
 export function resolvePgConnectionSource(
   options: PgConnectionOptions,
 ): PgConnectionSource {

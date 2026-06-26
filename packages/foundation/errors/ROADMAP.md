@@ -302,11 +302,18 @@ Show `EnvError`, `LogError`, and `HttpError` examples.
 - `assertRootwareError` lives in `@rootware/testing` (its `/testing` home), not
   here, per the package boundary rule.
 
-## v0.4.0 — Cross-package integration
+## v0.4.0 — Cross-package integration — **done (`0.4.0`)**
 
-- Ensure `@rootware/env`, `@rootware/log`, and `@rootware/http` use the package.
-- Document package-specific error subclasses.
-- Establish error code naming conventions.
+- **Cross-package use verified** — `@rootware/env` (`EnvError`), `@rootware/log`
+  (`LogError`), `@rootware/http` (`HttpError`), and every other package extend
+  `RootwareError` via `createErrorFactory`; documented in the README.
+- **Error-code naming conventions** — codified as
+  `namespacedErrorCode(ns, name)` (`SCREAMING_SNAKE_CASE`, base owns
+  `ROOTWARE_*`, packages prefix with their uppercase name) with validation +
+  tests, and documented in the README.
+- **Package-specific subclasses** — README documents the
+  `<Pkg>Error extends RootwareError` pattern with `EnvError`/`LogError`/
+  `HttpError` examples.
 
 ## v1.0.0 — Stable public API
 

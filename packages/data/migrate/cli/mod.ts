@@ -39,6 +39,7 @@ import {
   type PgConnectionOptions,
 } from "../postgres/mod.ts";
 
+/** Commands accepted by the SQL-first migration CLI. */
 export type MigrateCommand =
   | "generate"
   | "migrate"

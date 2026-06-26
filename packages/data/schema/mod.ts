@@ -7,12 +7,14 @@
 
 export const SCHEMA_SNAPSHOT_VERSION = 1 as const;
 
+/** SQL dialect names understood by Rootware schema snapshots. */
 export type RootwareDialectName =
   | "generic"
   | "postgres"
   | "sqlite"
   | "mysql";
 
+/** Serializable database schema snapshot shared by Rootware data packages. */
 export interface RootwareSchemaSnapshot {
   readonly version: typeof SCHEMA_SNAPSHOT_VERSION;
   readonly dialect?: RootwareDialectName;
@@ -20,6 +22,7 @@ export interface RootwareSchemaSnapshot {
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Serializable table definition inside a schema snapshot. */
 export interface RootwareTableSnapshot {
   readonly name: string;
   readonly schema?: string;
@@ -32,6 +35,7 @@ export interface RootwareTableSnapshot {
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Serializable column definition inside a table snapshot. */
 export interface RootwareColumnSnapshot {
   readonly name: string;
   readonly type: RootwareColumnType;
@@ -48,6 +52,7 @@ export interface RootwareColumnSnapshot {
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Dialect-neutral column type descriptor. */
 export interface RootwareColumnType {
   readonly kind: string;
   readonly length?: number;
@@ -57,6 +62,7 @@ export interface RootwareColumnType {
   readonly dialectType?: string;
 }
 
+/** Serializable column default value or expression. */
 export type RootwareColumnDefault =
   | {
     readonly kind: "literal";
@@ -64,12 +70,14 @@ export type RootwareColumnDefault =
   }
   | { readonly kind: "expression"; readonly sql: string };
 
+/** Serializable primary-key constraint descriptor. */
 export interface RootwarePrimaryKeySnapshot {
   readonly name?: string;
   readonly columns: readonly string[];
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Serializable index descriptor. */
 export interface RootwareIndexSnapshot {
   readonly name?: string;
   readonly columns: readonly string[];
@@ -77,12 +85,14 @@ export interface RootwareIndexSnapshot {
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Serializable unique-constraint descriptor. */
 export interface RootwareUniqueConstraintSnapshot {
   readonly name?: string;
   readonly columns: readonly string[];
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Serializable foreign-key constraint descriptor. */
 export interface RootwareForeignKeySnapshot {
   readonly name?: string;
   readonly columns: readonly string[];
@@ -96,12 +106,14 @@ export interface RootwareForeignKeySnapshot {
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Serializable check-constraint descriptor. */
 export interface RootwareCheckConstraintSnapshot {
   readonly name?: string;
   readonly expression: string;
   readonly metadata?: Record<string, unknown>;
 }
 
+/** Validation issue codes emitted by schema snapshot helpers. */
 export type RootwareSchemaIssueCode =
   | "SCHEMA_INVALID_VERSION"
   | "SCHEMA_INVALID_DIALECT"
@@ -114,6 +126,7 @@ export type RootwareSchemaIssueCode =
   | "SCHEMA_INVALID_CONSTRAINT"
   | (string & Record<never, never>);
 
+/** One validation issue found in a schema snapshot. */
 export interface RootwareSchemaIssue {
   readonly code: RootwareSchemaIssueCode;
   readonly path: string;

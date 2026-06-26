@@ -1,6 +1,7 @@
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
 
+/** Error codes emitted by storage validation, object operations, and signing. */
 export type StorageErrorCode =
   | "STORAGE_INVALID_KEY"
   | "STORAGE_INVALID_BUCKET"
@@ -16,12 +17,16 @@ export type StorageErrorCode =
   | "STORAGE_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
+/** Normalized object key within a storage namespace or bucket. */
 export type StorageKey = string;
 
+/** Normalized storage bucket name. */
 export type StorageBucketName = string;
 
+/** User-defined string metadata attached to stored objects. */
 export type StorageMetadata = Record<string, string>;
 
+/** Body input accepted by {@link StorageClient.put}. */
 export type StoragePutBody = Blob | Uint8Array | ArrayBuffer | string;
 
 /** Stored object including its complete body. */
@@ -47,6 +52,7 @@ export interface StorageObjectInfo {
   readonly updatedAt: string;
 }
 
+/** Options for writing a storage object. */
 export interface StoragePutOptions {
   readonly contentType?: string;
   readonly metadata?: StorageMetadata;
@@ -55,20 +61,24 @@ export interface StoragePutOptions {
   readonly publicUrl?: string;
 }
 
+/** Options for reading a storage object. */
 export interface StorageGetOptions {
   readonly includeBody?: boolean;
 }
 
+/** Options for deleting a storage object. */
 export interface StorageDeleteOptions {
   readonly silent?: boolean;
 }
 
+/** Options for listing storage objects. */
 export interface StorageListOptions {
   readonly prefix?: string;
   readonly limit?: number;
   readonly cursor?: string;
 }
 
+/** Paged list response returned by storage stores and clients. */
 export interface StorageListResult {
   readonly objects: StorageObjectInfo[];
   readonly cursor?: string;
@@ -278,6 +288,44 @@ export interface LocalStorageStoreOptions {
   readonly fs?: StorageFileSystem;
 }
 
+/** Fetch-compatible transport injected into {@link s3StorageStore}. */
+export type StorageFetch = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+/**
+ * Options for an S3-compatible {@link StorageStore} (AWS S3, Cloudflare R2,
+ * RustFS, …). The `fetch` transport is injectable so the adapter is testable
+ * without a live bucket, and SigV4 signing happens in-process via Web Crypto.
+ */
+export interface S3StorageStoreOptions {
+  readonly bucket: string;
+  /** AWS region (e.g. `"us-east-1"`); R2/RustFS accept `"auto"`. */
+  readonly region: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  /** Temporary-credential session token (`X-Amz-Security-Token`), if any. */
+  readonly sessionToken?: string;
+  /**
+   * Service endpoint, e.g. `"https://s3.us-east-1.amazonaws.com"`,
+   * `"https://<account>.r2.cloudflarestorage.com"`, or
+   * `"http://localhost:9000"`. Defaults to the AWS regional endpoint.
+   */
+  readonly endpoint?: string;
+  /**
+   * Put the bucket in the path (`/bucket/key`) rather than the host
+   * (`bucket.host/key`). Defaults to `true` when a custom `endpoint` is set
+   * (R2/RustFS), `false` for the AWS default (virtual-hosted).
+   */
+  readonly forcePathStyle?: boolean;
+  /** Signing service name; defaults to `"s3"`. */
+  readonly service?: string;
+  /** Injectable transport; defaults to global `fetch`. */
+  readonly fetch?: StorageFetch;
+}
+
+/** Options accepted when constructing a {@link StorageError}. */
 export interface StorageErrorOptions {
   readonly code?: StorageErrorCode;
   readonly status?: number;
@@ -548,6 +596,175 @@ export function localStorageStore(
       for (const key of await listStorageKeys(fs, rootDir)) {
         await fs.remove(pathFor(key));
       }
+    },
+  };
+}
+
+/**
+ * Creates an S3-compatible {@link StorageStore} (AWS S3, Cloudflare R2, RustFS).
+ *
+ * Requests are signed with AWS Signature V4 using Web Crypto, and `signUrl`
+ * produces SigV4 presigned URLs. The `fetch` transport is injectable, so the
+ * adapter is unit-testable without a live bucket; the integration suite exercises
+ * it against RustFS. Object user metadata is carried as `x-amz-meta-*` headers.
+ */
+export function s3StorageStore(
+  options: S3StorageStoreOptions,
+): StorageStore {
+  const config = resolveS3Config(options);
+  const fetchFn = options.fetch ?? getGlobalStorageFetch();
+
+  const send = async (
+    method: string,
+    key: StorageKey | undefined,
+    init: {
+      readonly query?: Record<string, string>;
+      readonly headers?: Record<string, string>;
+      readonly body?: Uint8Array;
+    } = {},
+  ): Promise<Response> => {
+    const { url, headers } = await signS3Request(config, {
+      method,
+      key,
+      query: init.query,
+      headers: init.headers,
+      body: init.body,
+    });
+
+    return await fetchFn(url, {
+      method,
+      headers,
+      ...(init.body === undefined ? {} : { body: toArrayBuffer(init.body) }),
+    });
+  };
+
+  return {
+    async put(
+      key: StorageKey,
+      object: StorageObject,
+      _options: StoragePutOptions = {},
+    ): Promise<void> {
+      const normalizedKey = normalizeStorageKey(key);
+      const body = new Uint8Array(await object.blob.arrayBuffer());
+      const headers: Record<string, string> = {};
+
+      if (object.contentType !== undefined) {
+        headers["content-type"] = object.contentType;
+      }
+      for (const [name, value] of Object.entries(object.metadata)) {
+        headers[`x-amz-meta-${name.toLowerCase()}`] = value;
+      }
+
+      const response = await send("PUT", normalizedKey, { headers, body });
+      await assertS3Ok(response, "STORAGE_PUT_FAILED", normalizedKey);
+    },
+
+    async get(
+      key: StorageKey,
+      _options: StorageGetOptions = {},
+    ): Promise<StorageObject | undefined> {
+      const normalizedKey = normalizeStorageKey(key);
+      const response = await send("GET", normalizedKey);
+
+      if (response.status === 404) {
+        await response.body?.cancel();
+        return undefined;
+      }
+      await assertS3Ok(response, "STORAGE_GET_FAILED", normalizedKey);
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const contentType = response.headers.get("content-type") ?? undefined;
+      const blob = new Blob([bytes], {
+        ...(contentType === undefined ? {} : { type: contentType }),
+      });
+
+      return {
+        key: normalizedKey,
+        blob,
+        ...(contentType === undefined ? {} : { contentType }),
+        size: bytes.byteLength,
+        ...(parseETag(response.headers.get("etag")) === undefined ? {} : {
+          checksum: parseETag(response.headers.get("etag")),
+        }),
+        metadata: readAmzMetadata(response.headers),
+        createdAt: response.headers.get("last-modified") ?? new Date()
+          .toISOString(),
+        updatedAt: response.headers.get("last-modified") ?? new Date()
+          .toISOString(),
+      };
+    },
+
+    async delete(
+      key: StorageKey,
+      _options: StorageDeleteOptions = {},
+    ): Promise<boolean> {
+      const normalizedKey = normalizeStorageKey(key);
+      const existed = await this.exists(normalizedKey);
+
+      const response = await send("DELETE", normalizedKey);
+      // S3 returns 204 whether or not the object existed.
+      if (response.status !== 204 && response.status !== 200) {
+        await assertS3Ok(response, "STORAGE_DELETE_FAILED", normalizedKey);
+      } else {
+        await response.body?.cancel();
+      }
+
+      return existed;
+    },
+
+    async exists(key: StorageKey): Promise<boolean> {
+      const normalizedKey = normalizeStorageKey(key);
+      const response = await send("HEAD", normalizedKey);
+      await response.body?.cancel();
+
+      if (response.status === 200) {
+        return true;
+      }
+      if (response.status === 404) {
+        return false;
+      }
+
+      throw new StorageError("Storage exists check failed", {
+        code: "STORAGE_GET_FAILED",
+        details: { key: normalizedKey, status: response.status },
+      });
+    },
+
+    async list(options: StorageListOptions = {}): Promise<StorageListResult> {
+      const query: Record<string, string> = { "list-type": "2" };
+      const prefix = normalizeOptionalStorageKey(options.prefix);
+      const limit = normalizeListLimit(options.limit);
+
+      if (prefix !== undefined) {
+        query.prefix = prefix;
+      }
+      if (limit !== undefined) {
+        query["max-keys"] = String(limit);
+      }
+      if (options.cursor !== undefined && options.cursor.length > 0) {
+        query["continuation-token"] = options.cursor;
+      }
+
+      const response = await send("GET", undefined, { query });
+      await assertS3Ok(response, "STORAGE_LIST_FAILED", undefined);
+
+      const xml = await response.text();
+      return parseS3ListResult(xml);
+    },
+
+    async signUrl(
+      key: StorageKey,
+      options: ResolvedSignUrlOptions,
+    ): Promise<SignedUrl> {
+      const normalizedKey = normalizeStorageKey(key);
+      const url = await presignS3Url(config, normalizedKey, options);
+
+      return {
+        url,
+        method: options.method,
+        expiresAt: new Date(Date.now() + options.expiresInMs).toISOString(),
+        key: normalizedKey,
+      };
     },
   };
 }
@@ -1669,6 +1886,403 @@ function bytesToHex(bytes: Uint8Array): string {
   return [...bytes]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// --- S3-compatible adapter (AWS Signature V4) ---
+
+const S3_EMPTY_SHA256 =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+interface ResolvedS3Config {
+  readonly bucket: string;
+  readonly region: string;
+  readonly service: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly sessionToken?: string;
+  readonly endpointUrl: URL;
+  readonly pathStyle: boolean;
+}
+
+function resolveS3Config(options: S3StorageStoreOptions): ResolvedS3Config {
+  for (
+    const [field, value] of [
+      ["bucket", options.bucket],
+      ["region", options.region],
+      ["accessKeyId", options.accessKeyId],
+      ["secretAccessKey", options.secretAccessKey],
+    ] as const
+  ) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new StorageError(`S3 store ${field} is required`, {
+        code: "STORAGE_UNKNOWN_ERROR",
+        details: { field },
+      });
+    }
+  }
+
+  const endpoint = options.endpoint ??
+    `https://s3.${options.region}.amazonaws.com`;
+
+  let endpointUrl: URL;
+  try {
+    endpointUrl = new URL(endpoint);
+  } catch (cause) {
+    throw new StorageError("S3 store endpoint is invalid", {
+      code: "STORAGE_UNKNOWN_ERROR",
+      details: { endpoint },
+      cause,
+    });
+  }
+
+  return {
+    bucket: options.bucket,
+    region: options.region,
+    service: options.service ?? "s3",
+    accessKeyId: options.accessKeyId,
+    secretAccessKey: options.secretAccessKey,
+    sessionToken: options.sessionToken,
+    endpointUrl,
+    pathStyle: options.forcePathStyle ?? (options.endpoint !== undefined),
+  };
+}
+
+function getGlobalStorageFetch(): StorageFetch {
+  if (typeof globalThis.fetch !== "function") {
+    throw new StorageError("globalThis.fetch is not available", {
+      code: "STORAGE_UNKNOWN_ERROR",
+    });
+  }
+
+  return (input, init) => globalThis.fetch(input, init);
+}
+
+interface S3Target {
+  readonly url: string;
+  readonly host: string;
+  readonly canonicalUri: string;
+}
+
+function buildS3Target(config: ResolvedS3Config, key?: StorageKey): S3Target {
+  const protocol = config.endpointUrl.protocol;
+  const endpointHost = config.endpointUrl.host;
+  const keyPath = key === undefined
+    ? undefined
+    : key.split("/").map((segment) => awsUriEncode(segment)).join("/");
+
+  let host: string;
+  let path: string;
+
+  if (config.pathStyle) {
+    host = endpointHost;
+    const bucketSegment = awsUriEncode(config.bucket);
+    path = keyPath === undefined
+      ? `/${bucketSegment}`
+      : `/${bucketSegment}/${keyPath}`;
+  } else {
+    host = `${config.bucket}.${endpointHost}`;
+    path = keyPath === undefined ? "/" : `/${keyPath}`;
+  }
+
+  return { url: `${protocol}//${host}${path}`, host, canonicalUri: path };
+}
+
+interface SignS3RequestInput {
+  readonly method: string;
+  readonly key?: StorageKey;
+  readonly query?: Record<string, string>;
+  readonly headers?: Record<string, string>;
+  readonly body?: Uint8Array;
+}
+
+async function signS3Request(
+  config: ResolvedS3Config,
+  input: SignS3RequestInput,
+): Promise<{ readonly url: string; readonly headers: Record<string, string> }> {
+  const now = new Date();
+  const amzdate = amzDate(now);
+  const datestamp = amzdate.slice(0, 8);
+  const target = buildS3Target(config, input.key);
+  const payloadHash = input.body === undefined
+    ? S3_EMPTY_SHA256
+    : await sha256Hex(input.body);
+
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(input.headers ?? {})) {
+    headers[name.toLowerCase()] = value;
+  }
+  headers.host = target.host;
+  headers["x-amz-date"] = amzdate;
+  headers["x-amz-content-sha256"] = payloadHash;
+  if (config.sessionToken !== undefined) {
+    headers["x-amz-security-token"] = config.sessionToken;
+  }
+
+  const canonicalQuery = buildCanonicalQuery(input.query ?? {});
+  const sortedNames = Object.keys(headers).sort();
+  const canonicalHeaders = sortedNames
+    .map((name) => `${name}:${headers[name].trim()}\n`)
+    .join("");
+  const signedHeaders = sortedNames.join(";");
+
+  const canonicalRequest = [
+    input.method,
+    target.canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const scope = `${datestamp}/${config.region}/${config.service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzdate,
+    scope,
+    await sha256Hex(new TextEncoder().encode(canonicalRequest)),
+  ].join("\n");
+
+  const key = await s3SigningKey(config, datestamp);
+  const signature = bytesToHex(await hmacSha256(key, stringToSign));
+
+  headers.authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/` +
+    `${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return {
+    url: canonicalQuery.length === 0
+      ? target.url
+      : `${target.url}?${canonicalQuery}`,
+    headers,
+  };
+}
+
+async function presignS3Url(
+  config: ResolvedS3Config,
+  key: StorageKey,
+  options: ResolvedSignUrlOptions,
+): Promise<string> {
+  const now = new Date();
+  const amzdate = amzDate(now);
+  const datestamp = amzdate.slice(0, 8);
+  const target = buildS3Target(config, key);
+  const expiresSeconds = Math.min(
+    7 * 24 * 60 * 60,
+    Math.max(1, Math.round(options.expiresInMs / 1000)),
+  );
+  const scope = `${datestamp}/${config.region}/${config.service}/aws4_request`;
+
+  const query: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${config.accessKeyId}/${scope}`,
+    "X-Amz-Date": amzdate,
+    "X-Amz-Expires": String(expiresSeconds),
+    "X-Amz-SignedHeaders": "host",
+  };
+  if (config.sessionToken !== undefined) {
+    query["X-Amz-Security-Token"] = config.sessionToken;
+  }
+
+  const canonicalQuery = buildCanonicalQuery(query);
+  const canonicalRequest = [
+    options.method,
+    target.canonicalUri,
+    canonicalQuery,
+    `host:${target.host}\n`,
+    "host",
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzdate,
+    scope,
+    await sha256Hex(new TextEncoder().encode(canonicalRequest)),
+  ].join("\n");
+
+  const signingKey = await s3SigningKey(config, datestamp);
+  const signature = bytesToHex(await hmacSha256(signingKey, stringToSign));
+
+  return `${target.url}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
+async function s3SigningKey(
+  config: ResolvedS3Config,
+  datestamp: string,
+): Promise<Uint8Array> {
+  const kDate = await hmacSha256(
+    new TextEncoder().encode(`AWS4${config.secretAccessKey}`),
+    datestamp,
+  );
+  const kRegion = await hmacSha256(kDate, config.region);
+  const kService = await hmacSha256(kRegion, config.service);
+  return await hmacSha256(kService, "aws4_request");
+}
+
+function buildCanonicalQuery(params: Record<string, string>): string {
+  return Object.keys(params)
+    .sort()
+    .map((key) => `${awsUriEncode(key)}=${awsUriEncode(params[key])}`)
+    .join("&");
+}
+
+const AWS_UNRESERVED = /[A-Za-z0-9\-_.~]/;
+
+function awsUriEncode(value: string, encodeSlash = true): string {
+  let output = "";
+
+  for (const byte of new TextEncoder().encode(value)) {
+    const char = String.fromCharCode(byte);
+    if (AWS_UNRESERVED.test(char)) {
+      output += char;
+    } else if (char === "/" && !encodeSlash) {
+      output += "/";
+    } else {
+      output += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    }
+  }
+
+  return output;
+}
+
+function amzDate(date: Date): string {
+  return date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+/** Copies bytes into a standalone ArrayBuffer accepted as a fetch body. */
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function hmacSha256(
+  keyBytes: Uint8Array,
+  message: string | Uint8Array,
+): Promise<Uint8Array> {
+  const keyBuffer = new ArrayBuffer(keyBytes.byteLength);
+  new Uint8Array(keyBuffer).set(keyBytes);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const data = typeof message === "string"
+    ? new TextEncoder().encode(message)
+    : message;
+  const dataBuffer = new ArrayBuffer(data.byteLength);
+  new Uint8Array(dataBuffer).set(data);
+
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, dataBuffer);
+  return new Uint8Array(signature);
+}
+
+async function assertS3Ok(
+  response: Response,
+  code: StorageErrorCode,
+  key: StorageKey | undefined,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  let body = "";
+  try {
+    body = (await response.text()).slice(0, 500);
+  } catch {
+    // Ignore body read failures while surfacing the status.
+  }
+
+  throw new StorageError(`S3 request failed (${response.status})`, {
+    code,
+    details: {
+      status: response.status,
+      ...(key === undefined ? {} : { key }),
+      ...(body.length === 0 ? {} : { response: body }),
+    },
+  });
+}
+
+function parseETag(value: string | null): string | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  const cleaned = value.replace(/^"|"$/g, "").replace(/&quot;/g, "");
+  return cleaned.length === 0 ? undefined : cleaned;
+}
+
+function readAmzMetadata(headers: Headers): StorageMetadata {
+  const metadata: StorageMetadata = {};
+
+  headers.forEach((value, name) => {
+    const lower = name.toLowerCase();
+    if (lower.startsWith("x-amz-meta-")) {
+      metadata[lower.slice("x-amz-meta-".length)] = value;
+    }
+  });
+
+  return metadata;
+}
+
+function parseS3ListResult(xml: string): StorageListResult {
+  const objects: StorageObjectInfo[] = [];
+  const contentsRegex = /<Contents>([\s\S]*?)<\/Contents>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = contentsRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const key = xmlTagValue(block, "Key");
+    if (key === undefined) {
+      continue;
+    }
+
+    const size = Number(xmlTagValue(block, "Size") ?? "0");
+    const etag = parseETag(xmlTagValue(block, "ETag") ?? null);
+    const lastModified = xmlTagValue(block, "LastModified") ??
+      new Date().toISOString();
+
+    objects.push({
+      key,
+      size: Number.isFinite(size) ? size : 0,
+      ...(etag === undefined ? {} : { checksum: etag }),
+      metadata: {},
+      createdAt: lastModified,
+      updatedAt: lastModified,
+    });
+  }
+
+  const truncated = xmlTagValue(xml, "IsTruncated") === "true";
+  const cursor = xmlTagValue(xml, "NextContinuationToken");
+
+  return {
+    objects,
+    ...(truncated && cursor !== undefined ? { cursor } : {}),
+    hasMore: truncated,
+  };
+}
+
+function xmlTagValue(xml: string, tag: string): string | undefined {
+  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml);
+  return match === null ? undefined : decodeXmlEntities(match[1]);
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 // Examples:

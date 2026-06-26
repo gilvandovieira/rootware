@@ -64,8 +64,29 @@ throw EnvError("Missing DATABASE_URL", {
 - `serializeError`
 - `getErrorChain`
 - `createErrorFactory`
-- `defineErrorCode`
+- `defineErrorCode` / `namespacedErrorCode`
 - `registerErrorRedactor` / `clearErrorRedactors` / `redactErrorKeys`
+
+## Error code conventions (`0.4`)
+
+Rootware error codes are `SCREAMING_SNAKE_CASE`. The base package owns the
+`ROOTWARE_*` namespace (`ROOTWARE_UNKNOWN_ERROR`, `ROOTWARE_INVALID_ARGUMENT`,
+…); **every other package prefixes its codes with its own uppercase name**:
+`ENV_*`, `LOG_*`, `HTTP_*`, `CACHE_*`, `STORAGE_*`, `SESSION_*`, `ORM_*`,
+`MIGRATION_*`, `JOB_*`, `SCHEMA_*`. `namespacedErrorCode` builds and validates a
+convention-following code:
+
+```ts
+import { namespacedErrorCode } from "jsr:@rootware/errors";
+
+namespacedErrorCode("cache", "get_failed"); // "CACHE_GET_FAILED"
+```
+
+Every Rootware package builds its error type on this contract with
+`createErrorFactory`, so each `<Pkg>Error extends RootwareError` and shares the
+one safe, serializable shape. `@rootware/env`, `@rootware/log`, and
+`@rootware/http` (and the rest) all consume `@rootware/errors` this way — see
+their `EnvError` / `LogError` / `HttpError` definitions below.
 
 ## Security
 
