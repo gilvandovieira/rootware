@@ -1,16 +1,21 @@
 # Rootware Future Ecosystem
 
-> Long-term direction for Rootware after the twelve-package core proves coherence.
+> Long-term direction for Rootware after the twelve-package core proves
+> coherence.
 
 This document is a companion to `vision.md`.
 
-`vision.md` defines the current working strategy: twelve packages, a thin coherence slice, and strict scope discipline. This document explains where that vision can go after the core proves useful in a real application.
+`vision.md` defines the current working strategy: twelve packages, a thin
+coherence slice, and strict scope discipline. This document explains where that
+vision can go after the core proves useful in a real application.
 
 This is not the active roadmap.
 
 This is the destination map.
 
-The purpose of this document is to preserve the larger ecosystem thinking without allowing it to corrupt the current build scope. Rootware should begin small, but it should not forget where it can go.
+The purpose of this document is to preserve the larger ecosystem thinking
+without allowing it to corrupt the current build scope. Rootware should begin
+small, but it should not forget where it can go.
 
 ---
 
@@ -35,19 +40,22 @@ The canonical vision says Rootware currently focuses on exactly twelve packages:
 
 That remains the active scope.
 
-The future ecosystem described here only begins after the core proves its differentiator:
+The future ecosystem described here only begins after the core proves its
+differentiator:
 
 ```txt
 errors + env + log + request context + http
 ```
 
-That coherence slice must feel materially better than manually assembling independent packages.
+That coherence slice must feel materially better than manually assembling
+independent packages.
 
 The rule:
 
 > Do not widen the ecosystem until the coherence model is proven in a real app.
 
-This document is therefore a constraint document as much as a roadmap document. It says where Rootware can go, but also explains when it is allowed to go there.
+This document is therefore a constraint document as much as a roadmap document.
+It says where Rootware can go, but also explains when it is allowed to go there.
 
 ---
 
@@ -61,16 +69,20 @@ Every future package must justify itself through at least one of these reasons:
 
 2. **Ecosystem coherence**
    - The package makes Rootware feel like one system.
-   - It reuses the same error model, env model, log model, request context, lifecycle, and testing conventions.
+   - It reuses the same error model, env model, log model, request context,
+     lifecycle, and testing conventions.
 
 3. **Adapter pressure**
-   - A core contract exists and users need a concrete implementation for a runtime, framework, vendor, or infrastructure provider.
+   - A core contract exists and users need a concrete implementation for a
+     runtime, framework, vendor, or infrastructure provider.
 
 4. **Operational necessity**
-   - Real apps need the package to run, debug, observe, secure, or maintain production systems.
+   - Real apps need the package to run, debug, observe, secure, or maintain
+     production systems.
 
 5. **Developer experience leverage**
-   - The package reduces repeated project setup, diagnostics, generation, or boilerplate across Rootware apps.
+   - The package reduces repeated project setup, diagnostics, generation, or
+     boilerplate across Rootware apps.
 
 If a proposed package satisfies none of these, it should not exist.
 
@@ -129,7 +141,8 @@ The public package names should stay flat:
 @rootware/doctor
 ```
 
-The filesystem may be grouped, but the JSR namespace should stay direct and predictable.
+The filesystem may be grouped, but the JSR namespace should stay direct and
+predictable.
 
 ---
 
@@ -276,7 +289,8 @@ The current repo should only contain folders for packages that exist.
 
 ## 5. Kernel Layer
 
-The kernel layer is what eventually turns Rootware from a package collection into a coherent application substrate.
+The kernel layer is what eventually turns Rootware from a package collection
+into a coherent application substrate.
 
 Future packages:
 
@@ -301,7 +315,9 @@ Purpose:
 - job id
 - correlation fields
 
-This package should expose the public context API. Its underlying mechanism may use AsyncLocalStorage, explicit context passing, or another runtime-safe strategy.
+This package should expose the public context API. Its underlying mechanism may
+use AsyncLocalStorage, explicit context passing, or another runtime-safe
+strategy.
 
 It should not become uncontrolled global state.
 
@@ -329,7 +345,8 @@ Purpose:
 - plugin initialization order
 - health/readiness coordination
 
-This package becomes important once databases, jobs, queues, WebSockets, and plugins exist.
+This package becomes important once databases, jobs, queues, WebSockets, and
+plugins exist.
 
 Example direction:
 
@@ -354,7 +371,8 @@ Purpose:
 - framework adapter target
 - plugin host
 
-This package should not arrive early. It should appear only after the lower primitives reveal the right composition API.
+This package should not arrive early. It should appear only after the lower
+primitives reveal the right composition API.
 
 Example direction:
 
@@ -415,7 +433,8 @@ export default definePlugin({
 
 Plugin rule:
 
-> No hidden magic, no uncontrolled global state, no implicit dependency injection that users cannot inspect.
+> No hidden magic, no uncontrolled global state, no implicit dependency
+> injection that users cannot inspect.
 
 ---
 
@@ -451,7 +470,8 @@ Current scope:
 
 Future role:
 
-- bridge between context, errors, log, session, auth, framework adapters, and observability
+- bridge between context, errors, log, session, auth, framework adapters, and
+  observability
 
 ### `@rootware/fetch`
 
@@ -468,7 +488,8 @@ Purpose:
 - request context propagation
 - outbound request logging
 
-This package should only split out if HTTP client behavior becomes large enough to justify a separate surface.
+This package should only split out if HTTP client behavior becomes large enough
+to justify a separate surface.
 
 ### `@rootware/ws`
 
@@ -484,7 +505,8 @@ Purpose:
 - context binding
 - testable in-memory connections
 
-It should not arrive until HTTP, context, session, log, and errors are stable enough.
+It should not arrive until HTTP, context, session, log, and errors are stable
+enough.
 
 ### `@rootware/realtime`
 
@@ -718,7 +740,8 @@ Purpose:
 - memory adapter
 - Postgres adapter later
 
-This package should initially absorb job, queue, and scheduling primitives until real pressure justifies decomposition.
+This package should initially absorb job, queue, and scheduling primitives until
+real pressure justifies decomposition.
 
 ### `@rootware/events`
 
@@ -744,7 +767,8 @@ await events.emit("user.created", {
 Split trigger:
 
 - multiple packages need domain events independently of jobs
-- events become a shared abstraction across HTTP, ORM, sessions, jobs, audit, and plugins
+- events become a shared abstraction across HTTP, ORM, sessions, jobs, audit,
+  and plugins
 
 ### `@rootware/queue`
 
@@ -814,7 +838,8 @@ Potential packages:
 @rootware/entitlements
 ```
 
-These should not be early packages. They require mature context, HTTP, session, and audit primitives first.
+These should not be early packages. They require mature context, HTTP, session,
+and audit primitives first.
 
 ### `@rootware/auth`
 
@@ -826,7 +851,9 @@ Purpose:
 - adapter-friendly provider model
 - no forced provider
 
-Rootware should not try to replace Clerk, WorkOS, Auth.js, OAuth providers, or custom auth immediately. It should define the internal auth model and adapt providers later.
+Rootware should not try to replace Clerk, WorkOS, Auth.js, OAuth providers, or
+custom auth immediately. It should define the internal auth model and adapt
+providers later.
 
 Example direction:
 
@@ -868,7 +895,8 @@ Purpose:
 - secure random helpers
 - encoding utilities
 
-This package should be conservative. Security APIs are high-risk and should not be invented casually.
+This package should be conservative. Security APIs are high-risk and should not
+be invented casually.
 
 ### `@rootware/entitlements`
 
@@ -903,7 +931,8 @@ Potential packages:
 @rootware/audit
 ```
 
-These become important once Rootware apps have lifecycle, HTTP, jobs, database, and adapters.
+These become important once Rootware apps have lifecycle, HTTP, jobs, database,
+and adapters.
 
 ### `@rootware/health`
 
@@ -954,7 +983,8 @@ Purpose:
 - instrumentation hooks
 - integration with log/context/http/orm/jobs
 
-This should depend on the observability contracts, not define the entire observability model by itself.
+This should depend on the observability contracts, not define the entire
+observability model by itself.
 
 ### `@rootware/audit`
 
@@ -976,7 +1006,8 @@ await audit.record({
 });
 ```
 
-Audit is highly useful for admin panels, moderation systems, CRMs, course platforms, and paid content systems.
+Audit is highly useful for admin panels, moderation systems, CRMs, course
+platforms, and paid content systems.
 
 ---
 
@@ -1123,7 +1154,8 @@ Rules:
 - contracts never depend on adapters
 - adapters should be optional
 - adapter packages can carry vendor-specific dependencies
-- adapter packages should preserve Rootware errors, logging, context, and testing conventions
+- adapter packages should preserve Rootware errors, logging, context, and
+  testing conventions
 
 Adapter package example:
 
@@ -1148,7 +1180,8 @@ Potential packages:
 @rootware/codegen
 ```
 
-Tooling should come after package contracts stabilize. Tooling built too early tends to freeze bad abstractions.
+Tooling should come after package contracts stabilize. Tooling built too early
+tends to freeze bad abstractions.
 
 ### `@rootware/create`
 
@@ -1210,7 +1243,8 @@ Purpose:
 - reload helpers
 - integration with examples
 
-Given Deno watch/runtime constraints, this package should be designed carefully and only after actual dev workflow pain is understood.
+Given Deno watch/runtime constraints, this package should be designed carefully
+and only after actual dev workflow pain is understood.
 
 ### `@rootware/codegen`
 
@@ -1221,13 +1255,15 @@ Purpose:
 - OpenAPI generation hooks
 - migration generation support
 
-This should not arrive before schema, ORM, HTTP, and OpenAPI conventions are stable.
+This should not arrive before schema, ORM, HTTP, and OpenAPI conventions are
+stable.
 
 ---
 
 ## 15. Domain and Vertical Extensions
 
-These packages are not core infrastructure. They are optional accelerators for common product categories.
+These packages are not core infrastructure. They are optional accelerators for
+common product categories.
 
 Potential packages:
 
@@ -1263,7 +1299,8 @@ Purpose:
 - storage integration
 - job integration
 
-This should likely be an integration layer around external tools rather than a full media processing engine.
+This should likely be an integration layer around external tools rather than a
+full media processing engine.
 
 ### `@rootware/moderation`
 
@@ -1307,7 +1344,9 @@ Purpose:
 - webhooks
 - entitlements integration
 
-Billing should not be early. A safer earlier package is `@rootware/entitlements`, because access control is useful even before payment providers exist.
+Billing should not be early. A safer earlier package is
+`@rootware/entitlements`, because access control is useful even before payment
+providers exist.
 
 ---
 
@@ -1421,7 +1460,8 @@ Purpose:
 - search
 - pagination
 
-The proof apps should not be toy examples. They should be small, but production-shaped.
+The proof apps should not be toy examples. They should be small, but
+production-shaped.
 
 ---
 
@@ -1429,33 +1469,46 @@ The proof apps should not be toy examples. They should be small, but production-
 
 Rootware grows along two dimensions, and they answer different questions.
 
-- **Gates** are the rule. Each one is a checkable precondition: *are we allowed through this door yet?* Gates are normative — nothing past them is built until they are cleared.
-- **Horizons** are the map. Each one is a thematic phase of maturity: *where are we in the arc, and what comes next?* Horizons are descriptive — a legible projection of the gates, not a second system.
+- **Gates** are the rule. Each one is a checkable precondition: _are we allowed
+  through this door yet?_ Gates are normative — nothing past them is built until
+  they are cleared.
+- **Horizons** are the map. Each one is a thematic phase of maturity: _where are
+  we in the arc, and what comes next?_ Horizons are descriptive — a legible
+  projection of the gates, not a second system.
 
-A horizon is entered by clearing its gate(s). Where a horizon and a gate appear to disagree, the gate governs — the same precedence `vision.md` holds over this document.
+A horizon is entered by clearing its gate(s). Where a horizon and a gate appear
+to disagree, the gate governs — the same precedence `vision.md` holds over this
+document.
 
-One caveat the table cannot show: horizons read as a sequence, but the gates allow parallelism. A horizon's number is its theme, not a strict serialization. The expanded framework adapters (Horizon 5) become available the moment Gate E clears, even though their horizon number is high. The gate is the true unlock; the horizon is the arc.
+One caveat the table cannot show: horizons read as a sequence, but the gates
+allow parallelism. A horizon's number is its theme, not a strict serialization.
+The expanded framework adapters (Horizon 5) become available the moment Gate E
+clears, even though their horizon number is high. The gate is the true unlock;
+the horizon is the arc.
 
 ### Horizons
 
-| Horizon | What it adds | Gate(s) to enter |
-| --- | --- | --- |
-| **0 — Core** | The twelve packages + the coherence slice | — (defined in `vision.md`; precondition for everything) |
-| **1 — Composition** | Kernel: `app`, `context`, `lifecycle`, `plugin`. First adapters: `hono`, `fresh` | Gate A, then the **Composition Gate** |
-| **2 — Persistence & State** | `seed`, `pagination`; database adapters; cache & storage adapters; `rate-limit` | Gate B and Gate C |
-| **3 — Async Expansion** | `events`, `queue`, `scheduler`, `messaging` (by decomposition); jobs & messaging adapters | Gate D |
-| **4 — Operations** | `health`, `metrics`, `tracing`, `otel`, `audit`; `auth`, `rbac`, `csrf`, `crypto`, `entitlements` | Gate F |
-| **5 — Reach** | Remaining framework adapters: `oak`, `effect`, `express`, `fastify`, `elysia` | Gate E |
-| **6 — Tooling** | `cli`, `create`, `doctor`, `dev`, `codegen` | Contracts stable (≥ Horizon 2) |
-| **7 — Vertical** | `upload`, `media`, `moderation`, `reporting`, `trust`, `billing` | **Gate G** |
+| Horizon                     | What it adds                                                                                      | Gate(s) to enter                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **0 — Core**                | The twelve packages + the coherence slice                                                         | — (defined in `vision.md`; precondition for everything) |
+| **1 — Composition**         | Kernel: `app`, `context`, `lifecycle`, `plugin`. First adapters: `hono`, `fresh`                  | Gate A, then the **Composition Gate**                   |
+| **2 — Persistence & State** | `seed`, `pagination`; database adapters; cache & storage adapters; `rate-limit`                   | Gate B and Gate C                                       |
+| **3 — Async Expansion**     | `events`, `queue`, `scheduler`, `messaging` (by decomposition); jobs & messaging adapters         | Gate D                                                  |
+| **4 — Operations**          | `health`, `metrics`, `tracing`, `otel`, `audit`; `auth`, `rbac`, `csrf`, `crypto`, `entitlements` | Gate F                                                  |
+| **5 — Reach**               | Remaining framework adapters: `oak`, `effect`, `express`, `fastify`, `elysia`                     | Gate E                                                  |
+| **6 — Tooling**             | `cli`, `create`, `doctor`, `dev`, `codegen`                                                       | Contracts stable (≥ Horizon 2)                          |
+| **7 — Vertical**            | `upload`, `media`, `moderation`, `reporting`, `trust`, `billing`                                  | **Gate G**                                              |
 
-`upload` is the seam between Horizon 2 and Horizon 7: the storage-integration primitive can land at Horizon 2 under Gate C, while the higher-level vertical accelerators wait for Gate G. Build the primitive early if storage needs it; hold the opinionated workflow until the pattern is proven.
+`upload` is the seam between Horizon 2 and Horizon 7: the storage-integration
+primitive can land at Horizon 2 under Gate C, while the higher-level vertical
+accelerators wait for Gate G. Build the primitive early if storage needs it;
+hold the opinionated workflow until the pattern is proven.
 
 ### The Gates
 
 Gates are listed in logical order. Each names the horizon it admits.
 
-#### Gate A — Coherence Slice Proven · *admits Horizon 1*
+#### Gate A — Coherence Slice Proven · _admits Horizon 1_
 
 Required before any new public package beyond the twelve:
 
@@ -1467,18 +1520,25 @@ Required before any new public package beyond the twelve:
 - tests are easy to write
 - the result feels materially better than manual assembly
 
-#### Composition Gate — *admits the kernel within Horizon 1*
+#### Composition Gate — _admits the kernel within Horizon 1_
 
-This gate is new. The kernel had no gate in the original list, yet everything in the mature-DX example depends on it. It exists to ensure the kernel is *earned*, not anticipated:
+This gate is new. The kernel had no gate in the original list, yet everything in
+the mature-DX example depends on it. It exists to ensure the kernel is _earned_,
+not anticipated:
 
 - the coherence slice (Gate A) is proven
-- the same wiring — env, logger, context, error mapping — has been hand-assembled in more than one real app
+- the same wiring — env, logger, context, error mapping — has been
+  hand-assembled in more than one real app
 - the repetition, not the anticipation, is what motivates the abstraction
-- the lower primitives are API-stable enough that a composition layer will not thrash
+- the lower primitives are API-stable enough that a composition layer will not
+  thrash
 
-Unlocks, in order: `@rootware/context` (public), `@rootware/lifecycle`, `@rootware/app`, then `@rootware/plugin` last (per §18). Framework adapters `hono` and `fresh` are built against the app definition once it exists; clearing them is Gate E.
+Unlocks, in order: `@rootware/context` (public), `@rootware/lifecycle`,
+`@rootware/app`, then `@rootware/plugin` last (per §18). Framework adapters
+`hono` and `fresh` are built against the app definition once it exists; clearing
+them is Gate E.
 
-#### Gate B — Data Core Proven · *admits the data half of Horizon 2*
+#### Gate B — Data Core Proven · _admits the data half of Horizon 2_
 
 Required before data expansion:
 
@@ -1489,7 +1549,7 @@ Required before data expansion:
 
 Unlocks: `seed`, `pagination`, database adapters.
 
-#### Gate C — State Core Proven · *admits the state half of Horizon 2*
+#### Gate C — State Core Proven · _admits the state half of Horizon 2_
 
 Required before state expansion:
 
@@ -1501,7 +1561,7 @@ Required before state expansion:
 
 Unlocks: cache adapters, storage adapters, `rate-limit`, the `upload` primitive.
 
-#### Gate D — Async Core Proven · *admits Horizon 3*
+#### Gate D — Async Core Proven · _admits Horizon 3_
 
 Required before async expansion:
 
@@ -1512,7 +1572,7 @@ Required before async expansion:
 
 Unlocks: `events`, `queue`, `scheduler`, `messaging`, jobs adapters.
 
-#### Gate E — Framework Integration Proven · *admits Horizon 5*
+#### Gate E — Framework Integration Proven · _admits Horizon 5_
 
 Required before broad adapter expansion:
 
@@ -1522,7 +1582,7 @@ Required before broad adapter expansion:
 
 Unlocks: `oak`, `effect`, `express`, `fastify`, `elysia`.
 
-#### Gate F — Production Operation Proven · *admits Horizon 4*
+#### Gate F — Production Operation Proven · _admits Horizon 4_
 
 Required before observability/security expansion:
 
@@ -1533,21 +1593,28 @@ Required before observability/security expansion:
 
 Unlocks: `health`, `metrics`, `tracing`, `otel`, `audit`, `auth`, `rbac`.
 
-#### Gate G — Vertical Extraction · *admits Horizon 7*
+#### Gate G — Vertical Extraction · _admits Horizon 7_
 
-This gate is new. The vertical layer (§15) had no gate, and it is the layer most at risk of pulling Rootware from substrate into framework. It is the strictest gate for that reason:
+This gate is new. The vertical layer (§15) had no gate, and it is the layer most
+at risk of pulling Rootware from substrate into framework. It is the strictest
+gate for that reason:
 
-- the pattern — upload flow, moderation queue, trust signal, and so on — has been implemented in **at least two proof apps**
-- the implementations were similar enough that a shared package would have helped rather than constrained
-- the package can stay app-neutral, or the opinion it encodes is one you are willing to make canonical
+- the pattern — upload flow, moderation queue, trust signal, and so on — has
+  been implemented in **at least two proof apps**
+- the implementations were similar enough that a shared package would have
+  helped rather than constrained
+- the package can stay app-neutral, or the opinion it encodes is one you are
+  willing to make canonical
 - it does not pull Rootware across the line from substrate into framework
 
-Vertical packages are extractions from the proof apps, never speculative greenfield. A vertical package with no two-app precedent does not pass this gate.
+Vertical packages are extractions from the proof apps, never speculative
+greenfield. A vertical package with no two-app precedent does not pass this
+gate.
 
 ---
 
-> Gates govern. Horizons describe. The twelve-package core is Horizon 0, and no later horizon begins until the gate in front of it is clear.
-
+> Gates govern. Horizons describe. The twelve-package core is Horizon 0, and no
+> later horizon begins until the gate in front of it is clear.
 
 ## 18. Package Split Rules
 
@@ -1572,7 +1639,8 @@ Split from `@rootware/http` only if client behavior grows beyond small helpers.
 
 ### `@rootware/queue`
 
-Split from `@rootware/jobs` only if queue transport becomes independently useful.
+Split from `@rootware/jobs` only if queue transport becomes independently
+useful.
 
 ### `@rootware/scheduler`
 
@@ -1580,15 +1648,18 @@ Split from `@rootware/jobs` only if scheduling becomes large and distinct.
 
 ### `@rootware/context`
 
-May begin internal. Publish only when multiple packages need direct public access.
+May begin internal. Publish only when multiple packages need direct public
+access.
 
 ### `@rootware/app`
 
-Do not publish until manual composition becomes repetitive and the lower APIs have stabilized.
+Do not publish until manual composition becomes repetitive and the lower APIs
+have stabilized.
 
 ### `@rootware/plugin`
 
-Do not publish until app composition exists and at least three real plugins/adapters need a common contract.
+Do not publish until app composition exists and at least three real
+plugins/adapters need a common contract.
 
 ---
 
@@ -1634,7 +1705,8 @@ Examples of bad dependency direction:
 @rootware/errors     -> @rootware/http
 ```
 
-If a package would require bad dependency direction, the package design is wrong.
+If a package would require bad dependency direction, the package design is
+wrong.
 
 ---
 
@@ -1699,7 +1771,8 @@ import { createDb } from "@rootware/orm";
 
 The adoption path must stay incremental.
 
-Rootware should never require a user to adopt the whole ecosystem just to use one package.
+Rootware should never require a user to adopt the whole ecosystem just to use
+one package.
 
 ---
 
@@ -1737,7 +1810,9 @@ Rootware begins with twelve packages.
 
 It can eventually become a broad backend ecosystem.
 
-The correct path is not to build the future all at once. The correct path is to let each future layer emerge when the current layer creates real pressure for it.
+The correct path is not to build the future all at once. The correct path is to
+let each future layer emerge when the current layer creates real pressure for
+it.
 
 The future is:
 
