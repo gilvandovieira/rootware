@@ -1,14 +1,26 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import {
   assertValidSchemaSnapshot,
   defineSchemaSnapshot,
   deserializeSchemaSnapshot,
+  diffSchemaSnapshots,
   equalSchemaSnapshots,
+  isEmptySchemaSnapshotDiff,
   normalizeSchemaSnapshot,
+  type RootwareColumnSnapshot,
   type RootwareSchemaSnapshot,
   serializeSchemaSnapshot,
   validateSchemaSnapshot,
 } from "./mod.ts";
+
+const textColumn = (name: string): RootwareColumnSnapshot => ({
+  name,
+  type: { kind: "text" },
+});
+
+const snapshotOf = (
+  tables: RootwareSchemaSnapshot["tables"],
+): RootwareSchemaSnapshot => ({ version: 1, tables });
 
 Deno.test("@rootware/schema - canonical serialization round-trips and compares equal", () => {
   const snapshot: RootwareSchemaSnapshot = {
@@ -218,4 +230,66 @@ Deno.test("@rootware/schema - assert throws structured issues", () => {
       tables: [{ name: "", columns: [] }],
     })
   );
+});
+
+Deno.test("@rootware/schema - diffSchemaSnapshots detects added/removed/changed tables", () => {
+  const from = snapshotOf([
+    { name: "users", columns: [textColumn("id"), textColumn("email")] },
+    { name: "legacy", columns: [textColumn("id")] },
+  ]);
+  const to = snapshotOf([
+    {
+      name: "users",
+      columns: [textColumn("id"), { name: "email", type: { kind: "varchar" } }],
+    },
+    { name: "posts", columns: [textColumn("id")] },
+  ]);
+
+  const diff = diffSchemaSnapshots(from, to);
+
+  assertEquals(diff.addedTables.map((t) => t.name), ["posts"]);
+  assertEquals(diff.removedTables.map((t) => t.name), ["legacy"]);
+  assertEquals(diff.changedTables.map((t) => t.name), ["users"]);
+
+  const usersDiff = diff.changedTables[0];
+  assertEquals(usersDiff.columns.added, []);
+  assertEquals(usersDiff.columns.removed, []);
+  assertEquals(usersDiff.columns.changed.map((c) => c.name), ["email"]);
+  assertEquals(usersDiff.columns.changed[0].from.type.kind, "text");
+  assertEquals(usersDiff.columns.changed[0].to.type.kind, "varchar");
+});
+
+Deno.test("@rootware/schema - diffSchemaSnapshots reports column add/remove", () => {
+  const from = snapshotOf([{ name: "t", columns: [textColumn("a")] }]);
+  const to = snapshotOf([{
+    name: "t",
+    columns: [textColumn("a"), textColumn("b")],
+  }]);
+
+  const diff = diffSchemaSnapshots(from, to);
+  const tableDiff = diff.changedTables[0];
+  assertEquals(tableDiff.columns.added.map((c) => c.name), ["b"]);
+  assertEquals(tableDiff.columns.removed, []);
+
+  // The reverse direction reports the removal.
+  const reverse = diffSchemaSnapshots(to, from);
+  assertEquals(reverse.changedTables[0].columns.removed.map((c) => c.name), [
+    "b",
+  ]);
+});
+
+Deno.test("@rootware/schema - diff ignores ordering and reports empty for equal snapshots", () => {
+  const a = snapshotOf([
+    { name: "b", columns: [textColumn("y"), textColumn("x")] },
+    { name: "a", columns: [textColumn("id")] },
+  ]);
+  // Same content, different table and column order.
+  const b = snapshotOf([
+    { name: "a", columns: [textColumn("id")] },
+    { name: "b", columns: [textColumn("y"), textColumn("x")] },
+  ]);
+
+  const diff = diffSchemaSnapshots(a, b);
+  assert(isEmptySchemaSnapshotDiff(diff));
+  assertEquals(equalSchemaSnapshots(a, b), true);
 });

@@ -11,6 +11,8 @@ export type StorageErrorCode =
   | "STORAGE_OBJECT_NOT_FOUND"
   | "STORAGE_INVALID_CONTENT_TYPE"
   | "STORAGE_MAX_SIZE_EXCEEDED"
+  | "STORAGE_SIGNING_UNSUPPORTED"
+  | "STORAGE_SIGN_FAILED"
   | "STORAGE_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
@@ -73,6 +75,35 @@ export interface StorageListResult {
   readonly hasMore: boolean;
 }
 
+/** HTTP method a signed URL authorizes: download (`GET`) or upload (`PUT`). */
+export type SignedUrlMethod = "GET" | "PUT";
+
+/** Options for requesting a signed URL. */
+export interface SignUrlOptions {
+  /** Operation the URL authorizes. Defaults to `"GET"`. */
+  readonly method?: SignedUrlMethod;
+  /** Validity window. Defaults to 15 minutes; capped at 7 days. */
+  readonly expiresInMs?: number;
+  /** Required upload content type, for `PUT` URLs. */
+  readonly contentType?: string;
+}
+
+/** Fully-resolved sign options handed to a {@link StorageStore.signUrl} adapter. */
+export interface ResolvedSignUrlOptions {
+  readonly method: SignedUrlMethod;
+  readonly expiresInMs: number;
+  readonly contentType?: string;
+}
+
+/** A time-limited signed URL produced by an adapter that supports signing. */
+export interface SignedUrl {
+  readonly url: string;
+  readonly method: SignedUrlMethod;
+  /** ISO timestamp after which the URL is no longer valid. */
+  readonly expiresAt: string;
+  readonly key: StorageKey;
+}
+
 /** Async-first adapter interface for object storage backends. */
 export interface StorageStore {
   put(
@@ -98,6 +129,17 @@ export interface StorageStore {
   list(
     options?: StorageListOptions,
   ): Promise<StorageListResult>;
+
+  /**
+   * Optionally produces a time-limited signed URL. Stores that front a signing
+   * backend (S3, R2, GCS) implement it; stores that cannot sign (in-memory,
+   * local filesystem) omit it, and the client then throws
+   * `STORAGE_SIGNING_UNSUPPORTED`.
+   */
+  signUrl?(
+    key: StorageKey,
+    options: ResolvedSignUrlOptions,
+  ): Promise<SignedUrl>;
 
   clear?(): Promise<void>;
 
@@ -142,6 +184,15 @@ export interface StorageClient {
     key: StorageKey,
   ): string | undefined;
 
+  /**
+   * Produces a time-limited signed URL for `key`. Throws
+   * `STORAGE_SIGNING_UNSUPPORTED` when the underlying store cannot sign.
+   */
+  signUrl(
+    key: StorageKey,
+    options?: SignUrlOptions,
+  ): Promise<SignedUrl>;
+
   clear(): Promise<void>;
 
   close(): Promise<void>;
@@ -182,6 +233,11 @@ export interface StorageBucket {
   publicUrl(
     key: StorageKey,
   ): string | undefined;
+
+  signUrl(
+    key: StorageKey,
+    options?: SignUrlOptions,
+  ): Promise<SignedUrl>;
 }
 
 /** Options for creating a storage client. */
@@ -548,6 +604,10 @@ export function createStorageBucket(
     publicUrl(key: StorageKey): string | undefined {
       return storage.publicUrl(joinStorageKey([name, key]));
     },
+
+    signUrl(key: StorageKey, options?: SignUrlOptions): Promise<SignedUrl> {
+      return storage.signUrl(joinStorageKey([name, key]), options);
+    },
   };
 }
 
@@ -817,6 +877,12 @@ export function noopStorage(): StorageClient {
       return undefined;
     },
 
+    signUrl(key: StorageKey, _options?: SignUrlOptions): Promise<SignedUrl> {
+      return Promise.reject(
+        buildSigningUnsupportedError(normalizeStorageKey(key)),
+      );
+    },
+
     clear(): Promise<void> {
       return Promise.resolve();
     },
@@ -973,6 +1039,32 @@ class RootwareStorageClient implements StorageClient {
     return buildPublicUrl(this.#publicBaseUrl, this.#key(key));
   }
 
+  async signUrl(
+    key: StorageKey,
+    options: SignUrlOptions = {},
+  ): Promise<SignedUrl> {
+    const fullKey = this.#key(key);
+    const sign = this.#store.signUrl;
+
+    if (sign === undefined) {
+      throw buildSigningUnsupportedError(fullKey);
+    }
+
+    try {
+      const resolved = resolveSignUrlOptions(options);
+      const signed = await sign.call(this.#store, fullKey, resolved);
+      this.#debug(
+        { key: fullKey, method: resolved.method, expiresAt: signed.expiresAt },
+        "storage sign url",
+      );
+      return signed;
+    } catch (error) {
+      throw this.#operationError("signUrl", "STORAGE_SIGN_FAILED", error, {
+        key: fullKey,
+      });
+    }
+  }
+
   async clear(): Promise<void> {
     try {
       await this.#store.clear?.();
@@ -1088,6 +1180,13 @@ function createNoopBucket(name: StorageBucketName): StorageBucket {
 
     publicUrl(_key: StorageKey): string | undefined {
       return undefined;
+    },
+
+    signUrl(key: StorageKey, _options?: SignUrlOptions): Promise<SignedUrl> {
+      return Promise.reject(buildSigningUnsupportedError(joinStorageKey([
+        name,
+        key,
+      ])));
     },
   };
 }
@@ -1475,6 +1574,50 @@ function buildPublicUrl(publicBaseUrl: string, key: StorageKey): string {
     .join("/");
 
   return new URL(encodedKey, baseUrl).toString();
+}
+
+const DEFAULT_SIGNED_URL_EXPIRY_MS = 15 * 60_000;
+const MAX_SIGNED_URL_EXPIRY_MS = 7 * 24 * 60 * 60_000;
+
+/** Resolves and validates signed-URL options, applying defaults and the cap. */
+function resolveSignUrlOptions(
+  options: SignUrlOptions,
+): ResolvedSignUrlOptions {
+  const method: SignedUrlMethod = options.method ?? "GET";
+  const expiresInMs = options.expiresInMs ?? DEFAULT_SIGNED_URL_EXPIRY_MS;
+
+  if (!Number.isFinite(expiresInMs) || expiresInMs <= 0) {
+    throw new StorageError("Signed URL expiry must be greater than zero", {
+      code: "STORAGE_SIGN_FAILED",
+      details: { option: "expiresInMs", expiresInMs },
+    });
+  }
+
+  if (expiresInMs > MAX_SIGNED_URL_EXPIRY_MS) {
+    throw new StorageError("Signed URL expiry exceeds the maximum", {
+      code: "STORAGE_SIGN_FAILED",
+      details: {
+        option: "expiresInMs",
+        expiresInMs,
+        maxMs: MAX_SIGNED_URL_EXPIRY_MS,
+      },
+    });
+  }
+
+  return {
+    method,
+    expiresInMs,
+    ...(options.contentType === undefined
+      ? {}
+      : { contentType: options.contentType }),
+  };
+}
+
+function buildSigningUnsupportedError(key: StorageKey): StorageError {
+  return new StorageError("This storage store does not support signed URLs", {
+    code: "STORAGE_SIGNING_UNSUPPORTED",
+    details: { key, operation: "signUrl" },
+  });
 }
 
 function hasControlCharacter(value: string): boolean {

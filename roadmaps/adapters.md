@@ -2,8 +2,9 @@
 
 ## Status
 
-Rootware has a `v0.1` package foundation. Adapter packages should remain
-secondary until the relevant core package contracts are stable.
+Rootware has a pre-1.0 package foundation and initial PostgreSQL subpaths inside
+the data packages. Separate adapter packages should remain secondary until the
+relevant core package contracts are stable.
 
 Last reviewed: `2026-06-26`
 
@@ -101,10 +102,10 @@ Depends on:
 
 This is the **single home** for Hono middleware. Because Hono is a meaningful
 external dependency, it belongs in this separate package rather than a
-`@rootware/log/hono` subpath. `../packages/log/ROADMAP.md` agrees: its
-request-logging section points Hono middleware here, not to a `log` subpath. The
-request-logging middleware is folded into `@rootware/hono` so there is exactly
-one place Hono integration lives. This is settled.
+`@rootware/log/hono` subpath. `../packages/foundation/log/ROADMAP.md` agrees:
+its request-logging section points Hono middleware here, not to a `log` subpath.
+The request-logging middleware is folded into `@rootware/hono` so there is
+exactly one place Hono integration lives. This is settled.
 
 ### @rootware/otel
 

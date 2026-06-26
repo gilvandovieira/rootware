@@ -297,6 +297,145 @@ export function equalSchemaSnapshots(
   return serializeSchemaSnapshot(a) === serializeSchemaSnapshot(b);
 }
 
+/** A column present in both tables whose definition changed. */
+export interface RootwareColumnDiff {
+  readonly name: string;
+  readonly from: RootwareColumnSnapshot;
+  readonly to: RootwareColumnSnapshot;
+}
+
+/** Column-level changes between two versions of one table. */
+export interface RootwareTableColumnsDiff {
+  readonly added: readonly RootwareColumnSnapshot[];
+  readonly removed: readonly RootwareColumnSnapshot[];
+  readonly changed: readonly RootwareColumnDiff[];
+}
+
+/** A table present in both snapshots whose definition changed. */
+export interface RootwareTableDiff {
+  readonly name: string;
+  readonly schema?: string;
+  readonly from: RootwareTableSnapshot;
+  readonly to: RootwareTableSnapshot;
+  readonly columns: RootwareTableColumnsDiff;
+}
+
+/** Structural difference between two schema snapshots (`from` → `to`). */
+export interface RootwareSchemaSnapshotDiff {
+  readonly addedTables: readonly RootwareTableSnapshot[];
+  readonly removedTables: readonly RootwareTableSnapshot[];
+  readonly changedTables: readonly RootwareTableDiff[];
+}
+
+/**
+ * Computes the structural difference from one snapshot to another.
+ *
+ * Both snapshots are normalized first, so ordering differences are ignored.
+ * Tables are matched by `schema.name`, columns by `name`. A column is `changed`
+ * when its normalized definition differs; a table is in `changedTables` when its
+ * normalized form differs (covering columns and constraints). This is the
+ * dependency-free primitive `@rootware/migrate` builds generated migrations on,
+ * without `orm` and `migrate` importing each other.
+ */
+export function diffSchemaSnapshots(
+  from: RootwareSchemaSnapshot,
+  to: RootwareSchemaSnapshot,
+): RootwareSchemaSnapshotDiff {
+  const fromTables = indexTables(normalizeSchemaSnapshot(from));
+  const toTables = indexTables(normalizeSchemaSnapshot(to));
+
+  const addedTables: RootwareTableSnapshot[] = [];
+  const removedTables: RootwareTableSnapshot[] = [];
+  const changedTables: RootwareTableDiff[] = [];
+
+  for (const [key, table] of toTables) {
+    if (!fromTables.has(key)) {
+      addedTables.push(table);
+    }
+  }
+
+  for (const [key, fromTable] of fromTables) {
+    const toTable = toTables.get(key);
+
+    if (toTable === undefined) {
+      removedTables.push(fromTable);
+      continue;
+    }
+
+    if (JSON.stringify(fromTable) === JSON.stringify(toTable)) {
+      continue;
+    }
+
+    changedTables.push({
+      name: fromTable.name,
+      ...(fromTable.schema === undefined ? {} : { schema: fromTable.schema }),
+      from: fromTable,
+      to: toTable,
+      columns: diffColumns(fromTable.columns, toTable.columns),
+    });
+  }
+
+  return { addedTables, removedTables, changedTables };
+}
+
+/** Returns true when a snapshot diff contains no table or column changes. */
+export function isEmptySchemaSnapshotDiff(
+  diff: RootwareSchemaSnapshotDiff,
+): boolean {
+  return diff.addedTables.length === 0 &&
+    diff.removedTables.length === 0 &&
+    diff.changedTables.length === 0;
+}
+
+function indexTables(
+  snapshot: RootwareSchemaSnapshot,
+): Map<string, RootwareTableSnapshot> {
+  const tables = new Map<string, RootwareTableSnapshot>();
+
+  for (const table of snapshot.tables) {
+    tables.set(tableSnapshotKey(table), table);
+  }
+
+  return tables;
+}
+
+function diffColumns(
+  fromColumns: readonly RootwareColumnSnapshot[],
+  toColumns: readonly RootwareColumnSnapshot[],
+): RootwareTableColumnsDiff {
+  const fromByName = new Map(
+    fromColumns.map((column) => [column.name, column] as const),
+  );
+  const toByName = new Map(
+    toColumns.map((column) => [column.name, column] as const),
+  );
+
+  const added: RootwareColumnSnapshot[] = [];
+  const removed: RootwareColumnSnapshot[] = [];
+  const changed: RootwareColumnDiff[] = [];
+
+  for (const column of toColumns) {
+    if (!fromByName.has(column.name)) {
+      added.push(column);
+    }
+  }
+
+  for (const column of fromColumns) {
+    const next = toByName.get(column.name);
+
+    if (next === undefined) {
+      removed.push(column);
+      continue;
+    }
+
+    if (JSON.stringify(column) !== JSON.stringify(next)) {
+      changed.push({ name: column.name, from: column, to: next });
+    }
+  }
+
+  return { added, removed, changed };
+}
+
 function normalizeTableSnapshot(
   table: RootwareTableSnapshot,
 ): RootwareTableSnapshot {

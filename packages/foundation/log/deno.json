@@ -1,7 +1,10 @@
 {
   "name": "@rootware/log",
-  "version": "0.2.0",
-  "exports": "./mod.ts",
+  "version": "0.3.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./compat/pino": "./compat/pino/mod.ts"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -23,6 +26,7 @@
     "include": [
       "README.md",
       "mod.ts",
+      "compat/**/*.ts",
       "deno.json"
     ],
     "exclude": [

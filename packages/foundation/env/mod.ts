@@ -8,6 +8,7 @@ export type EnvErrorCode =
   | "ENV_MISSING_VARIABLE"
   | "ENV_INVALID_VARIABLE"
   | "ENV_ACCESS_DENIED"
+  | "ENV_MODE_VIOLATION"
   | "ENV_UNKNOWN_ERROR"
   | (string & Record<never, never>);
 
@@ -56,6 +57,18 @@ export type InferEnv<TSchema extends EnvSchema> = {
 /** Options for resolving and validating an environment schema. */
 export interface DefineEnvOptions {
   readonly source?: EnvSource;
+  /**
+   * Tightens validation for an environment.
+   *
+   * - `development` (and unset): permissive — defaults apply to every variable,
+   *   including secrets.
+   * - `test`: refuses to fall back to `Deno.env` (an explicit `source` is
+   *   required) and ignores defaults for secrets, so a test can never pass on an
+   *   ambient or hard-coded production secret.
+   * - `production`: ignores defaults for secrets (a missing secret is a fatal
+   *   configuration error), so a development default is never shipped to
+   *   production. Non-secret defaults still apply.
+   */
   readonly mode?: EnvMode;
   readonly prefix?: string;
   readonly allowEmpty?: boolean;
@@ -224,6 +237,17 @@ export function defineEnv<TSchema extends EnvSchema>(
     return validateEnv(schema, options.source, options);
   }
 
+  if (options.mode === "test") {
+    throw new EnvError(
+      'Environment mode "test" requires an explicit source; refusing to read ' +
+        "Deno.env so tests cannot pick up ambient production secrets",
+      {
+        code: "ENV_MODE_VIOLATION",
+        details: { mode: "test", source: "Deno.env" },
+      },
+    );
+  }
+
   return validateEnv(schema, readDenoEnv(), options);
 }
 
@@ -235,6 +259,8 @@ export function validateEnv<TSchema extends EnvSchema>(
 ): InferEnv<TSchema> {
   const values: Record<string, unknown> = {};
   const allowEmpty = options.allowEmpty ?? false;
+  const strictSecrets = options.mode === "production" ||
+    options.mode === "test";
 
   for (const key of Object.keys(schema)) {
     const definition = schema[key];
@@ -242,6 +268,13 @@ export function validateEnv<TSchema extends EnvSchema>(
     const rawValue = source[sourceKey];
 
     if (rawValue === undefined) {
+      // In strict modes a secret never falls back to a (potentially unsafe)
+      // default — it must be supplied explicitly or the config is invalid.
+      const isSecretLike = definition.isSecret || isSecretKey(sourceKey);
+      if (strictSecrets && isSecretLike && definition.hasDefault) {
+        throwUnsafeSecretDefault(sourceKey, options.mode as EnvMode);
+      }
+
       if (definition.hasDefault) {
         values[key] = definition.defaultValue;
         continue;
@@ -573,14 +606,32 @@ function throwInvalidVariable(
   expected: string,
   cause: unknown,
 ): never {
-  throw new EnvError(`Invalid environment variable: ${variable}`, {
-    code: "ENV_INVALID_VARIABLE",
-    status: 500,
-    expose: false,
-    severity: "fatal",
-    details: { variable, expected },
-    cause,
-  });
+  throw new EnvError(
+    `Invalid environment variable ${variable}: expected ${expected}`,
+    {
+      code: "ENV_INVALID_VARIABLE",
+      status: 500,
+      expose: false,
+      severity: "fatal",
+      details: { variable, expected },
+      cause,
+    },
+  );
+}
+
+function throwUnsafeSecretDefault(variable: string, mode: EnvMode): never {
+  throw new EnvError(
+    `Missing required secret environment variable: ${variable} ` +
+      `(mode "${mode}" does not apply default values to secrets — ` +
+      `set it explicitly)`,
+    {
+      code: "ENV_MISSING_VARIABLE",
+      status: 500,
+      expose: false,
+      severity: "fatal",
+      details: { variable, mode, reason: "unsafe-default" },
+    },
+  );
 }
 
 function throwParserError(expected: string, cause?: unknown): never {

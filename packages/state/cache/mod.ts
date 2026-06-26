@@ -46,6 +46,12 @@ export interface CacheDeleteOptions {
 
 export interface GetOrSetOptions extends CacheSetOptions {
   readonly forceRefresh?: boolean;
+  /**
+   * For stores that implement {@link CacheStore.acquireLock}, bounds how long to
+   * wait for a cross-process lock before computing without it. Single-process
+   * stores (e.g. the in-memory store) ignore this and dedup in-process instead.
+   */
+  readonly lockTimeoutMs?: number;
 }
 
 /**
@@ -58,6 +64,20 @@ export interface GetOrSetOptions extends CacheSetOptions {
 export interface CacheSerializer<TWire = string> {
   serialize(value: unknown): TWire;
   deserialize<T = unknown>(wire: TWire): T;
+}
+
+/**
+ * Handle for a held distributed lock, returned by
+ * {@link CacheStore.acquireLock}. Releasing it is idempotent and must not throw.
+ */
+export interface CacheLock {
+  release(): Promise<void>;
+}
+
+/** Options for acquiring a distributed lock. */
+export interface CacheLockOptions {
+  /** Maximum time to wait to acquire the lock before giving up. */
+  readonly lockTimeoutMs?: number;
 }
 
 /** Async-first adapter interface for cache backends. */
@@ -86,7 +106,72 @@ export interface CacheStore {
 
   keys?(): Promise<CacheKey[]>;
 
+  /**
+   * Optionally acquires a cross-process lock for stampede protection in
+   * {@link CacheClient.getOrSet}. Stores that cannot lock (e.g. the in-memory
+   * store) omit this; `getOrSet` then falls back to in-process dedup. Returns
+   * `undefined` when the lock could not be taken within `lockTimeoutMs`.
+   */
+  acquireLock?(
+    key: CacheKey,
+    options?: CacheLockOptions,
+  ): Promise<CacheLock | undefined>;
+
   close?(): Promise<void>;
+}
+
+/**
+ * Minimal Redis-like client surface a Redis-backed {@link CacheStore} adapter
+ * wraps. An adapter stores each entry as a serialized string with a per-key
+ * `PX` expiry derived from `CacheEntry.ttlMs`, and uses `SCAN` for `keys`/
+ * `clear` under its `keyPrefix`.
+ */
+export interface RedisLikeClient {
+  get(key: string): Promise<string | null>;
+  set(
+    key: string,
+    value: string,
+    options?: { readonly pxMs?: number },
+  ): Promise<unknown>;
+  del(...keys: string[]): Promise<unknown>;
+  scan?(
+    cursor: string,
+    options?: { readonly match?: string; readonly count?: number },
+  ): Promise<readonly [string, string[]]>;
+}
+
+/** Contract for constructing a Redis-backed cache store. */
+export interface RedisCacheAdapterOptions {
+  readonly client: RedisLikeClient;
+  /** Defaults to {@link jsonCacheSerializer}. */
+  readonly serializer?: CacheSerializer<string>;
+  /** Namespaces every key on the wire (e.g. `"cache:"`). */
+  readonly keyPrefix?: string;
+}
+
+/**
+ * Minimal `Deno.Kv`-like surface a KV-backed {@link CacheStore} adapter wraps.
+ * The adapter maps a cache key to a KV key tuple and uses `expireIn` (ms) for
+ * TTL, listing under a `keyPrefix` tuple for `keys`/`clear`.
+ */
+export interface DenoKvLike {
+  get(key: readonly unknown[]): Promise<{ readonly value: unknown }>;
+  set(
+    key: readonly unknown[],
+    value: unknown,
+    options?: { readonly expireIn?: number },
+  ): Promise<unknown>;
+  delete(key: readonly unknown[]): Promise<unknown>;
+  list(
+    selector: { readonly prefix: readonly unknown[] },
+  ): AsyncIterable<{ readonly key: readonly unknown[] }>;
+}
+
+/** Contract for constructing a `Deno.Kv`-backed cache store. */
+export interface DenoKvCacheAdapterOptions {
+  readonly kv: DenoKvLike;
+  /** Key-tuple prefix for every entry (e.g. `["cache"]`). */
+  readonly keyPrefix?: readonly unknown[];
 }
 
 /** User-facing cache client that exposes values instead of raw entries. */
@@ -710,7 +795,7 @@ class RootwareCacheClient implements CacheClient {
       return await inFlight;
     }
 
-    const promise = this.#computeAndStore(key, fullKey, factory, options);
+    const promise = this.#computeWithLock(key, fullKey, factory, options);
     this.#inFlight.set(fullKey, promise);
 
     try {
@@ -736,6 +821,37 @@ class RootwareCacheClient implements CacheClient {
 
   #key(key: CacheKey): CacheKey {
     return joinCacheKey([this.#namespace, key]);
+  }
+
+  async #computeWithLock<T>(
+    key: CacheKey,
+    fullKey: CacheKey,
+    factory: () => T | Promise<T>,
+    options: GetOrSetOptions,
+  ): Promise<T> {
+    const lock = options.lockTimeoutMs !== undefined &&
+        this.#store.acquireLock !== undefined
+      ? await this.#store.acquireLock(fullKey, {
+        lockTimeoutMs: options.lockTimeoutMs,
+      })
+      : undefined;
+
+    try {
+      // After winning a cross-process lock another node may have populated the
+      // value while we waited, so re-check before recomputing.
+      if (lock !== undefined && !options.forceRefresh) {
+        const existing = await this.get<T>(key);
+        if (existing !== undefined) {
+          return existing;
+        }
+      }
+
+      return await this.#computeAndStore(key, fullKey, factory, options);
+    } finally {
+      if (lock !== undefined) {
+        await lock.release();
+      }
+    }
   }
 
   async #computeAndStore<T>(

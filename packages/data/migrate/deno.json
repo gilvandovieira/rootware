@@ -1,9 +1,10 @@
 {
   "name": "@rootware/migrate",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "exports": {
     ".": "./mod.ts",
-    "./postgres": "./postgres/mod.ts"
+    "./postgres": "./postgres/mod.ts",
+    "./cli": "./cli/mod.ts"
   },
   "license": "MIT",
   "repository": {
@@ -27,6 +28,7 @@
       "mod.ts",
       "core/**/*.ts",
       "postgres/**/*.ts",
+      "cli/**/*.ts",
       "deno.json"
     ],
     "exclude": [

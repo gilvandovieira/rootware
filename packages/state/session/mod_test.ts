@@ -5,7 +5,11 @@ import {
   assertRejects,
   assertThrows,
 } from "@std/assert";
-import { createCache, memoryCacheStore } from "@rootware/cache";
+import {
+  type CacheClient,
+  createCache,
+  memoryCacheStore,
+} from "@rootware/cache";
 import {
   appendSetCookie,
   cacheSessionStore,
@@ -89,6 +93,75 @@ Deno.test("@rootware/session - cache store works with cache memory store", async
   assertEquals((await store.get("cached_1"))?.id, "cached_1");
   await store.touch?.("cached_1");
   assertEquals(await store.delete("cached_1"), true);
+});
+
+Deno.test("@rootware/session - cache store derives entry TTL from expiresAt", async () => {
+  let lastSetTtlMs: number | undefined;
+  const map = new Map<string, unknown>();
+  const cache = {
+    get: (key: string) => Promise.resolve(map.get(key)),
+    set: (key: string, value: unknown, options?: { ttlMs?: number }) => {
+      lastSetTtlMs = options?.ttlMs;
+      map.set(key, value);
+      return Promise.resolve();
+    },
+    delete: (key: string) => Promise.resolve(map.delete(key)),
+    has: (key: string) => Promise.resolve(map.has(key)),
+    clear: () => {
+      map.clear();
+      return Promise.resolve();
+    },
+    getOrSet: <T>(_key: string, factory: () => T | Promise<T>) =>
+      Promise.resolve(factory()),
+    namespace: () => cache,
+    close: () => Promise.resolve(),
+  } as unknown as CacheClient;
+
+  const store = cacheSessionStore(cache);
+
+  // A future expiresAt is mapped to the cache entry TTL (remaining lifetime).
+  await store.set(createSessionRecord({ id: "s1", maxAgeMs: 60_000 }));
+  assert(lastSetTtlMs !== undefined);
+  assert(lastSetTtlMs > 55_000 && lastSetTtlMs <= 60_000);
+
+  // A session without expiresAt and no store ttl leaves the entry TTL unset.
+  lastSetTtlMs = -1;
+  await store.set(createSessionRecord({ id: "s2" }));
+  assertEquals(lastSetTtlMs, undefined);
+});
+
+Deno.test("@rootware/session - cache eviction drops a still-valid session (non-durable)", async () => {
+  // A small cache evicts the oldest entry; sessions are not durable.
+  const cache = createCache({ store: memoryCacheStore({ maxEntries: 1 }) });
+  const store = cacheSessionStore(cache, { prefix: "sess" });
+
+  await store.set(createSessionRecord({ id: "first", maxAgeMs: 60_000 }));
+  await store.set(createSessionRecord({ id: "second", maxAgeMs: 60_000 }));
+
+  // "first" was evicted by the cache even though it had not expired.
+  assertEquals(await store.get("first"), undefined);
+  assertEquals((await store.get("second"))?.id, "second");
+});
+
+Deno.test("@rootware/session - session expiry is enforced independently of cache TTL", async () => {
+  // The cache keeps an already-expired session (its derived TTL is non-positive,
+  // so it falls back to no TTL), but the session layer still treats it as gone.
+  const cache = createCache({ store: memoryCacheStore() });
+  const store = cacheSessionStore(cache, { prefix: "sess" });
+  await store.set(
+    createSessionRecord({ id: "expired_1", maxAgeMs: 1_000, now: 0 }),
+  );
+
+  // The raw entry is still in the cache...
+  assertExists(await store.get("expired_1"));
+
+  // ...but the manager resolves it to undefined because it has expired.
+  const manager = createSessionManager({ store, maxAgeMs: 60_000 });
+  const cookieName = manager.cookieName();
+  const request = new Request("https://example.com", {
+    headers: { cookie: `${cookieName}=expired_1` },
+  });
+  assertEquals(await manager.get(request), undefined);
 });
 
 Deno.test("@rootware/session - cookie helpers are safe", () => {

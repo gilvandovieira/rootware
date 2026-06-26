@@ -34,6 +34,60 @@ const config = defineEnv({
 - `generateEnvExample`
 - `readDenoEnv`
 
+## Example app configuration
+
+Validate once at startup and export the typed, frozen result; import it
+everywhere else:
+
+```ts
+// config.ts
+import { defineEnv, env } from "jsr:@rootware/env";
+
+export const schema = {
+  DATABASE_URL: env.url().describe("Primary database connection"),
+  LOG_LEVEL: env.enum(["debug", "info", "warn", "error"]).default("info"),
+  PORT: env.integer().default(8000),
+  SESSION_SECRET: env.secret(),
+};
+
+export const config = defineEnv(schema, {
+  // "production" / "test" stop a development default secret from slipping
+  // through; "test" additionally requires an explicit `source`.
+  mode: Deno.env.get("DENO_ENV") === "production"
+    ? "production"
+    : "development",
+});
+```
+
+## Modes
+
+`mode` tightens validation per environment:
+
+| Mode          | `Deno.env` fallback | Secret defaults               |
+| ------------- | ------------------- | ----------------------------- |
+| `development` | allowed             | applied (ergonomic local dev) |
+| `test`        | **refused**         | ignored (must be explicit)    |
+| `production`  | allowed             | ignored (must be explicit)    |
+
+In `test` and `production`, a `secret()` (or a key matched by `isSecretKey`,
+e.g. `*_TOKEN`) with a `.default(...)` is treated as required: a missing value
+throws `ENV_MISSING_VARIABLE` rather than silently using the development
+default. Non-secret defaults (like `PORT`) still apply in every mode.
+
+## Logging redacted values
+
+`@rootware/env` never imports `@rootware/log` (config must work before logging
+exists), but the two compose well — log the **redacted** snapshot:
+
+```ts
+import { redactEnv } from "jsr:@rootware/env";
+import { createLogger } from "jsr:@rootware/log";
+
+const logger = createLogger();
+logger.info("configuration loaded", { env: redactEnv(config, schema) });
+// SESSION_SECRET and DATABASE_URL are replaced with "[REDACTED]".
+```
+
 ## Security
 
 Secrets are redacted by definition type and by common key names such as

@@ -3,9 +3,9 @@
 > Long-term direction for Rootware after the twelve-package core proves
 > coherence.
 
-This document is a companion to `vision.md`.
+This document is a companion to `VISION.md`.
 
-`vision.md` defines the current working strategy: twelve packages, a thin
+`VISION.md` defines the current working strategy: twelve packages, a thin
 coherence slice, and strict scope discipline. This document explains where that
 vision can go after the core proves useful in a real application.
 
@@ -19,7 +19,7 @@ small, but it should not forget where it can go.
 
 ---
 
-## 1. Relationship to `vision.md`
+## 1. Relationship to `VISION.md`
 
 The canonical vision says Rootware currently focuses on exactly twelve packages:
 
@@ -266,7 +266,7 @@ rootware/
 │  └─ church-crm-demo/
 │
 ├─ docs/
-│  ├─ vision.md
+│  ├─ VISION.md
 │  ├─ future-ecosystem.md
 │  ├─ packages/
 │  ├─ guides/
@@ -1477,7 +1477,7 @@ Rootware grows along two dimensions, and they answer different questions.
   projection of the gates, not a second system.
 
 A horizon is entered by clearing its gate(s). Where a horizon and a gate appear
-to disagree, the gate governs — the same precedence `vision.md` holds over this
+to disagree, the gate governs — the same precedence `VISION.md` holds over this
 document.
 
 One caveat the table cannot show: horizons read as a sequence, but the gates
@@ -1490,7 +1490,7 @@ the horizon is the arc.
 
 | Horizon                     | What it adds                                                                                      | Gate(s) to enter                                        |
 | --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **0 — Core**                | The twelve packages + the coherence slice                                                         | — (defined in `vision.md`; precondition for everything) |
+| **0 — Core**                | The twelve packages + the coherence slice                                                         | — (defined in `VISION.md`; precondition for everything) |
 | **1 — Composition**         | Kernel: `app`, `context`, `lifecycle`, `plugin`. First adapters: `hono`, `fresh`                  | Gate A, then the **Composition Gate**                   |
 | **2 — Persistence & State** | `seed`, `pagination`; database adapters; cache & storage adapters; `rate-limit`                   | Gate B and Gate C                                       |
 | **3 — Async Expansion**     | `events`, `queue`, `scheduler`, `messaging` (by decomposition); jobs & messaging adapters         | Gate D                                                  |
@@ -1828,6 +1828,6 @@ errors -> env -> log -> context prototype -> http -> coherence slice -> schema -
 
 This document preserves the destination.
 
-`vision.md` protects the focus.
+`VISION.md` protects the focus.
 
 Together, they keep Rootware ambitious without letting it become unfocused.

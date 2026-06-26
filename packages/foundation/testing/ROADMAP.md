@@ -268,19 +268,27 @@ Implement `createTestContext()`.
 
 Dogfood the package against errors/env/log.
 
-## v0.3.0 — Shared scaffolding for package fixtures
+## v0.3.0 — Shared scaffolding for package fixtures — **done (`0.3.0`)**
 
 This milestone hardens the _shared_ helpers that higher packages' `/testing`
 subpaths build on. The HTTP/cache/storage fixtures themselves ship from
 `@rootware/http/testing`, `@rootware/cache/testing`, and
 `@rootware/storage/testing`, not from here.
 
-- Stabilize the fake clock, cleanup stack, and test context so subpath fixtures
-  can compose them.
-- Document the `/testing`-subpath convention and a worked example of one package
-  consuming core helpers.
-- Better memory-log assertion ergonomics.
-- Test context composition docs.
+- **Composition seam** — `TestContext` gained `use(fixture)`, which runs a
+  `TestFixture` and registers its teardown on the context's LIFO cleanup stack.
+  This is the join point a subpath fixture plugs into; the fake clock, cleanup
+  stack, and memory log sink are exposed on the context for composition.
+- **`/testing`-subpath convention documented** — README explains that
+  package-owned fakes ship from each package's own `/testing` subpath (never
+  this core), with a worked `@rootware/cache/testing` fixture example consuming
+  `createFixture` + `ctx.use`.
+- **Better memory-log assertion ergonomics** — `assertLog` added
+  `hasMessageMatching(RegExp)`, `hasNoRecord`, `isEmpty`, `messages()`, and
+  `last()`.
+- **Test context composition docs** — added to the README.
+- `assertRootwareError` already lives here (its `/testing` home), satisfying the
+  `@rootware/errors` v0.3 cross-reference.
 
 ## v0.4.0 — App testing helpers
 

@@ -19,8 +19,12 @@ import {
   noopStorage,
   normalizeBucketName,
   normalizeStorageKey,
+  type ResolvedSignUrlOptions,
+  type SignedUrl,
   StorageError,
   type StorageFileSystem,
+  type StorageKey,
+  type StorageStore,
 } from "./mod.ts";
 
 /** In-memory {@link StorageFileSystem} so the local adapter is testable off-disk. */
@@ -243,4 +247,73 @@ Deno.test("@rootware/storage - memory options and noop storage", async () => {
   assertEquals(await noop.get("x.txt"), undefined);
   assertEquals(await noop.exists("x.txt"), false);
   assertEquals((await noop.list()).objects, []);
+});
+
+Deno.test("@rootware/storage - signUrl is unsupported on stores that cannot sign", async () => {
+  const storage = createStorage({ store: memoryStorageStore() });
+  const error = await assertRejects(
+    () => storage.signUrl("a.txt"),
+    StorageError,
+  );
+  assertEquals(error.code, "STORAGE_SIGNING_UNSUPPORTED");
+  assertEquals(error.details?.key, "a.txt");
+
+  // The noop client and its buckets reject the same way.
+  const noopError = await assertRejects(
+    () => noopStorage().signUrl("a.txt"),
+    StorageError,
+  );
+  assertEquals(noopError.code, "STORAGE_SIGNING_UNSUPPORTED");
+  const bucketError = await assertRejects(
+    () => noopStorage().bucket("avatars").signUrl("a.txt"),
+    StorageError,
+  );
+  assertEquals(bucketError.code, "STORAGE_SIGNING_UNSUPPORTED");
+});
+
+Deno.test("@rootware/storage - signUrl delegates to a signing store with resolved options", async () => {
+  const seen: { key?: StorageKey; options?: ResolvedSignUrlOptions } = {};
+
+  const signingStore: StorageStore = {
+    ...memoryStorageStore(),
+    signUrl(
+      key: StorageKey,
+      options: ResolvedSignUrlOptions,
+    ): Promise<SignedUrl> {
+      seen.key = key;
+      seen.options = options;
+      return Promise.resolve({
+        key,
+        method: options.method,
+        url: `https://signed.example.com/${key}?exp=${options.expiresInMs}`,
+        expiresAt: new Date(Date.now() + options.expiresInMs).toISOString(),
+      });
+    },
+  };
+
+  const storage = createStorage({ store: signingStore, namespace: "app" });
+
+  // Default options: GET and 15-minute expiry.
+  const get = await storage.signUrl("photos/p1.jpg");
+  assertEquals(seen.key, "app/photos/p1.jpg");
+  assertEquals(seen.options?.method, "GET");
+  assertEquals(seen.options?.expiresInMs, 15 * 60_000);
+  assert(get.url.includes("app/photos/p1.jpg"));
+
+  // Explicit PUT upload options pass through, including under a bucket prefix.
+  const put = await storage.bucket("uploads").signUrl("p2.jpg", {
+    method: "PUT",
+    expiresInMs: 60_000,
+    contentType: "image/jpeg",
+  });
+  assertEquals(seen.key, "app/uploads/p2.jpg");
+  assertEquals(seen.options?.method, "PUT");
+  assertEquals(seen.options?.contentType, "image/jpeg");
+  assertEquals(put.method, "PUT");
+
+  // Invalid expiry is rejected before reaching the store.
+  await assertRejects(
+    () => storage.signUrl("photos/p1.jpg", { expiresInMs: 0 }),
+    StorageError,
+  );
 });

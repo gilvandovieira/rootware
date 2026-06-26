@@ -54,6 +54,21 @@ errors/schema -> env -> log -> testing -> http/cache/storage -> session -> migra
 | `@rootware/orm`     | `packages/data/orm`           | Small typed SQL and ORM primitives    | `@rootware/errors`, `@rootware/log`, `@rootware/schema` | Experimental |
 | `@rootware/jobs`    | `packages/async/jobs`         | Background job queue primitives       | `@rootware/errors`, `@rootware/log`                     | Experimental |
 
+## Implemented Subpaths
+
+The package roots stay small and dependency-directed. Current implemented
+subpath exports are:
+
+```txt
+@rootware/log/compat/pino  -> packages/foundation/log/compat/pino
+@rootware/orm/postgres     -> packages/data/orm/postgres
+@rootware/migrate/postgres -> packages/data/migrate/postgres
+@rootware/migrate/cli      -> packages/data/migrate/cli
+```
+
+Other planned subpaths remain roadmap-only until their source files, tests, and
+manifest export entries exist.
+
 ## No Circular Dependencies
 
 Circular dependencies make package publication and API stability harder to

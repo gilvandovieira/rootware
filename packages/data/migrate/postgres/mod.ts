@@ -22,3 +22,14 @@ export type { PgMigrationHistoryStoreOptions } from "./history.ts";
 
 export type { PgClient, PgConnectionOptions, PgPool } from "./pool.ts";
 export { createPgPool } from "./pool.ts";
+
+export type { PostgresUpStatements } from "./ddl.ts";
+export {
+  generatePostgresAddColumn,
+  generatePostgresColumnDefinition,
+  generatePostgresColumnType,
+  generatePostgresCreateTable,
+  generatePostgresUpStatements,
+  pgQualifiedName,
+  quotePgIdent,
+} from "./ddl.ts";

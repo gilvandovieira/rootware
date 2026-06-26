@@ -2,28 +2,29 @@
 
 ## Status
 
-Rootware has a working `v0.1` foundation for the 12 current packages: `errors`,
+Rootware has a working pre-1.0 foundation for the 12 current packages: `errors`,
 `schema`, `env`, `log`, `testing`, `http`, `cache`, `storage`, `session`,
-`migrate`, `orm`, and `jobs`. Adapter packages and subpath packages are still
-planned work; the repository does **not** currently contain
-`@rootware/adapters`, `@rootware/orm/postgres`, `@rootware/orm/neon`,
-`@rootware/http/testing`, `@rootware/migrate/cli`, or
-`@rootware/log/compat/pino`.
+`migrate`, `orm`, and `jobs`. The data packages now also ship explicit
+PostgreSQL subpaths: `@rootware/orm/postgres` and `@rootware/migrate/postgres`.
+`@rootware/log` also ships `@rootware/log/compat/pino`. Adapter packages and all
+other subpaths are still planned work; the repository does **not** currently
+contain `@rootware/adapters`, `@rootware/orm/neon`, `@rootware/http/testing`, or
+`@rootware/migrate/cli`.
 
 This document does not replace the dedicated package plans. It defines the
 sequencing logic for building the workspace as a coherent product.
 
 > Reconciled against source on 2026-06-26. Several packages ship more than a
-> bare foundation: `@rootware/orm` already has the `sql` tag, the full predicate
-> set, and select/insert/update/delete builders with type inference;
-> `@rootware/migrate` already has a programmatic up/**down** migrator with
-> checksums; `@rootware/session` already has `requireActor`, a cache-backed
-> store, and secure cookie defaults; `@rootware/cache` already has `has()` and
-> `getOrSet()` and now has single-process in-flight de-duplication for
-> concurrent misses. The dedicated package `ROADMAP.md` files were updated so
-> their "Status" and version gates no longer schedule work that is already done.
-> The remaining gates describe real gaps (drivers, subpath exports, CLI, CSRF,
-> durable adapters), not re-implementation.
+> bare foundation: `@rootware/log` already has a Pino compatibility subpath;
+> `@rootware/orm` already has the `sql` tag, the full predicate set,
+> select/insert/update/delete builders with type inference, and a PostgreSQL
+> execution subpath; `@rootware/migrate` already has a programmatic up/**down**
+> migrator with checksums and a PostgreSQL execution subpath;
+> `@rootware/session` already has `requireActor`, a cache-backed store, and
+> secure cookie defaults; `@rootware/cache` already has `has()` and `getOrSet()`
+> with single-process in-flight de-duplication for concurrent misses. The
+> dedicated package `ROADMAP.md` files should describe only real gaps (CLI,
+> CSRF, durable adapters, additional subpaths), not re-implementation.
 
 The next architectural milestone is now:
 
@@ -31,7 +32,8 @@ The next architectural milestone is now:
 - a package export/subpath policy that avoids dead exports;
 - canonical schema snapshots through `@rootware/schema`;
 - ORM -> schema -> migrate integration through serializable snapshots;
-- one real Postgres vertical slice later, after the contracts are stable.
+- one real Postgres vertical slice using the shipped data subpaths, then
+  additional adapters after the contracts are stable.
 
 Last reviewed: `2026-06-26`
 
@@ -148,9 +150,9 @@ migrate config. The `@rootware/migrate` package never imports `@rootware/orm`.
 `migrate` and `orm` are intentionally **siblings**, not a chain. Neither imports
 the other. They integrate only through the serializable `RootwareSchemaSnapshot`
 type owned by the dependency-free `@rootware/schema` leaf (see "Schema snapshot
-handoff" below). This matches the current source: `packages/orm/mod.ts` and
-`packages/migrate/mod.ts` import `@rootware/schema` in addition to their
-`@rootware/errors` / `@rootware/log` edges, and never import each other.
+handoff" below). This matches the current source: `../packages/data/orm/mod.ts`
+and `../packages/data/migrate/mod.ts` import `@rootware/schema` in addition to
+their `@rootware/errors` / `@rootware/log` edges, and never import each other.
 
 Disallowed direction:
 
@@ -224,8 +226,10 @@ for package boundary enforcement. CI runs the same task set, including
 
 Package export policy:
 
-- Current packages export only `"./mod.ts"` from their package `deno.json`.
-- Do not add subpath exports until the target files exist and have tests.
+- Every package has a root `mod.ts` export.
+- `@rootware/log/compat/pino`, `@rootware/orm/postgres`, and
+  `@rootware/migrate/postgres` are the current implemented subpath exports.
+- Do not add new subpath exports until the target files exist and have tests.
 - Planned subpaths must remain roadmap/documentation-only until implemented.
 - Roadmap validation should check that docs do not describe missing packages or
   subpaths as shipped.
@@ -278,7 +282,8 @@ Packages:
 
 - `@rootware/migrate`
 - `@rootware/orm`
-- database adapters/subpaths for Postgres, Neon, SQLite, libSQL, and Turso.
+- shipped Postgres subpaths plus future adapters/subpaths for Neon, SQLite,
+  libSQL, and Turso.
 
 Goal:
 

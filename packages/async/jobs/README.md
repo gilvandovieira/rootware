@@ -39,7 +39,37 @@ await queue.processNext();
 - `noopJobStore`
 - `noopJobQueue`
 - `createJobRecord`
-- `calculateBackoffMs`
+- `calculateBackoffMs` (opt-in `jitter`)
+- `queue.deadLetter()` — inspect dead-lettered jobs
+- Recurrence — `RecurrenceRule`, `nextRecurrenceAt`, `parseCronExpression`,
+  `cronMatches`, `nextCronRun`
+
+## Recurring scheduling (`0.3`)
+
+Recurrence is exposed as pure UTC primitives, so the next run is computed
+deterministically and the app re-enqueues with `runAt`:
+
+```ts
+import { nextRecurrenceAt } from "jsr:@rootware/jobs";
+
+// Interval or 5-field cron (minute hour day-of-month month day-of-week, UTC):
+const at = nextRecurrenceAt({ kind: "cron", expression: "0 3 * * 1-5" });
+await queue.enqueue("nightly-report", payload, { runAt: at });
+// After each run completes, schedule the next occurrence the same way.
+```
+
+`parseCronExpression` supports `*`, lists (`a,b`), ranges (`a-b`), and steps
+(`*/n`). Cron is evaluated in **UTC**.
+
+### Idempotency, backoff, and dead-letter
+
+- **Idempotency** — pass `enqueue(..., { idempotencyKey })`; the store dedupes
+  via `findByIdempotencyKey`, so a retried enqueue returns the existing job
+  instead of creating a duplicate.
+- **Backoff** — `fixed` / `linear` / `exponential`, capped by `maxBackoffMs`,
+  with opt-in full `jitter` (`calculateBackoffMs(attempt, { jitter: true })`).
+- **Dead-letter** — exhausted jobs become status `"dead"`; inspect them with
+  `queue.deadLetter()` and requeue with `queue.retry(id)`.
 
 ## Security
 

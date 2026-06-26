@@ -277,14 +277,21 @@ Use `RootwareError`.
 
 Cookie flags, expiration, destroy, missing session.
 
-## v0.3.0 — Cache-backed sessions (largely shipped)
+## v0.3.0 — Cache-backed sessions (largely shipped) — **done (`0.3.0`)**
 
-`cacheSessionStore` already exists in `v0.1`. Remaining work is documentation
+`cacheSessionStore` already exists in `v0.1`. This milestone is documentation
 and hardening, not new construction:
 
-- Document cache store TTL semantics and how they relate to `expiresAt`.
-- Document the `@rootware/cache` integration and its non-durability caveats.
-- Add tests for cache-store eviction vs session expiry edge cases.
+- **TTL ↔ `expiresAt` documented** — README explains the cache entry TTL is
+  derived from the session's remaining lifetime, with a fallback to the store
+  `ttlMs`/none, and that `expiresAt` is authoritative (`SessionManager.get`
+  re-checks it). Covered by a TTL-derivation test using a recording cache.
+- **`@rootware/cache` integration + non-durability caveats documented** — a
+  session can vanish before `expiresAt` (eviction/flush/restart); prefix ≠
+  isolation; use durable storage when sessions must survive.
+- **Eviction-vs-expiry tests added** — a still-valid session evicted by a
+  `maxEntries` cache resolves to a miss, and an already-expired session the
+  cache still holds is resolved to `undefined` by the manager.
 
 ## v0.4.0 — Rotation, fixation, and CSRF (the real security gap)
 

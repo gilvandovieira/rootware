@@ -46,3 +46,8 @@ export function createPgDb(
     }) as PgDatabase,
   );
 }
+
+/** Convenience alias for {@link createPgDb} — opens a Postgres-backed database. */
+export function connect(options: CreatePgDbOptions): Promise<PgDatabase> {
+  return createPgDb(options);
+}

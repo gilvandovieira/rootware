@@ -4,10 +4,10 @@ Rootware uses independent versioning per package.
 
 Examples:
 
-- `@rootware/errors@0.1.0`
-- `@rootware/env@0.1.0`
-- `@rootware/log@0.2.0`
-- `@rootware/schema@0.1.0`
+- `@rootware/errors@0.3.0`
+- `@rootware/env@0.3.0`
+- `@rootware/log@0.3.0`
+- `@rootware/schema@0.2.0`
 
 Do not synchronize every package version automatically. Only bump and publish a
 package when that package changed.

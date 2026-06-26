@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, published as `@rootware/log@0.1.0`\
+Status: experimental, current package manifest version `@rootware/log@0.3.0`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -85,7 +85,7 @@ Canonical namespace rule:
 
 ---
 
-## 3. Current `0.1.0` State
+## 3. Current `0.3.0` State
 
 The current package is published as:
 
@@ -98,14 +98,17 @@ The package metadata defines:
 ```json
 {
   "name": "@rootware/log",
-  "version": "0.1.0",
-  "exports": "./mod.ts",
+  "version": "0.3.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./compat/pino": "./compat/pino/mod.ts"
+  },
   "license": "MIT",
   "description": "Structured JSON logger for Rootware packages and Deno backends."
 }
 ```
 
-The current implementation is a single-file package entrypoint at:
+The root implementation entrypoint is:
 
 ```txt
 packages/foundation/log/mod.ts
@@ -126,7 +129,7 @@ stderrSink;
 memorySink;
 bufferedSink;
 unbufferedSink;
-serializeError;
+serializeErrorForLog;
 normalizeLogInput;
 formatLogRecord;
 defaultTimestamp;
@@ -159,7 +162,8 @@ LogErrorOptions;
 
 ### Current Features
 
-`0.1.0` already provides the correct foundation:
+`0.3.0` provides the correct foundation, production hardening, and a Pino-shaped
+compatibility subpath:
 
 - JSON-line structured logging.
 - Standard numeric log levels: `trace`, `debug`, `info`, `warn`, `error`,
@@ -168,6 +172,10 @@ LogErrorOptions;
 - `stdoutSink()` and `stderrSink()` for Deno stream output.
 - `memorySink()` for deterministic tests.
 - `bufferedSink()` for batched writes.
+- `serializeErrorForLog()` for internal, with-stack diagnostics.
+- Redaction, configurable message/error keys, `logger.isLevelEnabled`, and
+  `onWriteError`.
+- `@rootware/log/compat/pino` for common Pino call forms and migration.
 - `unbufferedSink()` for immediate writes.
 - `createNoopLogger()` for dependency injection and tests.
 - `child()` logger support with merged bindings.
@@ -1013,7 +1021,8 @@ error, if failed
 
 ## 13. Documentation Requirements
 
-The current README is enough for `0.1.0`, but the next release should expand it.
+The current README covers the `0.3.0` surface. Future releases should expand it
+as new compatibility and integration surfaces ship.
 
 ### 13.1 README Structure
 
@@ -1105,7 +1114,7 @@ const logger = createNoopLogger();
 
 ## 14. Testing Strategy
 
-Current tests are good for `0.1.0`.
+Current tests cover the `0.3.0` root and Pino-compatibility surfaces.
 
 Add test groups by category.
 
@@ -1213,9 +1222,9 @@ Each Rootware package is independently published to JSR.
 
 For `@rootware/log`, the release process should be:
 
-1. Update `packages/foundation/log/deno.json` version.
-2. Update `packages/foundation/log/README.md`.
-3. Update public JSDoc in `packages/foundation/log/mod.ts`.
+1. Update `deno.json` version.
+2. Update `README.md`.
+3. Update public JSDoc in `mod.ts`.
 4. Run formatting.
 5. Run linting.
 6. Run type checking.
@@ -1276,6 +1285,8 @@ Acceptance criteria:
 
 Goal: make the core logger safer and more explicit for real applications.
 
+Status: done in `0.2.0`.
+
 Scope:
 
 - Add redaction support.
@@ -1309,19 +1320,30 @@ Acceptance criteria:
 - New options are documented.
 - Async sink failure behavior is documented and tested.
 
-### `0.3.0` — Pino-shaped Compatibility Layer
+### `0.3.0` — Pino-shaped Compatibility Layer — **done (`0.3.0`)**
 
 Goal: make migration from common Pino application usage straightforward.
 
-Scope:
+Shipped:
 
-- Add `pino()` compatibility constructor under `/compat/pino` first.
-- Support common Pino-style call forms.
-- Support `serializers` option.
-- Support `base` option semantics more clearly.
-- Support `timestamp` option compatibility.
-- Add compatibility fixtures.
-- Add migration guide: `pino` to `@rootware/log`.
+- `pino()` compatibility constructor under the `/compat/pino` subpath, with a
+  Pino-style default export
+  (`import pino from "jsr:@rootware/log/compat/pino"`). The root module stays
+  explicit (`createLogger`, sinks).
+- Common Pino call forms: `info("msg")`, `info({ field }, "msg")`,
+  `error(new Error(), "msg")`, and `child(bindings, { level, serializers })`.
+- `serializers` option — per-field serializers plus an error serializer keyed by
+  `errorKey`/`err`/`error`.
+- `base` bindings merged onto every record; `name` field threaded through.
+- `timestamp` compatibility — `true`/omitted (default ISO), a custom function,
+  or `false` (blanks the always-present `time` field).
+- `messageKey` (default `"msg"`) and `errorKey` (Pino default `"err"`;
+  Rootware's own default remains `"error"`).
+- Compatibility fixtures in `compat/pino/mod_test.ts` and a `pino` →
+  `@rootware/log` migration guide/table in the README.
+
+Compatibility non-targets (documented): `transport`/`destination`, worker
+threads, `pino-pretty`, settable `logger.level`, and Pino symbol internals.
 
 Possible API:
 
@@ -1559,7 +1581,7 @@ Minimum requirements:
 
 ### Documentation
 
-- [ ] Expand `packages/foundation/log/README.md` into proper sections.
+- [ ] Expand `README.md` into proper sections.
 - [ ] Add Pino-shaped migration notes.
 - [ ] Add buffered vs unbuffered explanation.
 - [ ] Add security/redaction warning.
@@ -1617,15 +1639,15 @@ Minimum requirements:
 
 The next useful development sequence is:
 
-1. Clean up and expand `packages/foundation/log/README.md`.
-2. Add full JSDoc to all public APIs.
-3. Add missing edge-case tests.
+1. Harden and document the shipped `@rootware/log/compat/pino` compatibility
+   layer without claiming full Pino transport compatibility.
+2. Keep Hono request logging in the future `@rootware/hono` adapter, not a
+   `@rootware/log/hono` subpath.
+3. Add benchmarks for stdout and buffered sinks.
 4. Create `docs/log.md` or use this file as the canonical roadmap.
-5. Add a Pino compatibility section without claiming full compatibility.
-6. Add redaction in `0.2.0`.
-7. Add a compatibility constructor in `0.3.0`.
-8. Add file/web-stream sinks in `0.4.0`.
-9. Add HTTP adapter only after the core API stabilizes.
+5. Keep redaction and Pino compatibility docs current as the APIs harden.
+6. Add file/web-stream sinks in `0.4.0`.
+7. Add HTTP adapter only after the core API stabilizes.
 
 The package is already valuable at `0.1.0` because it gives Rootware a working
 structured logger, deterministic test sink, and explicit buffering model. The

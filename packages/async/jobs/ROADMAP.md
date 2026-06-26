@@ -83,8 +83,8 @@ This package sits after:
 
 Durable persistence and cache coordination are **adapter** concerns (see below),
 so `@rootware/cache` and `@rootware/orm` are deliberately _not_ jobs-core
-dependencies. In `v0.1`, `packages/async/jobs/mod.ts` imports only
-`@rootware/errors` and `@rootware/log`.
+dependencies. In `v0.1`, `mod.ts` imports only `@rootware/errors` and
+`@rootware/log`.
 
 ### Runtime imports
 
@@ -272,13 +272,22 @@ Use `RootwareError`.
 
 Enqueue, run, retry, failure, dead-letter, shutdown.
 
-## v0.3.0 — Recurring scheduling and idempotency hardening
+## v0.3.0 — Recurring scheduling and idempotency hardening — **done (`0.3.0`)**
 
-- Recurring jobs / cron-like scheduling.
-- Durable idempotency semantics.
-- Retry backoff policy hardening.
-- Dead-letter inspection API.
-- Worker lifecycle tests.
+- **Recurring jobs / cron-like scheduling** — pure UTC primitives:
+  `parseCronExpression` / `cronMatches` / `nextCronRun` (5-field cron with `*`,
+  lists, ranges, steps) and `RecurrenceRule` + `nextRecurrenceAt` (interval or
+  cron). Apps re-enqueue with `runAt: nextRecurrenceAt(rule)`; worker-driven
+  auto-re-enqueue can layer on top later.
+- **Durable idempotency semantics** — `enqueue({ idempotencyKey })` +
+  `JobStore.findByIdempotencyKey` already dedupe; documented in the README.
+- **Retry backoff policy hardening** — `calculateBackoffMs` gained opt-in full
+  `jitter` (with an injectable `random`) on top of the capped fixed/linear/
+  exponential strategies.
+- **Dead-letter inspection API** — `JobQueue.deadLetter()` (a typed convenience
+  over `list({ status: "dead" })`) on the queue and noop queue.
+- **Worker lifecycle tests** — added for `start`/`running`/`stop` guards
+  alongside the existing graceful-shutdown coverage.
 
 ## v0.4.0 — Durable adapter design
 

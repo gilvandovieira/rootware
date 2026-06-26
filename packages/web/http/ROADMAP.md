@@ -254,17 +254,32 @@ Verify conservative retries for idempotent methods and selected statuses.
 
 Verify fake transport examples and tests (`createMockFetch`).
 
-## v0.3.0 — Hardening
+## v0.3.0 — Hardening — **done (`0.3.0`)**
 
-- Public redaction policy / documented internal policy.
-- Logging hook ordering guarantees.
-- Header logging tests.
-- Better error classification.
-- Retry-after handling.
-- Backoff and jitter.
-- Better abort/cause handling.
-- Response body size limits.
-- Structured error response hardening.
+- **Public redaction policy** — `isSensitiveHttpName(name)` exposes the internal
+  sensitivity policy that drives URL/header/body redaction; documented in the
+  README alongside `redactHttpHeaders`/`redactHttpUrl`/`redactHttpJson`.
+- **Logging hook ordering guarantees** — documented (started → retrying\* →
+  completed/failed) and covered by an ordering test asserting the exact message
+  sequence and the presence of `delayMs` on retry logs.
+- **Header logging tests** — `redactHttpHeaders` + `isSensitiveHttpName` tests
+  assert credential headers are masked while safe headers pass through.
+- **Better error classification** — `TimeoutError` (`AbortSignal.timeout`) →
+  `HTTP_TIMEOUT`; caller aborts → `HTTP_ABORTED` with the abort reason surfaced
+  in details.
+- **Retry-After handling** — `parseRetryAfter` (delta-seconds + HTTP-date) is
+  honored on retryable responses, taking precedence over backoff but bounded by
+  `maxBackoffMs`; toggled by `respectRetryAfter` (default on).
+- **Backoff and jitter** — `computeRetryDelay` is exponential
+  (`backoffMs * 2^(attempt-1)`), capped at `maxBackoffMs`, with full jitter by
+  default (`jitter` option; pure + injectable `random` for tests).
+- **Better abort/cause handling** — external-signal aborts thread the reason;
+  timeouts and aborts are distinguished.
+- **Response body size limits** — `maxResponseBytes` streams the body, rejects
+  early on `Content-Length`, and fails `HTTP_RESPONSE_TOO_LARGE` without
+  buffering oversized bodies; `parseJsonResponse` accepts `{ maxBytes }`.
+- **Structured error response hardening** — error bodies are sanitized
+  (sensitive keys redacted) **and** bounded by `maxResponseBytes`.
 
 ## v0.4.0 — Integration hooks
 

@@ -171,6 +171,52 @@ Deno.test("@rootware/testing - fixtures and context", async () => {
   assertEquals(order, ["second", "first"]);
 });
 
+Deno.test("@rootware/testing - context.use composes fixtures onto the cleanup stack", async () => {
+  const events: string[] = [];
+  const context = createTestContext();
+
+  const fixture = createFixture(
+    "db",
+    () => {
+      events.push("setup");
+      return { id: "conn_1" };
+    },
+    (value) => {
+      events.push(`teardown:${value.id}`);
+    },
+  );
+
+  const resource = await context.use(fixture);
+  assertEquals(resource.id, "conn_1");
+  assertEquals(events, ["setup"]);
+
+  // Teardown runs only when the context is cleaned up.
+  await context.runCleanup();
+  assertEquals(events, ["setup", "teardown:conn_1"]);
+});
+
+Deno.test("@rootware/testing - assertLog ergonomics: matching, messages, last, empty", () => {
+  const { logger, sink } = testLogger();
+
+  const empty = assertLog(sink);
+  empty.isEmpty();
+
+  logger.info("user u_1 created");
+  logger.warn({ code: "QUOTA" }, "quota nearly reached");
+
+  const assertion = assertLog(sink);
+  assertion.hasMessageMatching(/^user \w+ created$/);
+  assertEquals(assertion.messages(), [
+    "user u_1 created",
+    "quota nearly reached",
+  ]);
+  assertEquals(assertion.last()?.msg, "quota nearly reached");
+  assertion.hasNoRecord((record) => record.levelName === "error");
+
+  rootAssertThrows(() => assertion.isEmpty());
+  rootAssertThrows(() => assertion.hasMessageMatching(/nonexistent/));
+});
+
 Deno.test("@rootware/testing - createCleanupStack runs LIFO and aggregates the first error", async () => {
   const order: string[] = [];
   const stack = createCleanupStack();
