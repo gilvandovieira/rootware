@@ -50,6 +50,8 @@ await db.execute(sql`select * from users where id = ${"u_123"}`);
 The `sql` template keeps interpolated values as driver parameters. Use `raw`
 only with trusted SQL literals.
 
+See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
 ## Limitations
 
 This package does not implement real database drivers, joins, relations,

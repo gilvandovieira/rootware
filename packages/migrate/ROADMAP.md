@@ -110,9 +110,7 @@ Convenient `deno.json` tasks:
 
 - `@rootware/errors` — `MigrateError` and the typed migration errors (value
   import).
-- `@rootware/log` — **type-only** (optional injected `Logger`). In `v0.1`,
-  `packages/migrate/mod.ts` imports only `@rootware/errors` and `@rootware/log`
-  (type).
+- `@rootware/log` — **type-only** (optional injected `Logger`).
 - `@rootware/schema` — **type-only**, for the `RootwareSchemaSnapshot` it
   consumes. A leaf import; does not couple migrate to orm.
 
@@ -141,11 +139,11 @@ query behavior.
 should consume that metadata through a stable snapshot contract.
 
 The migration package should not reach into private ORM internals — and, just as
-importantly, it must not import `@rootware/orm` at all. In the published `v0.1`,
-`packages/migrate/mod.ts` imports only `@rootware/errors` and `@rootware/log`,
-and that boundary must be preserved. The application is the integration point:
-it calls `orm.createSchemaSnapshot(schema)` (an ORM API, not yet built) and
-passes the resulting plain snapshot object into the migrate config.
+importantly, it must not import `@rootware/orm` at all. The current
+`packages/migrate/mod.ts` imports `@rootware/errors`, `@rootware/log`, and
+`@rootware/schema`; that sibling boundary must be preserved. The application is
+the integration point: it calls `orm.createSchemaSnapshot(schema)` and passes
+the resulting plain snapshot object into the migrate config.
 
 Example config (snapshot is prebuilt by the app, so migrate never imports the
 ORM):

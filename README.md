@@ -20,25 +20,44 @@ projects while staying close to the Web platform.
 | `@rootware/cache`   | Async-first cache abstraction   | Experimental |
 | `@rootware/storage` | Object storage abstraction      | Experimental |
 | `@rootware/session` | Sessions and actor boundaries   | Experimental |
+| `@rootware/schema`  | Serializable schema snapshots   | Experimental |
 | `@rootware/migrate` | Database migration primitives   | Experimental |
 | `@rootware/orm`     | Typed SQL and ORM primitives    | Experimental |
 | `@rootware/jobs`    | Background job queue primitives | Experimental |
 
-## Dependency Order
+## Dependency Graph
 
-Packages may depend only on packages earlier in this list:
+Runtime imports are enforced by `deno task graph`, using
+`scripts/check_graph.ts` as the source of truth.
 
-1. `@rootware/errors`
-2. `@rootware/env`
-3. `@rootware/log`
-4. `@rootware/testing`
-5. `@rootware/http`
-6. `@rootware/cache`
-7. `@rootware/storage`
-8. `@rootware/session`
-9. `@rootware/migrate`
-10. `@rootware/orm`
-11. `@rootware/jobs`
+### Runtime Imports
+
+```txt
+@rootware/errors  -> none
+@rootware/schema  -> none
+@rootware/env     -> @rootware/errors
+@rootware/log     -> @rootware/errors
+@rootware/testing -> @rootware/errors, @rootware/env, @rootware/log
+@rootware/http    -> @rootware/errors, @rootware/log
+@rootware/cache   -> @rootware/errors, @rootware/log
+@rootware/storage -> @rootware/errors, @rootware/log
+@rootware/session -> @rootware/errors, @rootware/cache, @rootware/log
+@rootware/migrate -> @rootware/errors, @rootware/log, @rootware/schema
+@rootware/orm     -> @rootware/errors, @rootware/log, @rootware/schema
+@rootware/jobs    -> @rootware/errors, @rootware/log
+```
+
+`@rootware/schema` is a dependency-free leaf. `@rootware/orm` produces
+serializable schema snapshots, and `@rootware/migrate` consumes those snapshots
+without either package importing the other.
+
+### Build Order
+
+```txt
+errors/schema -> env -> log -> testing -> http/cache/storage -> session -> migrate/orm -> jobs -> adapters
+```
+
+The build order is product sequencing, not an import chain.
 
 ## Quick Example
 
@@ -71,6 +90,7 @@ throw new RootwareError("Example error", {
 deno task fmt:check
 deno task lint
 deno task check
+deno task graph
 deno task test
 ```
 

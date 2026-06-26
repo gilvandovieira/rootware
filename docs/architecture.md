@@ -6,11 +6,17 @@ runtime, and not a build system.
 Each package is published separately and keeps its public entrypoint in
 `mod.ts`. Packages should remain narrow, explicit, and useful on their own.
 
-## Dependency Ladder
+## Dependency Graph
 
-Packages follow the order documented in [packages.md](./packages.md). A package
-may import a lower package, but must not import a higher package. This keeps
-publication boundaries simple and prevents circular dependencies.
+Packages follow the runtime graph documented in [packages.md](./packages.md).
+`scripts/check_graph.ts` enforces that graph through `deno task graph`.
+
+`@rootware/schema` is a dependency-free leaf package. It owns the serializable
+schema snapshot contract shared by database tooling.
+
+`@rootware/orm` produces schema snapshots. `@rootware/migrate` consumes schema
+snapshots. Neither package imports the other; applications wire them together by
+passing plain snapshot data.
 
 ## Adapters
 

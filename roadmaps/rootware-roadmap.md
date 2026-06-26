@@ -2,13 +2,13 @@
 
 ## Status
 
-Rootware has a working `v0.1` foundation for the first 11 published packages
-(`errors`, `env`, `log`, `testing`, `http`, `cache`, `storage`, `session`,
-`migrate`, `orm`, and `jobs`) plus the newly added `@rootware/schema` leaf from
-this alignment pass. Adapter packages and subpath packages are still planned
-work; the repository does **not** currently contain `@rootware/adapters`,
-`@rootware/orm/postgres`, `@rootware/orm/neon`, `@rootware/http/testing`,
-`@rootware/migrate/cli`, or `@rootware/log/compat/pino`.
+Rootware has a working `v0.1` foundation for the 12 current packages: `errors`,
+`schema`, `env`, `log`, `testing`, `http`, `cache`, `storage`, `session`,
+`migrate`, `orm`, and `jobs`. Adapter packages and subpath packages are still
+planned work; the repository does **not** currently contain
+`@rootware/adapters`, `@rootware/orm/postgres`, `@rootware/orm/neon`,
+`@rootware/http/testing`, `@rootware/migrate/cli`, or
+`@rootware/log/compat/pino`.
 
 This document does not replace the dedicated package plans. It defines the
 sequencing logic for building the workspace as a coherent product.
@@ -20,14 +20,14 @@ sequencing logic for building the workspace as a coherent product.
 > checksums; `@rootware/session` already has `requireActor`, a cache-backed
 > store, and secure cookie defaults; `@rootware/cache` already has `has()` and
 > `getOrSet()` and now has single-process in-flight de-duplication for
-> concurrent misses. The per-package roadmaps below were updated so their
-> "Status" and version gates no longer schedule work that is already done. The
-> remaining gates describe real gaps (drivers, subpath exports, CLI, CSRF,
+> concurrent misses. The dedicated package `ROADMAP.md` files were updated so
+> their "Status" and version gates no longer schedule work that is already done.
+> The remaining gates describe real gaps (drivers, subpath exports, CLI, CSRF,
 > durable adapters), not re-implementation.
 
 The next architectural milestone is now:
 
-- repo-level scaffolding and mechanical graph enforcement;
+- continued mechanical graph enforcement;
 - a package export/subpath policy that avoids dead exports;
 - canonical schema snapshots through `@rootware/schema`;
 - ORM -> schema -> migrate integration through serializable snapshots;
@@ -148,10 +148,9 @@ migrate config. The `@rootware/migrate` package never imports `@rootware/orm`.
 `migrate` and `orm` are intentionally **siblings**, not a chain. Neither imports
 the other. They integrate only through the serializable `RootwareSchemaSnapshot`
 type owned by the dependency-free `@rootware/schema` leaf (see "Schema snapshot
-handoff" below). This matches the published `v0.1`, where `packages/orm/mod.ts`
-and `packages/migrate/mod.ts` each import only `@rootware/errors` and
-`@rootware/log` (`@rootware/schema` is the only new runtime edge either gains,
-and it is a leaf).
+handoff" below). This matches the current source: `packages/orm/mod.ts` and
+`packages/migrate/mod.ts` import `@rootware/schema` in addition to their
+`@rootware/errors` / `@rootware/log` edges, and never import each other.
 
 Disallowed direction:
 
@@ -177,7 +176,7 @@ integration contract between them is a plain, serializable
 Direction of data, not of imports:
 
 ```txt
-orm  produces  RootwareSchemaSnapshot   (createSchemaSnapshot, not yet built)
+orm  produces  RootwareSchemaSnapshot   (createSchemaSnapshot)
 app  passes    the snapshot to migrate  (migrate config takes a prebuilt snapshot)
 migrate consumes the snapshot           (diff + SQL generation)
 ```
@@ -209,8 +208,8 @@ type.)
 
 The mismatches found during the `v0.1` review (an `orm -> migrate` edge in this
 document that never existed in code; per-package roadmaps scheduling features
-that already shipped) show that convention-only enforcement is not enough. Add a
-CI lint that asserts the dependency direction:
+that already shipped) show that convention-only enforcement is not enough.
+`deno task graph` now asserts the dependency direction:
 
 ```sh
 # fail if any package's mod.ts imports a package above it in the ladder,
@@ -220,7 +219,7 @@ deno task graph
 
 The repository now has a root `deno.json` workspace, local `@rootware/*`
 imports, root `check`/`test`/`lint`/`fmt` tasks, and `scripts/check_graph.ts`
-for package boundary enforcement. CI should run the same task set, including
+for package boundary enforcement. CI runs the same task set, including
 `deno task graph`.
 
 Package export policy:

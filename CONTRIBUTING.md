@@ -17,6 +17,7 @@ deno task ci
 deno task fmt:check
 deno task lint
 deno task check
+deno task graph
 deno task test
 ```
 
@@ -40,9 +41,14 @@ deno task publish:dry
 3. Add `packages/<name>/deno.json` with JSR metadata.
 4. Add `packages/<name>/README.md`.
 5. Add `packages/<name>/mod_test.ts`.
-6. Add package dry-run tasks.
-7. Preserve the dependency order documented in
-   [docs/packages.md](./docs/packages.md).
+6. Add `packages/<name>/ROADMAP.md` for repository planning.
+7. Add the package to `scripts/check_graph.ts`.
+8. Update the root README dependency graph.
+9. Update [docs/packages.md](./docs/packages.md).
+10. Add package dry-run tasks.
+11. Add the package to publish workflow validation.
+12. Preserve the dependency graph documented in
+    [docs/packages.md](./docs/packages.md).
 
 Avoid circular dependencies. Lower-level packages must not import higher-level
 packages.

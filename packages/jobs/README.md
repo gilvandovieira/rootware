@@ -46,6 +46,8 @@ await queue.processNext();
 Jobs never log payloads, outputs, or full metadata by default. Memory storage is
 only for tests and local development.
 
+See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
 ## Limitations
 
 This package does not implement distributed workers, Redis, Deno KV, SQL queue

@@ -44,6 +44,8 @@ const url = storage.publicUrl("avatars/u_123.png");
 Storage logs include keys, sizes, and content types only. File contents,
 metadata values, and blobs are not logged by default.
 
+See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
 ## Limitations
 
 This package does not implement filesystem, S3, R2, Supabase Storage, signed

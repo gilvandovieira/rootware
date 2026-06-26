@@ -13,6 +13,7 @@ normal CI runs must only validate and run `deno publish --dry-run`.
 - Update JSDoc for public APIs.
 - Confirm tests pass.
 - Confirm `deno task ci` passes.
+- Confirm `deno task graph` passes if running checks individually.
 - Confirm `deno task publish:dry` passes.
 - Confirm the package is created or prepared in JSR.
 - Confirm the package is linked to `gilvandovieira/rootware` in JSR settings.
@@ -30,7 +31,10 @@ Run one package dry-run:
 
 ```sh
 deno task publish:dry:errors
+deno task publish:dry:schema
 ```
+
+The `publish:dry:schema` task validates `@rootware/schema`.
 
 The shared dry-run tasks use `--allow-dirty` so local validation can run without
 committing preparation changes. The manual publish workflow does not use
@@ -41,7 +45,7 @@ committing preparation changes. The manual publish workflow does not use
 Use the manual `Publish` workflow. Inputs:
 
 - `package`: one of `errors`, `env`, `log`, `testing`, `http`, `cache`,
-  `storage`, `session`, `migrate`, `orm`, `jobs`
+  `storage`, `session`, `schema`, `migrate`, `orm`, `jobs`
 - `dry_run`: `true` by default
 
 The workflow uses GitHub OIDC with `id-token: write`. Do not configure
@@ -49,3 +53,9 @@ The workflow uses GitHub OIDC with `id-token: write`. Do not configure
 
 Do not publish if CI is failing. Do not publish automatically from pull
 requests.
+
+## Roadmaps
+
+Package `README.md` files are published package documentation. Package
+`ROADMAP.md` files are repository planning documents and are not published
+unless a package manifest explicitly includes them.

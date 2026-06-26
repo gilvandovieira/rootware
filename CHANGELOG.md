@@ -1,5 +1,14 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — Documentation graph alignment
+
+- Updated root `README.md` with the CI-enforced runtime dependency graph and the
+  product build-order ladder.
+- Updated public package docs to include `@rootware/schema` in package lists,
+  publishing guidance, release guidance, and package README coverage.
+- Corrected roadmap status language now that `@rootware/schema` exists and
+  `@rootware/orm` ships `createSchemaSnapshot`.
+
 ## 2026-06-26 — Move package roadmaps beside package code
 
 - Moved package-specific roadmaps from `roadmaps/*.md` to
@@ -392,10 +401,9 @@ These need a call from you; the docs now point at them rather than papering over
 them:
 
 1. ~~Snapshot type ownership.~~ **Decided: the `@rootware/schema` leaf owns the
-   type; orm produces, migrate consumes.** Plan now written in
-   `roadmaps/schema.md`; the interface was removed from `orm.md`/`migrate.md`.
-   Remaining build task: create the actual `@rootware/schema` package from that
-   plan.
+   type; orm produces, migrate consumes.** The current package plan lives in
+   `packages/schema/ROADMAP.md`; the interface was removed from
+   `orm.md`/`migrate.md`. The `@rootware/schema` package now exists.
 2. Dialect union: are `mysql`/`generic` real snapshot targets, and are
    `libsql`/`turso` distinct dialects or `sqlite` + an adapter tag?
 3. `serializeError` collision: rename log's, or delegate to errors'.

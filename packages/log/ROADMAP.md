@@ -43,19 +43,22 @@ Rootware is a Deno/JSR workspace of independently published packages.
 The intended package dependency order is:
 
 1. `@rootware/errors`
-2. `@rootware/env`
-3. `@rootware/log`
-4. `@rootware/testing`
-5. `@rootware/http`
-6. `@rootware/cache`
-7. `@rootware/storage`
-8. `@rootware/session`
-9. `@rootware/migrate`
-10. `@rootware/orm`
-11. `@rootware/jobs`
+2. `@rootware/schema`
+3. `@rootware/env`
+4. `@rootware/log`
+5. `@rootware/testing`
+6. `@rootware/http`
+7. `@rootware/cache`
+8. `@rootware/storage`
+9. `@rootware/session`
+10. `@rootware/migrate`
+11. `@rootware/orm`
+12. `@rootware/jobs`
 
 `@rootware/log` is correctly placed after `@rootware/errors`, because
 logger-specific failures should be represented with Rootware error primitives.
+Its runtime dependency graph remains only `@rootware/errors`; the
+dependency-free `@rootware/schema` leaf is unrelated to logging.
 
 `@rootware/log` must not depend on packages later in the order. In particular,
 it must not depend on:

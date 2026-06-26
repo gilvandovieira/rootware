@@ -84,7 +84,7 @@ import {
 } from "@rootware/orm";
 ```
 
-Planned subpaths (additive, not yet built) once a real driver and
+Planned subpaths (additive, pending implementation) once a real driver and
 dialect-specific column types exist:
 
 ```ts
@@ -105,9 +105,7 @@ primary.
 
 - `@rootware/errors` — `OrmError` / `SchemaError` / `QueryCompileError` /
   `DriverError` (value import).
-- `@rootware/log` — **type-only** (optional injected `Logger`). In `v0.1`,
-  `packages/orm/mod.ts` imports only `@rootware/errors` and `@rootware/log`
-  (type).
+- `@rootware/log` — **type-only** (optional injected `Logger`).
 - `@rootware/schema` — snapshot types plus validation through
   `defineSchemaSnapshot`. A leaf import; does not couple orm to migrate.
 

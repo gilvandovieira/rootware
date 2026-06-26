@@ -46,6 +46,8 @@ await migrator.up({ dryRun: true });
 Dry-runs do not execute SQL or programmatic migration functions. Checksum
 mismatches fail by default unless explicitly allowed.
 
+See [publishing](../../docs/publishing.md) and [testing](../../docs/testing.md).
+
 ## Limitations
 
 This package does not include database adapters, filesystem migration discovery,

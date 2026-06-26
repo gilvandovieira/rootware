@@ -5,6 +5,9 @@ Last reviewed: 2026-06-26
 This directory holds workspace-level roadmap material. Package-specific roadmaps
 live beside the package they describe.
 
+The public dependency graph lives in `../README.md`; the detailed package graph
+policy lives in `../docs/packages.md`.
+
 ## Workspace roadmaps
 
 - `rootware-roadmap.md`
