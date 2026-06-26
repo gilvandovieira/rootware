@@ -1,6 +1,6 @@
 # `@rootware/log` Specification and Roadmap
 
-Status: experimental, current package manifest version `@rootware/log@0.6.0`\
+Status: experimental, current package manifest version `@rootware/log@0.7.0`\
 Repository: `gilvandovieira/rootware`\
 Package path: `packages/foundation/log`\
 JSR package: `jsr:@rootware/log`\
@@ -1476,16 +1476,23 @@ Acceptance criteria:
 - Test helpers do not require timers.
 - Test helpers work with child loggers.
 
-### `0.7.0` — Observability Conventions
+### `0.7.0` — Observability Conventions — **done (`0.7.0`)**
 
 Goal: define event naming and conventions for Rootware packages.
 
-Scope:
+Shipped:
 
-- Add recommended event naming conventions.
-- Add standard field names.
-- Add package-level logging guidelines.
-- Add documentation for logs emitted by Rootware packages.
+- **`logFields`** — a frozen const of the recommended structured field names
+  (`event`, `requestId`, `traceId`, `spanId`, `actorId`, `service`, `component`,
+  `operation`, `durationMs`, `attempt`, `status`, `error`) plus a `LogFieldName`
+  type, so packages log under stable, queryable keys.
+- **`eventName(package, area, action)`** — builds the canonical
+  `package.area.action` event name (lowercase, dot-separated; each segment is
+  validated, throwing `LOG_INVALID_EVENT` otherwise).
+- **`isEventName(value)`** — recognizes a well-formed event name for downstream
+  parsing.
+- **Guidelines** — the README documents the convention and per-package event
+  table; higher-level package specs reference this section.
 
 Standard fields:
 

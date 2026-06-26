@@ -1154,40 +1154,58 @@ Acceptance:
 
 - Small edge-style app proves the adapter.
 
-## v0.7 — Sync and local-first research
+## v0.7 — Sync and local-first research — **done (`0.7.0`)**
 
-Goal: explore sync behavior without polluting stable APIs.
+Goal: explore sync behavior without polluting stable APIs. This is a **research
+milestone**: it produces the constraints document below and **adds no new public
+API** — the `defineTable`/`columns`/query surface is unchanged. (Version bumped
+to `0.7.0` only to keep the milestone↔version mapping; the published surface is
+unchanged from `0.6.0`.) Pairs with `@rootware/migrate`'s v0.7 research.
 
-### Chunk 36 — Sync constraints document
+### Sync constraints document
 
-Document:
+The schema/model constraints a future local-first/sync mode must satisfy, framed
+against today's `columns`/`defineTable` surface:
 
-- Conflict model.
-- Generated IDs.
-- `updated_at` requirements.
-- Deleted/tombstone model.
-- Sync-safe schema constraints.
-- Offline writes.
+- **Conflict model** — sync is multi-writer, so the runtime model is
+  **last-write-wins (LWW)** per row unless an app adds CRDT semantics on top.
+  LWW needs a comparable version column (`updated_at`, below). The ORM does not
+  resolve conflicts itself; it must expose enough metadata for an app/sync
+  engine to.
+- **Generated IDs** — server sequences (`integer().primaryKey()` as
+  `serial`/autoincrement) **break offline insert** (two offline clients
+  collide). Synced tables should use **client-generatable** IDs:
+  `columns.uuid().primaryKey().default(() => crypto.randomUUID())` (or ULID), so
+  an offline row has a stable identity before it syncs. The ORM already supports
+  thunk defaults, so this needs no new API.
+- **`updated_at` requirements** — every synced table needs a monotonic
+  `updated_at` (or a logical clock/version) the sync engine compares for LWW.
+  Today: `columns.timestamp({ withTimezone: true }).notNull()` set on every
+  write. A future helper could stamp it automatically, but that is an app/sync
+  concern, not core ORM.
+- **Deleted/tombstone model** — synced rows are **soft-deleted** (a nullable
+  `deleted_at` column), never hard-deleted, so a delete propagates to offline
+  peers instead of the row reappearing on the next pull. Queries filter
+  `deleted_at is null` by default at the app layer; the ORM stays delete-honest
+  (no implicit soft delete) so non-synced tables are unaffected.
+- **Sync-safe schema constraints** — avoid constraints an offline writer cannot
+  satisfy locally: no cross-row uniqueness that requires the server (use natural
+  keys or composite client-side checks), no FK to server-only rows at insert
+  time (sync resolves references later), defaults that are deterministic on the
+  client.
+- **Offline writes** — buffered locally (e.g. in SQLite/libSQL) and replayed on
+  reconnect; the ORM's existing SQLite/libSQL/Turso adapters are the local
+  store. Replays must be **idempotent** at the app layer (upsert by
+  client-generated id), since at-least-once delivery can re-send a write.
 
-Acceptance:
+### Experiment outcome
 
-- No sync API is added before the model is understood.
-
-### Chunk 37 — Local-first experiment
-
-Example:
-
-```txt
-examples/local-first-notes/
-```
-
-Goal:
-
-- Local SQLite/libSQL-style app with future sync compatibility.
-
-Acceptance:
-
-- Useful research without contaminating stable APIs.
+A local-first notes app is expressible **today** with no new ORM API: UUID PKs,
+a `notNull` `updated_at`, a nullable `deleted_at`, and the
+`@rootware/orm/sqlite` (local) + `@rootware/orm/turso` (sync target) adapters.
+The research confirms the model is a **convention layer over the existing
+surface**, so no sync-specific API ships in `0.7`; a dedicated
+`examples/local-first-notes/` is deferred to the example apps.
 
 ## v1.0 — Stable public API
 

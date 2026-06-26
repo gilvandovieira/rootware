@@ -1,17 +1,20 @@
-import { assert, assertEquals, assertExists } from "@std/assert";
+import { assert, assertEquals, assertExists, assertThrows } from "@std/assert";
 import {
   bufferedSink,
   createLogger,
   createNoopLogger,
+  eventName,
   failoverSink,
   fanoutSink,
   filterSink,
   formatLogRecord,
   getLogLevelNumber,
+  isEventName,
   isLogLevelName,
   levels,
   levelSink,
   type LogError,
+  logFields,
   type LogSink,
   memorySink,
   serializeErrorForLog,
@@ -268,4 +271,46 @@ Deno.test("@rootware/log - writableStreamSink writes to a web stream", async () 
   const record = JSON.parse(text.trim());
   assertEquals(record.msg, "listening");
   assertEquals(record.port, 8000);
+});
+
+Deno.test("@rootware/log - observability conventions: logFields and eventName", () => {
+  // Standard field names are stable keys.
+  assertEquals(logFields.requestId, "requestId");
+  assertEquals(logFields.durationMs, "durationMs");
+  assertEquals(logFields.event, "event");
+
+  // eventName builds package.area.action and validates segments.
+  assertEquals(
+    eventName("http", "request", "completed"),
+    "http.request.completed",
+  );
+  assertEquals(eventName("cache", "entry", "hit"), "cache.entry.hit");
+  assertEquals(
+    eventName("job", "dead_letter", "added"),
+    "job.dead_letter.added",
+  );
+
+  const error = assertThrows(
+    () => eventName("HTTP", "request", "completed"),
+    Error,
+  ) as { code?: string };
+  assertEquals(error.code, "LOG_INVALID_EVENT");
+  assertThrows(() => eventName("http", "", "x"), Error);
+
+  // isEventName recognizes the convention.
+  assert(isEventName("http.request.completed"));
+  assert(!isEventName("http.request"));
+  assert(!isEventName("Http.Request.Completed"));
+  assert(!isEventName(42));
+
+  // The fields compose into a real record.
+  const sink = memorySink();
+  const logger = createLogger({ level: "info" }, unbufferedSink(sink));
+  logger.info({
+    [logFields.event]: eventName("http", "request", "completed"),
+    [logFields.requestId]: "req_1",
+    [logFields.status]: 200,
+    [logFields.durationMs]: 12,
+  }, "request completed");
+  assertEquals(sink.records()[0].event, "http.request.completed");
 });

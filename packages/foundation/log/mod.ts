@@ -38,6 +38,7 @@ export type LogLevel = LogLevelName | LogLevelNumber;
 /** Error codes emitted by log level parsing, serialization, and sink writes. */
 export type LogErrorCode =
   | "LOG_INVALID_LEVEL"
+  | "LOG_INVALID_EVENT"
   | "LOG_WRITE_FAILED"
   | "LOG_SERIALIZATION_FAILED"
   | "LOG_UNKNOWN_ERROR"
@@ -598,6 +599,99 @@ export function shouldLog(
   return currentLevelNumber !== Infinity &&
     messageLevelNumber !== Infinity &&
     messageLevelNumber >= currentLevelNumber;
+}
+
+// --- Observability conventions (v0.7) ---
+
+/** The recommended structured-field names, keyed by concept. */
+export interface LogFields {
+  /** `package.area.action` event name (see {@link eventName}). */
+  readonly event: "event";
+  /** Stable id correlating one logical request across records. */
+  readonly requestId: "requestId";
+  /** Distributed trace id (OpenTelemetry). */
+  readonly traceId: "traceId";
+  /** Span id within a trace. */
+  readonly spanId: "spanId";
+  /** Authenticated actor/user id. */
+  readonly actorId: "actorId";
+  /** Logical service name. */
+  readonly service: "service";
+  /** Component/module within a service. */
+  readonly component: "component";
+  /** Operation being performed. */
+  readonly operation: "operation";
+  /** Elapsed time in milliseconds. */
+  readonly durationMs: "durationMs";
+  /** 1-based attempt number for retried work. */
+  readonly attempt: "attempt";
+  /** Outcome status (HTTP status, job status, …). */
+  readonly status: "status";
+  /** Serialized error field. */
+  readonly error: "error";
+}
+
+/**
+ * The recommended structured-field names every Rootware package logs under, so
+ * records are queryable and correlatable across packages. Use these keys (e.g.
+ * `logFields.requestId`) rather than ad-hoc names.
+ */
+export const logFields: LogFields = Object.freeze({
+  event: "event",
+  requestId: "requestId",
+  traceId: "traceId",
+  spanId: "spanId",
+  actorId: "actorId",
+  service: "service",
+  component: "component",
+  operation: "operation",
+  durationMs: "durationMs",
+  attempt: "attempt",
+  status: "status",
+  error: "error",
+});
+
+/** A recommended standard field name. */
+export type LogFieldName = LogFields[keyof LogFields];
+
+/** The recommended event-naming shape: lowercase, dot-separated segments. */
+const EVENT_SEGMENT = /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$/;
+
+/**
+ * Builds a `package.area.action` event name (the Rootware convention, e.g.
+ * `eventName("http", "request", "completed")` → `"http.request.completed"`).
+ * Each segment must be lowercase alphanumeric (with `_`/`-` separators);
+ * throws a {@link LogError} otherwise.
+ */
+export function eventName(
+  pkg: string,
+  area: string,
+  action: string,
+): string {
+  for (
+    const [label, segment] of [["package", pkg], ["area", area], [
+      "action",
+      action,
+    ]] as const
+  ) {
+    if (!EVENT_SEGMENT.test(segment)) {
+      throw new LogError("Invalid event name segment", {
+        code: "LOG_INVALID_EVENT",
+        details: { segment: label, value: segment },
+      });
+    }
+  }
+
+  return `${pkg}.${area}.${action}`;
+}
+
+/** Returns true when `value` is a well-formed `package.area.action` event name. */
+export function isEventName(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const parts = value.split(".");
+  return parts.length === 3 && parts.every((part) => EVENT_SEGMENT.test(part));
 }
 
 /**

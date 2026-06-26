@@ -1,5 +1,31 @@
 # Rootware Roadmap Changelog
 
+## 2026-06-26 — `v0.7` milestones completed
+
+A light, mostly conventions/research round — only three packages had a `v0.7`
+milestone; the rest go straight to `v1.0`.
+
+- **log** (`0.7.0`) — observability conventions: `logFields` (the recommended
+  structured field names — `event`/`requestId`/`traceId`/`spanId`/`actorId`/
+  `service`/`component`/`operation`/`durationMs`/`attempt`/`status`/`error`),
+  `eventName(package, area, action)` building the canonical
+  `package.area.action` event name (validated; `LOG_INVALID_EVENT`), and
+  `isEventName`. README documents the convention.
+- **migrate** (`0.7.0`) — **sync-safe migration research** (no new API): a
+  constraints document in the ROADMAP (offline clients, schema version
+  negotiation, conflict model, tombstones, client-generatable IDs, backward/
+  forward-compatible migrations). Finding: the existing additive-only generators
+  already make migrations sync-safe via expand→migrate→contract.
+- **orm** (`0.7.0`) — **sync and local-first research** (no new API): a
+  constraints document (LWW conflict model, UUID/ULID PKs, `updated_at`,
+  `deleted_at` tombstones, sync-safe constraints, offline writes). Finding: a
+  local-first app is a convention layer over today's surface + the SQLite/Turso
+  adapters — no sync-specific API ships yet.
+
+The migrate/orm version bumps are bookkeeping only — both keep an **unchanged
+public API** from `0.6.0` (research milestones); the version reflects the
+roadmap milestone reached.
+
 ## 2026-06-26 — `v0.6` milestones completed
 
 Advanced every package with a `v0.6` roadmap milestone. Only four had one;

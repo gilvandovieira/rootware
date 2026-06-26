@@ -168,6 +168,29 @@ It honors/generates an `x-request-id` (echoed on the response), measures
 warn), and logs + re-throws a handler that throws. (Hono middleware lives in the
 separate `@rootware/hono` package, not here.)
 
+## Observability conventions (`0.7`)
+
+Rootware packages log under a shared vocabulary so records are queryable and
+correlatable. Use `logFields` for field names and `eventName` for the
+`package.area.action` event convention:
+
+```ts
+import { eventName, logFields } from "jsr:@rootware/log";
+
+logger.info({
+  [logFields.event]: eventName("http", "request", "completed"),
+  [logFields.requestId]: requestId,
+  [logFields.status]: 200,
+  [logFields.durationMs]: 12,
+}, "request completed");
+```
+
+`logFields` covers `event`, `requestId`, `traceId`, `spanId`, `actorId`,
+`service`, `component`, `operation`, `durationMs`, `attempt`, `status`, `error`.
+Event names are lowercase, dot-separated, and three segments
+(`package.area.action`) — e.g. `cache.entry.hit`, `storage.object.put`,
+`job.completed`; `eventName` validates segments (`isEventName` checks one).
+
 ## Testing logs (`0.6`)
 
 `memorySink()` and the `LogRecord` shape are the stable seam test helpers build
