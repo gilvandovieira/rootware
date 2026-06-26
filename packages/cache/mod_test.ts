@@ -71,6 +71,79 @@ Deno.test("@rootware/cache - getOrSet and forceRefresh", async () => {
   }, CacheError);
 });
 
+Deno.test("@rootware/cache - getOrSet deduplicates concurrent misses", async () => {
+  const cache = createCache();
+  let calls = 0;
+  let resolveFactory!: (value: string) => void;
+  const gate = new Promise<string>((resolve) => {
+    resolveFactory = resolve;
+  });
+
+  const first = cache.getOrSet("shared", async () => {
+    calls += 1;
+    return await gate;
+  });
+  const second = cache.getOrSet("shared", () => {
+    calls += 1;
+    return "duplicate";
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(calls, 1);
+  resolveFactory("value");
+
+  assertEquals(await Promise.all([first, second]), ["value", "value"]);
+  assertEquals(await cache.get("shared"), "value");
+});
+
+Deno.test("@rootware/cache - getOrSet cleans up in-flight entry after rejection", async () => {
+  const cache = createCache();
+  let calls = 0;
+
+  const first = cache.getOrSet("rejects", () => {
+    calls += 1;
+    return Promise.reject(new Error("factory"));
+  });
+  const second = cache.getOrSet("rejects", () => {
+    calls += 1;
+    return "duplicate";
+  });
+
+  await assertRejects(() => first, CacheError);
+  await assertRejects(() => second, CacheError);
+  assertEquals(calls, 1);
+
+  assertEquals(
+    await cache.getOrSet("rejects", () => {
+      calls += 1;
+      return "retry";
+    }),
+    "retry",
+  );
+  assertEquals(calls, 2);
+});
+
+Deno.test("@rootware/cache - getOrSet does not block different keys", async () => {
+  const cache = createCache();
+  let calls = 0;
+
+  const values = await Promise.all([
+    cache.getOrSet("a", async () => {
+      calls += 1;
+      await Promise.resolve();
+      return "a";
+    }),
+    cache.getOrSet("b", async () => {
+      calls += 1;
+      await Promise.resolve();
+      return "b";
+    }),
+  ]);
+
+  assertEquals(values, ["a", "b"]);
+  assertEquals(calls, 2);
+});
+
 Deno.test("@rootware/cache - namespaces nest", async () => {
   const cache = createCache({ namespace: "app" });
   const users = cache.namespace("users").namespace("sessions");

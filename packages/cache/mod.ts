@@ -490,6 +490,7 @@ interface RootwareCacheClientOptions {
   readonly namespace?: string;
   readonly defaultTtlMs?: number;
   readonly logger?: Logger;
+  readonly inFlight?: Map<CacheKey, Promise<unknown>>;
 }
 
 class RootwareCacheClient implements CacheClient {
@@ -497,12 +498,14 @@ class RootwareCacheClient implements CacheClient {
   readonly #namespace?: string;
   readonly #defaultTtlMs?: number;
   readonly #logger?: Logger;
+  readonly #inFlight: Map<CacheKey, Promise<unknown>>;
 
   constructor(options: RootwareCacheClientOptions) {
     this.#store = options.store;
     this.#namespace = options.namespace;
     this.#defaultTtlMs = options.defaultTtlMs;
     this.#logger = options.logger;
+    this.#inFlight = options.inFlight ?? new Map();
   }
 
   async get<T = unknown>(
@@ -657,6 +660,46 @@ class RootwareCacheClient implements CacheClient {
       }
     }
 
+    const inFlight = this.#inFlight.get(fullKey) as Promise<T> | undefined;
+
+    if (inFlight !== undefined) {
+      return await inFlight;
+    }
+
+    const promise = this.#computeAndStore(key, fullKey, factory, options);
+    this.#inFlight.set(fullKey, promise);
+
+    try {
+      return await promise;
+    } finally {
+      this.#inFlight.delete(fullKey);
+    }
+  }
+
+  namespace(namespace: string): CacheClient {
+    return new RootwareCacheClient({
+      store: this.#store,
+      namespace: joinCacheKey([this.#namespace, namespace]),
+      defaultTtlMs: this.#defaultTtlMs,
+      logger: this.#logger,
+      inFlight: this.#inFlight,
+    });
+  }
+
+  async close(): Promise<void> {
+    await this.#store.close?.();
+  }
+
+  #key(key: CacheKey): CacheKey {
+    return joinCacheKey([this.#namespace, key]);
+  }
+
+  async #computeAndStore<T>(
+    key: CacheKey,
+    fullKey: CacheKey,
+    factory: () => T | Promise<T>,
+    options: GetOrSetOptions,
+  ): Promise<T> {
     let value: T;
 
     try {
@@ -675,23 +718,6 @@ class RootwareCacheClient implements CacheClient {
 
     await this.set<T>(key, value, options);
     return value;
-  }
-
-  namespace(namespace: string): CacheClient {
-    return new RootwareCacheClient({
-      store: this.#store,
-      namespace: joinCacheKey([this.#namespace, namespace]),
-      defaultTtlMs: this.#defaultTtlMs,
-      logger: this.#logger,
-    });
-  }
-
-  async close(): Promise<void> {
-    await this.#store.close?.();
-  }
-
-  #key(key: CacheKey): CacheKey {
-    return joinCacheKey([this.#namespace, key]);
   }
 
   #debug(fields: Record<string, unknown> | undefined, message: string): void {

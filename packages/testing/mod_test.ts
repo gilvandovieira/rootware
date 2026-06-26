@@ -1,13 +1,17 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { env } from "@rootware/env";
+import { RootwareError } from "@rootware/errors";
 import {
   assert as rootAssert,
   assertEquals as rootAssertEquals,
+  assertErrorCode,
   assertExists as rootAssertExists,
   assertLog,
   assertNotEquals as rootAssertNotEquals,
   assertRejects as rootAssertRejects,
+  assertRootwareError,
   assertThrows as rootAssertThrows,
+  assertThrowsRootwareError,
   captureAsyncError,
   captureError,
   createFakeClock,
@@ -39,6 +43,49 @@ Deno.test("@rootware/testing - assertions", async () => {
   await rootAssertRejects(() => Promise.reject(new Error("nope")), {
     includes: "nope",
   });
+});
+
+Deno.test("@rootware/testing - Rootware error assertions", async () => {
+  const error = new RootwareError("configuration failed", {
+    code: "ROOTWARE_CONFIGURATION_ERROR",
+    cause: new Error("cause"),
+  });
+
+  assertRootwareError(error, {
+    code: "ROOTWARE_CONFIGURATION_ERROR",
+    message: /configuration/,
+    cause: true,
+  });
+  assertErrorCode(error, "ROOTWARE_CONFIGURATION_ERROR");
+
+  assertThrows(() => {
+    assertErrorCode(error, "ROOTWARE_VALIDATION_ERROR");
+  });
+  assertThrows(() => {
+    assertRootwareError(new Error("native"));
+  });
+
+  const syncError = await assertThrowsRootwareError(() => {
+    throw error;
+  }, { code: "ROOTWARE_CONFIGURATION_ERROR", message: "failed" });
+
+  assertEquals(syncError.code, "ROOTWARE_CONFIGURATION_ERROR");
+
+  const asyncError = await assertThrowsRootwareError(
+    () =>
+      Promise.reject(
+        new RootwareError("validation failed", {
+          code: "ROOTWARE_VALIDATION_ERROR",
+        }),
+      ),
+    { code: "ROOTWARE_VALIDATION_ERROR", message: /validation/ },
+  );
+
+  assertEquals(asyncError.code, "ROOTWARE_VALIDATION_ERROR");
+
+  await assertRejects(
+    () => assertThrowsRootwareError(() => Promise.resolve(undefined)),
+  );
 });
 
 Deno.test("@rootware/testing - capture helpers", async () => {

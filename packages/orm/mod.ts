@@ -1,5 +1,11 @@
 import { RootwareError } from "@rootware/errors";
 import type { Logger } from "@rootware/log";
+import {
+  defineSchemaSnapshot,
+  type RootwareColumnDefault,
+  type RootwareDialectName,
+  type RootwareSchemaSnapshot,
+} from "@rootware/schema";
 
 export type OrmErrorCode =
   | "ORM_INVALID_TABLE"
@@ -289,6 +295,8 @@ export interface UpdateBuilder<TTable extends TableDefinition> {
 
   where(condition: Condition): UpdateBuilder<TTable>;
 
+  unsafeAllowAllRows(): UpdateBuilder<TTable>;
+
   returning(): UpdateBuilder<TTable>;
 
   toSql(): Sql;
@@ -299,6 +307,8 @@ export interface UpdateBuilder<TTable extends TableDefinition> {
 export interface DeleteBuilder<TTable extends TableDefinition> {
   where(condition: Condition): DeleteBuilder<TTable>;
 
+  unsafeAllowAllRows(): DeleteBuilder<TTable>;
+
   returning(): DeleteBuilder<TTable>;
 
   toSql(): Sql;
@@ -308,6 +318,15 @@ export interface DeleteBuilder<TTable extends TableDefinition> {
 
 export interface MemoryOrmDriverOptions {
   readonly tables?: Record<string, Array<Record<string, unknown>>>;
+}
+
+export interface CreateSchemaSnapshotOptions {
+  readonly dialect?: RootwareDialectName;
+  readonly metadata?: Record<string, unknown>;
+}
+
+export interface CreateSchemaSnapshotInput extends CreateSchemaSnapshotOptions {
+  readonly tables: readonly TableDefinition[] | Record<string, TableDefinition>;
 }
 
 export interface OrmErrorOptions {
@@ -423,6 +442,24 @@ export function defineTable<TColumns extends TableColumns>(
     ...(schema === undefined ? {} : { schema }),
     columns: Object.freeze(finalColumns),
   }) as TableDefinition<TColumns>;
+}
+
+/** Creates a stable Rootware schema snapshot from ORM table metadata. */
+export function createSchemaSnapshot(
+  input: CreateSchemaSnapshotInput,
+): RootwareSchemaSnapshot {
+  const tables = Array.isArray(input.tables)
+    ? input.tables
+    : Object.values(input.tables);
+
+  return defineSchemaSnapshot({
+    version: 1,
+    ...(input.dialect === undefined ? {} : { dialect: input.dialect }),
+    tables: tables.map(tableToSnapshot),
+    ...(input.metadata === undefined
+      ? {}
+      : { metadata: { ...input.metadata } }),
+  });
 }
 
 /** SQL tagged template that keeps interpolated values as parameters. */
@@ -1248,6 +1285,7 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
   readonly #table: TTable;
   readonly #values?: Partial<InferInsert<TTable>>;
   readonly #condition?: Condition;
+  readonly #allowAllRows: boolean;
   readonly #returning: boolean;
 
   constructor(
@@ -1255,12 +1293,14 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
     table: TTable,
     values?: Partial<InferInsert<TTable>>,
     condition?: Condition,
+    allowAllRows = false,
     returning = false,
   ) {
     this.#database = database;
     this.#table = table;
     this.#values = values;
     this.#condition = condition;
+    this.#allowAllRows = allowAllRows;
     this.#returning = returning;
   }
 
@@ -1270,6 +1310,7 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
       this.#table,
       { ...values },
       this.#condition,
+      this.#allowAllRows,
       this.#returning,
     );
   }
@@ -1281,6 +1322,18 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
       this.#table,
       this.#values,
       condition,
+      this.#allowAllRows,
+      this.#returning,
+    );
+  }
+
+  unsafeAllowAllRows(): UpdateBuilder<TTable> {
+    return new RootwareUpdateBuilder(
+      this.#database,
+      this.#table,
+      this.#values,
+      this.#condition,
+      true,
       this.#returning,
     );
   }
@@ -1291,6 +1344,7 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
       this.#table,
       this.#values,
       this.#condition,
+      this.#allowAllRows,
       true,
     );
   }
@@ -1320,8 +1374,13 @@ class RootwareUpdateBuilder<TTable extends TableDefinition>
       setSql,
     ];
 
-    // TODO: add opt-in full-table update protection in a future version.
-    if (this.#condition !== undefined) {
+    if (this.#condition === undefined) {
+      assertUnsafeAllRowsAllowed(
+        "update",
+        this.#allowAllRows,
+        this.#table.name,
+      );
+    } else {
       parts.push(raw(" where "), this.#condition.sql);
     }
 
@@ -1342,17 +1401,20 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
   readonly #database: Database;
   readonly #table: TTable;
   readonly #condition?: Condition;
+  readonly #allowAllRows: boolean;
   readonly #returning: boolean;
 
   constructor(
     database: Database,
     table: TTable,
     condition?: Condition,
+    allowAllRows = false,
     returning = false,
   ) {
     this.#database = database;
     this.#table = table;
     this.#condition = condition;
+    this.#allowAllRows = allowAllRows;
     this.#returning = returning;
   }
 
@@ -1362,6 +1424,17 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
       this.#database,
       this.#table,
       condition,
+      this.#allowAllRows,
+      this.#returning,
+    );
+  }
+
+  unsafeAllowAllRows(): DeleteBuilder<TTable> {
+    return new RootwareDeleteBuilder(
+      this.#database,
+      this.#table,
+      this.#condition,
+      true,
       this.#returning,
     );
   }
@@ -1371,6 +1444,7 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
       this.#database,
       this.#table,
       this.#condition,
+      this.#allowAllRows,
       true,
     );
   }
@@ -1381,8 +1455,13 @@ class RootwareDeleteBuilder<TTable extends TableDefinition>
       identifier(this.#table.name),
     ];
 
-    // TODO: add opt-in full-table delete protection in a future version.
-    if (this.#condition !== undefined) {
+    if (this.#condition === undefined) {
+      assertUnsafeAllRowsAllowed(
+        "delete",
+        this.#allowAllRows,
+        this.#table.name,
+      );
+    } else {
       parts.push(raw(" where "), this.#condition.sql);
     }
 
@@ -1410,6 +1489,76 @@ function createColumnBuilder<T>(dataType: ColumnDataType): ColumnBuilder<T> {
     false,
     false,
   );
+}
+
+function tableToSnapshot(
+  table: TableDefinition,
+): RootwareSchemaSnapshot["tables"][number] {
+  assertTable(table);
+
+  const columns = Object.values(table.columns);
+  const primaryKeyColumns = columns
+    .filter((column) => column.primaryKey)
+    .map((column) => column.name);
+  const uniqueConstraints = columns
+    .filter((column) => column.unique)
+    .map((column) => ({ columns: [column.name] }));
+  const foreignKeys = columns
+    .filter((column) => column.references !== undefined)
+    .map((column) => ({
+      columns: [column.name],
+      references: {
+        table: column.references!.table,
+        columns: [column.references!.column],
+      },
+    }));
+
+  return {
+    name: table.name,
+    ...(table.schema === undefined ? {} : { schema: table.schema }),
+    columns: columns.map((column) => ({
+      name: column.name,
+      type: { kind: column.dataType },
+      nullable: column.nullable,
+      ...(column.references === undefined ? {} : {
+        references: {
+          table: column.references.table,
+          column: column.references.column,
+        },
+      }),
+      ...(columnDefaultToSnapshot(column.defaultValue) === undefined
+        ? {}
+        : { default: columnDefaultToSnapshot(column.defaultValue) }),
+      metadata: {
+        propertyName: column.propertyName,
+        optionalInsert: column.optionalInsert,
+        defaultInsert: column.defaultInsert,
+        hasDefault: column.hasDefault,
+      },
+    })),
+    ...(primaryKeyColumns.length === 0
+      ? {}
+      : { primaryKey: { columns: primaryKeyColumns } }),
+    uniqueConstraints,
+    foreignKeys,
+    indexes: [],
+    checks: [],
+  };
+}
+
+function columnDefaultToSnapshot(
+  value: unknown,
+): RootwareColumnDefault | undefined {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return { kind: "literal", value };
+  }
+
+  return undefined;
 }
 
 function cloneColumnDefinition<T>(
@@ -1606,6 +1755,24 @@ function assertTableColumn(table: TableDefinition, key: string): void {
       details: { table: table.name, column: key },
     });
   }
+}
+
+function assertUnsafeAllRowsAllowed(
+  operation: "update" | "delete",
+  allowed: boolean,
+  table: string,
+): void {
+  if (allowed) {
+    return;
+  }
+
+  throw new OrmError(
+    `Refusing to ${operation} all rows without an explicit unsafeAllowAllRows() call`,
+    {
+      code: "ORM_INVALID_QUERY",
+      details: { operation, table },
+    },
+  );
 }
 
 function normalizeOrderDirection(direction: "asc" | "desc"): "asc" | "desc" {

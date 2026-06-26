@@ -6,6 +6,7 @@ import {
   createMigrationPlan,
   createMigrator,
   defineMigration,
+  defineSchemaMigrationPlan,
   defineSqlMigration,
   getAppliedMigrations,
   getPendingMigrations,
@@ -75,6 +76,35 @@ Deno.test("@rootware/migrate - plan helpers", () => {
   assertEquals(
     getRollbackMigrations([first, second], applied, 1).map((item) => item.id),
     ["001"],
+  );
+});
+
+Deno.test("@rootware/migrate - schema migration plan accepts validated snapshots", () => {
+  const from = {
+    version: 1 as const,
+    tables: [
+      { name: "users", columns: [{ name: "id", type: { kind: "text" } }] },
+    ],
+  };
+  const to = {
+    version: 1 as const,
+    tables: [
+      { name: "posts", columns: [{ name: "id", type: { kind: "text" } }] },
+      { name: "users", columns: [{ name: "id", type: { kind: "text" } }] },
+    ],
+  };
+  const plan = defineSchemaMigrationPlan({ from, to });
+
+  assertEquals(plan.from?.tables.map((table) => table.name), ["users"]);
+  assertEquals(plan.to.tables.map((table) => table.name), ["posts", "users"]);
+
+  assertThrows(() =>
+    defineSchemaMigrationPlan({
+      to: {
+        version: 2 as 1,
+        tables: [],
+      },
+    })
   );
 });
 

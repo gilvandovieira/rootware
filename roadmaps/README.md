@@ -1,0 +1,50 @@
+# Rootware Other Package Roadmaps
+
+Last reviewed: 2026-06-26
+
+This set complements the existing Rootware docs:
+
+- `log.md`
+- `migrate.md`
+- `orm.md`
+- `template.md`
+
+The files in this archive cover the remaining core package roadmaps:
+
+- `errors.md`
+- `env.md`
+- `schema.md`
+- `testing.md`
+- `http.md`
+- `cache.md`
+- `storage.md`
+- `session.md`
+- `jobs.md`
+- `adapters.md`
+- `rootware-roadmap.md`
+
+`schema.md` covers the dependency-free `@rootware/schema` leaf package added
+during the 2026-06-26 alignment pass. It owns the serializable schema-snapshot
+type so `@rootware/orm` can produce snapshots and `@rootware/migrate` can
+consume prebuilt snapshots without importing each other. See `CHANGELOG.md` for
+the reconciliation history.
+
+Subpath packages such as `@rootware/orm/postgres`, `@rootware/orm/neon`,
+`@rootware/http/testing`, `@rootware/migrate/cli`, and
+`@rootware/log/compat/pino` are roadmap targets only until their files and
+exports exist.
+
+The intended dependency ladder remains:
+
+```txt
+errors/schema -> env -> log -> testing -> http/cache/storage -> session -> migrate/orm -> jobs -> adapters
+```
+
+Arrows here mean **build order**, not imports. `migrate` and `orm` are siblings:
+neither imports the other, and they integrate only through the serializable
+schema snapshot type owned by the dependency-free `@rootware/schema` leaf
+(which, like `@rootware/errors`, depends on nothing). See `rootware-roadmap.md`
+("Schema snapshot handoff") for the exact contract.
+
+The important product rule is that each package should make the next package
+easier to build and test.

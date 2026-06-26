@@ -5,6 +5,7 @@ const DEFAULT_RETRYABLE_STATUSES = [408, 425, 429, 500, 502, 503, 504] as const;
 const DEFAULT_RETRYABLE_METHODS = ["GET", "HEAD", "OPTIONS"] as const;
 const DEFAULT_BACKOFF_MS = 100;
 const DEFAULT_MAX_BACKOFF_MS = 2000;
+const REDACTED_VALUE = "[REDACTED]";
 const SENSITIVE_HEADERS = [
   "authorization",
   "cookie",
@@ -417,6 +418,33 @@ export function mergeHeaders(
   }
 
   return merged;
+}
+
+/** Returns redacted headers suitable for diagnostics. */
+export function redactHttpHeaders(
+  headers: HeadersInit | undefined,
+): Record<string, string> {
+  const output: Record<string, string> = {};
+
+  if (headers === undefined) {
+    return output;
+  }
+
+  for (const [key, value] of new Headers(headers).entries()) {
+    output[key] = isSensitiveName(key) ? REDACTED_VALUE : value;
+  }
+
+  return output;
+}
+
+/** Returns a URL string with credentials and sensitive query parameters redacted. */
+export function redactHttpUrl(value: string | URL): string {
+  return safeUrlString(value instanceof URL ? value : new URL(value));
+}
+
+/** Returns a JSON-like value with sensitive key names redacted. */
+export function redactHttpJson(value: unknown): unknown {
+  return sanitizeJsonValue(value, new WeakSet<object>());
 }
 
 /** Reads and parses a response body as JSON, throwing HttpError on invalid JSON. */
@@ -969,7 +997,7 @@ function sanitizeJsonValue(
 
     for (const [key, entry] of Object.entries(value)) {
       output[key] = isSensitiveName(key)
-        ? "[REDACTED]"
+        ? REDACTED_VALUE
         : sanitizeJsonValue(entry, seen);
     }
 
@@ -1091,17 +1119,17 @@ function safeUrlString(url: URL): string {
     const safeUrl = new URL(url.toString());
 
     if (safeUrl.username.length > 0) {
-      safeUrl.username = "[REDACTED]";
+      safeUrl.username = REDACTED_VALUE;
     }
 
     if (safeUrl.password.length > 0) {
-      safeUrl.password = "[REDACTED]";
+      safeUrl.password = REDACTED_VALUE;
     }
 
     for (const key of [...safeUrl.searchParams.keys()]) {
       if (isSensitiveName(key)) {
         safeUrl.searchParams.delete(key);
-        safeUrl.searchParams.append(key, "[REDACTED]");
+        safeUrl.searchParams.append(key, REDACTED_VALUE);
       }
     }
 
@@ -1117,7 +1145,7 @@ function sanitizeUrlText(value: string): string {
   } catch {
     return value.replace(
       /([?&][^=]*(?:token|secret|password|api[_-]?key)[^=]*=)[^&]*/gi,
-      "$1[REDACTED]",
+      `$1${REDACTED_VALUE}`,
     );
   }
 }

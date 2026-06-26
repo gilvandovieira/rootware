@@ -1,4 +1,8 @@
-import { RootwareError } from "@rootware/errors";
+import {
+  isRootwareError,
+  RootwareError,
+  type RootwareErrorCode,
+} from "@rootware/errors";
 import {
   defineEnv,
   type EnvSchema,
@@ -37,6 +41,12 @@ export interface AssertThrowsOptions {
 }
 
 export type AssertRejectsOptions = AssertThrowsOptions;
+
+export interface AssertRootwareErrorOptions {
+  readonly code?: RootwareErrorCode;
+  readonly message?: string | RegExp;
+  readonly cause?: boolean;
+}
 
 /** Small setup/teardown fixture abstraction for Deno tests. */
 export interface TestFixture<T> {
@@ -174,6 +184,91 @@ export function assertExists<T>(
       operator: "assertExists",
     });
   }
+}
+
+/** Asserts that a thrown value is a RootwareError and optionally matches details. */
+export function assertRootwareError(
+  error: unknown,
+  options: AssertRootwareErrorOptions = {},
+): asserts error is RootwareError {
+  if (!isRootwareError(error)) {
+    throwAssertionFailure({
+      message: "Expected a RootwareError",
+      actual: getErrorName(error),
+      expected: "RootwareError",
+      operator: "assertRootwareError",
+    });
+  }
+
+  if (options.code !== undefined) {
+    assertErrorCode(error, options.code);
+  }
+
+  if (options.message !== undefined) {
+    const matches = typeof options.message === "string"
+      ? error.message.includes(options.message)
+      : options.message.test(error.message);
+
+    if (!matches) {
+      throwAssertionFailure({
+        message: "Expected RootwareError message to match",
+        actual: error.message,
+        expected: String(options.message),
+        operator: "assertRootwareError",
+      });
+    }
+  }
+
+  if (options.cause === true && error.cause === undefined) {
+    throwAssertionFailure({
+      message: "Expected RootwareError cause to exist",
+      actual: undefined,
+      expected: "defined cause",
+      operator: "assertRootwareError",
+    });
+  }
+}
+
+/** Asserts that a thrown value is a RootwareError with the expected code. */
+export function assertErrorCode(
+  error: unknown,
+  code: RootwareErrorCode,
+): asserts error is RootwareError {
+  if (!isRootwareError(error)) {
+    throwAssertionFailure({
+      message: `Expected RootwareError code ${formatValue(code)}`,
+      actual: getErrorName(error),
+      expected: code,
+      operator: "assertErrorCode",
+    });
+  }
+
+  if (error.code !== code) {
+    throwAssertionFailure({
+      message: `Expected RootwareError code ${formatValue(code)}`,
+      actual: error.code,
+      expected: code,
+      operator: "assertErrorCode",
+    });
+  }
+}
+
+/** Asserts that a sync or async callback throws/rejects with a RootwareError. */
+export async function assertThrowsRootwareError(
+  fn: () => unknown | Promise<unknown>,
+  options: AssertRootwareErrorOptions = {},
+): Promise<RootwareError> {
+  try {
+    await fn();
+  } catch (error) {
+    assertRootwareError(error, options);
+    return error;
+  }
+
+  throw new TestError("Expected function to throw or reject", {
+    code: "TEST_EXPECTED_THROW",
+    details: { expected: "RootwareError throw or rejection" },
+  });
 }
 
 /** Asserts that an async function rejects and optionally matches the error. */

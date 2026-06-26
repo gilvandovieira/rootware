@@ -35,6 +35,9 @@ jobs:
       - name: Type check
         run: deno task check
 
+      - name: Package graph
+        run: deno task graph
+
       - name: Test
         run: deno task test
 

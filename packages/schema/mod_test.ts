@@ -1,0 +1,185 @@
+import { assertEquals, assertThrows } from "@std/assert";
+import {
+  assertValidSchemaSnapshot,
+  defineSchemaSnapshot,
+  normalizeSchemaSnapshot,
+  type RootwareSchemaSnapshot,
+  validateSchemaSnapshot,
+} from "./mod.ts";
+
+Deno.test("@rootware/schema - valid minimal snapshot", () => {
+  const snapshot = defineSchemaSnapshot({
+    version: 1,
+    dialect: "postgres",
+    tables: [
+      {
+        name: "users",
+        columns: [
+          { name: "id", type: { kind: "uuid" }, nullable: false },
+        ],
+        primaryKey: { columns: ["id"] },
+      },
+    ],
+  });
+
+  assertEquals(snapshot.version, 1);
+  assertEquals(snapshot.tables[0].name, "users");
+  assertEquals(validateSchemaSnapshot(snapshot), []);
+});
+
+Deno.test("@rootware/schema - duplicate table detection", () => {
+  const issues = validateSchemaSnapshot({
+    version: 1,
+    tables: [
+      { name: "users", columns: [{ name: "id", type: { kind: "text" } }] },
+      { name: "users", columns: [{ name: "id", type: { kind: "text" } }] },
+    ],
+  });
+
+  assertEquals(
+    issues.some((issue) => issue.code === "SCHEMA_DUPLICATE_TABLE"),
+    true,
+  );
+});
+
+Deno.test("@rootware/schema - duplicate column detection", () => {
+  const issues = validateSchemaSnapshot({
+    version: 1,
+    tables: [
+      {
+        name: "users",
+        columns: [
+          { name: "id", type: { kind: "text" } },
+          { name: "id", type: { kind: "uuid" } },
+        ],
+      },
+    ],
+  });
+
+  assertEquals(
+    issues.some((issue) => issue.code === "SCHEMA_DUPLICATE_COLUMN"),
+    true,
+  );
+});
+
+Deno.test("@rootware/schema - primary key references missing column", () => {
+  const issues = validateSchemaSnapshot({
+    version: 1,
+    tables: [
+      {
+        name: "users",
+        columns: [{ name: "id", type: { kind: "text" } }],
+        primaryKey: { columns: ["missing"] },
+      },
+    ],
+  });
+
+  assertEquals(
+    issues.some((issue) => issue.code === "SCHEMA_UNKNOWN_COLUMN"),
+    true,
+  );
+});
+
+Deno.test("@rootware/schema - foreign key references missing local column", () => {
+  const issues = validateSchemaSnapshot({
+    version: 1,
+    tables: [
+      {
+        name: "posts",
+        columns: [{ name: "id", type: { kind: "text" } }],
+        foreignKeys: [
+          {
+            columns: ["userId"],
+            references: { table: "users", columns: ["id"] },
+          },
+        ],
+      },
+    ],
+  });
+
+  assertEquals(
+    issues.some((issue) => issue.code === "SCHEMA_UNKNOWN_COLUMN"),
+    true,
+  );
+});
+
+Deno.test("@rootware/schema - foreign key target checked when table exists", () => {
+  const issues = validateSchemaSnapshot({
+    version: 1,
+    tables: [
+      {
+        name: "posts",
+        columns: [
+          { name: "id", type: { kind: "text" } },
+          {
+            name: "userId",
+            type: { kind: "text" },
+            references: { table: "users", column: "missing" },
+          },
+        ],
+      },
+      {
+        name: "users",
+        columns: [{ name: "id", type: { kind: "text" } }],
+      },
+    ],
+  });
+
+  assertEquals(
+    issues.some((issue) => issue.code === "SCHEMA_UNKNOWN_TARGET"),
+    true,
+  );
+});
+
+Deno.test("@rootware/schema - normalization does not mutate input", () => {
+  const input: RootwareSchemaSnapshot = {
+    version: 1,
+    tables: [
+      {
+        name: "b",
+        columns: [{ name: "id", type: { kind: "text" } }],
+        indexes: [{ name: "b_idx", columns: ["id"] }],
+      },
+      { name: "a", columns: [{ name: "id", type: { kind: "text" } }] },
+    ],
+  };
+  const original = JSON.stringify(input);
+  const normalized = normalizeSchemaSnapshot(input);
+
+  assertEquals(JSON.stringify(input), original);
+  assertEquals(normalized.tables.map((table) => table.name), ["a", "b"]);
+  assertEquals(input.tables.map((table) => table.name), ["b", "a"]);
+});
+
+Deno.test("@rootware/schema - deterministic output order", () => {
+  const snapshot = normalizeSchemaSnapshot({
+    version: 1,
+    tables: [
+      { name: "z", columns: [{ name: "b", type: { kind: "text" } }] },
+      {
+        schema: "app",
+        name: "a",
+        columns: [{ name: "id", type: { kind: "uuid" } }],
+      },
+      { name: "a", columns: [{ name: "c", type: { kind: "text" } }] },
+    ],
+  });
+
+  assertEquals(
+    snapshot.tables.map((table) => `${table.schema ?? ""}.${table.name}`),
+    [
+      ".a",
+      ".z",
+      "app.a",
+    ],
+  );
+});
+
+Deno.test("@rootware/schema - assert throws structured issues", () => {
+  assertThrows(() =>
+    assertValidSchemaSnapshot({
+      version: 2 as 1,
+      tables: [{ name: "", columns: [] }],
+    })
+  );
+});

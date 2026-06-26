@@ -25,7 +25,7 @@ jobs:
       - name: Validate package input
         run: |
           case "${{ inputs.package }}" in
-            errors|env|log|testing|http|cache|storage|session|migrate|orm|jobs)
+            errors|env|log|testing|http|cache|storage|session|schema|migrate|orm|jobs)
               echo "Publishing package: ${{ inputs.package }}"
               ;;
             *)
